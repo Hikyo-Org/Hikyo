@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -173,7 +174,7 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 			return errors.New("dev PR event differs from the held routing identity")
 		}
 	case "workflow_run":
-		if e.Run.Event != "pull_request" || e.Run.Path != feedbackWorkflowPath && e.Run.Path != retargetWorkflowPath || e.Run.Repository.ID != q.repo.ID || e.Run.HeadSHA != q.expectedHead {
+		if e.Run.Event != "pull_request" || !isFeedbackPath(e.Run.Path) || e.Run.Repository.ID != q.repo.ID || e.Run.HeadSHA != q.expectedHead {
 			return errors.New("dev callback is not exact-head PR feedback")
 		}
 	case "push":
@@ -217,12 +218,12 @@ func (q *queueController) devRoles(ctx context.Context, head string) (headRoles,
 }
 
 type devPolicyOwner struct {
-	ID          int64             `json:"id"`
-	Name        string            `json:"name"`
-	Target      string            `json:"target"`
-	Enforcement string            `json:"enforcement"`
-	UpdatedAt   string            `json:"updated_at"`
-	Bypass      []json.RawMessage `json:"bypass_actors"`
+	ID          int64            `json:"id"`
+	Name        string           `json:"name"`
+	Target      string           `json:"target"`
+	Enforcement string           `json:"enforcement"`
+	UpdatedAt   string           `json:"updated_at"`
+	Bypass      []jsontext.Value `json:"bypass_actors"`
 	Conditions  struct {
 		Ref struct {
 			Include []string `json:"include"`
@@ -377,8 +378,8 @@ func (q *queueController) devPolicy(ctx context.Context) (liveQueuePolicy, error
 		Owner     devPolicyOwner
 		Effective []rule
 		Authority string
-		Publisher [sha256.Size]byte
-	}{owner, effective, mainSHA, sha256.Sum256(trusted)})
+		Publisher []int // v1 encoded the [32]byte hash as numbers; v2 would use base64
+	}{owner, effective, mainSHA, hashNumbers(sha256.Sum256(trusted))}, stableJSON)
 	if err != nil {
 		return liveQueuePolicy{}, err
 	}
@@ -626,4 +627,12 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 		}
 	}
 	return nil
+}
+
+func hashNumbers(sum [sha256.Size]byte) []int {
+	numbers := make([]int, len(sum))
+	for i, b := range sum {
+		numbers[i] = int(b)
+	}
+	return numbers
 }

@@ -14,7 +14,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/url"
@@ -62,7 +62,7 @@ type Org struct {
 	ID        string
 	Name      string
 	Active    bool
-	Metadata  json.RawMessage
+	Metadata  jsontext.Value
 	CreatedAt time.Time
 	Retention RetentionPolicy
 	// Origin is how the org came to exist (#585 d8): `manual` (an operator's
@@ -421,7 +421,7 @@ type RemoteSnapshot struct {
 	// Listing is the org/project names as fetched, stored as JSON. It is
 	// foreign structure at rest and holds nothing value-bearing: the
 	// credential that produced it may read nothing else.
-	Listing json.RawMessage
+	Listing jsontext.Value
 }
 
 // RemoteReader is the read side of the remotes aggregate (viewing side).
@@ -498,6 +498,9 @@ type Repos interface {
 	Adapters() AdapterRepo
 	// Dynamic is the dynamic-secret provider + lease surface (#147).
 	Dynamic() DynamicRepo
+	// Rotations is the scheduled credential rotation configuration surface
+	// (#148).
+	Rotations() RotationRepo
 	// SSH is the SSH user-certificate surface (#155).
 	SSH() SSHRepo
 	// PKI is the private-PKI issuer, profile and certificate surface (#154).
@@ -581,6 +584,7 @@ type ReadRepos interface {
 	Remotes() RemoteReader
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
+	Rotations() RotationReader
 	SSH() SSHReader
 	// Transit is the managed-key metadata read side (#156).
 	Transit() TransitReader
@@ -916,6 +920,13 @@ type AdapterMoveTarget struct {
 	Jobs                                                                                                                                          []AdapterMoveJob
 }
 
+// AdapterScrubRef is the identifier-and-state view of one queued, running or
+// failed scrub job that the incident enumeration lists. It carries no remote
+// name or secret.
+type AdapterScrubRef struct {
+	ID, State string
+}
+
 type AdapterMove struct {
 	ID, AdapterID, Kind, State, PendingOrigin, CreatedAt string
 	KeepRemote                                           bool
@@ -957,6 +968,14 @@ type AdapterReader interface {
 	Environments(ctx context.Context, p authz.Proof, adapterID string) ([]string, error)
 	Conflicts(ctx context.Context, p authz.Proof, targetID string) ([]AdapterConflictArtifact, error)
 	Move(ctx context.Context, p authz.Proof, moveID string) (AdapterMove, error)
+	// ListOpenMoves, ListScrubs and ListOrphanedMoves page one project's
+	// non-terminal route move ids, queued, running or failed scrub jobs, and
+	// the ids of route moves that stored orphaned remote names, in id order, for
+	// the incident enumeration; a non-empty adapterID narrows the page to that
+	// adapter and the limit is at most domain.MaxIncidentPage.
+	ListOpenMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error)
+	ListScrubs(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]AdapterScrubRef, error)
+	ListOrphanedMoves(ctx context.Context, p authz.Proof, adapterID, afterID string, limit int) ([]string, error)
 }
 
 type AdapterPlanMaterial struct {
@@ -974,6 +993,10 @@ type AdapterRepo interface {
 	BeginConfigureEffect(ctx context.Context, p authz.Proof, fence AdapterConfigureFence) error
 	FinishConfigureEffect(ctx context.Context, p authz.Proof, targetID, effectID, outcome string, at time.Time) error
 	AddTarget(ctx context.Context, p authz.Proof, mutation AdapterTargetUpdate) (AdapterTargetAddResult, error)
+	// GuardEnvironmentDelete is a *LiveRowsError (ErrAdapterTargetsInEnvironment)
+	// while the proof's environment has any adapter target (live or tombstoned)
+	// or configure fence.
+	GuardEnvironmentDelete(ctx context.Context, p authz.Proof) error
 	RecordCredentialExpiry(ctx context.Context, p authz.Proof, adapterID string, expiresAt time.Time) error
 	UpdateTarget(ctx context.Context, p authz.Proof, mutation AdapterTargetUpdate) (AdapterTargetUpdateResult, error)
 	MoveTarget(ctx context.Context, p authz.Proof, mutation AdapterRouteMoveMutation) (AdapterRouteMoveResult, error)

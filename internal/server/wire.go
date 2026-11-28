@@ -1,10 +1,12 @@
 package server
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -89,11 +91,11 @@ func wireFolder(f service.Folder) apigen.Folder {
 // marshalMetadata converts the request's optional metadata member back to the
 // raw JSON the store holds. Absent and null both become nil — "no metadata"
 // has one representation at rest.
-func marshalMetadata(m *map[string]any) (json.RawMessage, error) {
+func marshalMetadata(m *map[string]any) (jsontext.Value, error) {
 	if m == nil || *m == nil {
-		return json.RawMessage(`{}`), nil
+		return jsontext.Value(`{}`), nil
 	}
-	return json.Marshal(*m)
+	return json.Marshal(*m, jsonwire.Stable)
 }
 
 func wireIdentity(i service.ChromeIdentity) *apigen.ChromeIdentity {

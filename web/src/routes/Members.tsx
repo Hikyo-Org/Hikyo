@@ -39,6 +39,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { instanceOrigin } from '../app/shell.ts';
 import { useCeremonyTask } from './useCeremonyTask.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
@@ -55,8 +56,7 @@ import { AccessGlossary } from './accessRules/AccessGlossary.tsx';
 import {
   kindOfId,
   newRule,
-  permOf,
-  reach,
+  ruleHolders,
   rulesFromGrants,
   rulesFromServer,
   savePlan,
@@ -95,6 +95,7 @@ import { EmailInvitations } from './EmailInvitations.tsx';
 import { EmailInviteDialog } from './EmailInviteDialog.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { OpenRegistrationPanel } from './OpenRegistration.tsx';
+import { useInSystemScope } from './SystemScope.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Explain, Panel, SectionTabs } from './Sections.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
@@ -171,6 +172,8 @@ export function Members({ scope }: { scope: MembersScope }) {
   const instanceGrants = useInstanceGrants(instance);
   const grants = instance ? instanceGrants : orgGrants;
   const topology = useOrgTopology(org);
+  // The system organisation refuses every rule operation, whatever the caller holds.
+  const systemOrg = useInSystemScope(org, null) === 'system';
   // A project rule listing admits narrowed managers independently of the
   // organisation grant listing, and returns only rules they may delegate.
   const rules = useRules(org, projectId, !instance && (projectId !== '' || grants.isSuccess));
@@ -191,6 +194,9 @@ export function Members({ scope }: { scope: MembersScope }) {
     : projectId === ''
       ? memberProjects.map((p) => p.id)
       : memberProjects.filter((p) => p.id === projectId).map((p) => p.id);
+  // Org-wide, askable is the organisation's project list as shown: the editor
+  // offers "All projects" and a save sends that list (#1446).
+  const orgWide = !instance && projectId === '' && !selectorTopologyOnly;
   const catalogues = useKeyCatalogues(org, askable);
   const [find, setFind] = useState('');
   // The two reference tools open in the side panel from the row above the
@@ -539,7 +545,7 @@ export function Members({ scope }: { scope: MembersScope }) {
 
                 {grants.isSuccess || rulesPanelVisible ? (
                   <div id="members-rules">
-                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error)}</Alert> : null}
+                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error, systemOrg)}</Alert> : null}
                     {rulesPanelVisible && !rules.isSuccess && !rules.isError ? <p role="status">Loading access rules…</p> : null}
                     {rulePeople.length === 0 ? (
                       grants.isSuccess || rules.isSuccess ? <p role="status">{needle === '' ? scopedRulesOnly ? 'No delegable rules are disclosed here.' : 'No members with access here yet.' : `No member matches “${find.trim()}”.`}</p> : null
@@ -631,7 +637,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             <OpenRegistrationPanel
               scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
               scopeName={scopeName}
-              origin={window.location.origin}
+              origin={instanceOrigin()}
               authorityName={(principal) =>
                 principal === '' ? 'no one' : principal === me ? 'you' : principalLabel(principal, lines)}
               onChanged={(text) => {
@@ -653,7 +659,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             {scopedRulesOnly ? (
               <p role="status">This list contains only rules inside your delegated access. Scope-wide grants and other rules are not disclosed, so it cannot answer who has access across the project.</p>
             ) : rules.isError ? (
-              <Alert>{rulesListingText(rules.error)}</Alert>
+              <Alert>{rulesListingText(rules.error, systemOrg)}</Alert>
             ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
               <p role="status">Loading the grants, rules, topology and key names before answering…</p>
             ) : (
@@ -717,6 +723,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           rule={editing.draft}
           showReach={!selectorTopologyOnly}
           projects={askable}
+          allProjects={orgWide}
           busy={ruleMutations.save.isPending || ruleMutations.remove.isPending}
           failure={editorFailure}
           onCancel={() => setEditing(null)}
@@ -738,7 +745,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             const before = editing.before;
             const revokes = savePlan(before, draft).revoke.length > 0;
             ruleMutations.save.mutate(
-              { before, draft },
+              { before, draft, orgProjects: orgWide ? askable : [] },
               {
                 onSuccess: () => {
                   setEditing(null);
@@ -766,7 +773,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         <InviteDialog
           scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
           scopeName={scopeName}
-          origin={window.location.origin}
+          origin={instanceOrigin()}
           onDone={(text) => {
             feedback.ok(text);
             setModal('none');
@@ -792,7 +799,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           username={null}
           principalId={resetIssued.principal}
           issued={resetIssued.issued}
-          origin={window.location.origin}
+          origin={instanceOrigin()}
           onClose={() => {
             feedback.ok(
               `Reset the credential for ${principalLabel(resetIssued.principal, lines)}. The authority was shown once.`,
@@ -971,32 +978,6 @@ function Inspect({
       ) : null}
     </Panel>
   );
-}
-
-/**
- * ruleHolders is the scope inspector's rule half: who an access rule gives
- * this capability on the WHOLE scope picked (every environment of a project,
- * or the one environment), so the grant answer above it does not under-report.
- * No rule names all projects, so an organisation scope has none.
- */
-function ruleHolders(world: World, capability: string, option: ScopeOption): string[] {
-  const id = permOf(capability);
-  const scope = option.scope;
-  if (id === undefined || (scope.kind !== 'project' && scope.kind !== 'environment')) return [];
-  const envs =
-    scope.kind === 'environment'
-      ? [scope.environment]
-      : (world.projects.find((p) => p.id === scope.project)?.envs.map((e) => e.id) ?? []);
-  const holders = world.rules.filter(
-    (rule) =>
-      rule.source.kind === 'rule' &&
-      envs.length > 0 &&
-      envs.every((env) => {
-        const r = reach(world, rule, id, scope.project, env, undefined);
-        return r.hit && r.ok;
-      }),
-  );
-  return [...new Set(holders.map((rule) => world.people.find((p) => p.id === rule.member)?.name ?? rule.member))];
 }
 
 function compactScopeLabel(option: ScopeOption): string {
@@ -1356,6 +1337,7 @@ export function GrantModal({
   return (
     <Dialog
       title="Add scope-wide access"
+      size="wide"
       lede={
         projectContext && prototypeMode ? (
           <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>

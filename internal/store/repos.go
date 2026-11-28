@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -63,6 +63,7 @@ func (s sqliteReadRepos) Audit() AuditReader              { return s.r.Audit() }
 func (s sqliteReadRepos) Remotes() RemoteReader           { return s.r.Remotes() }
 func (s sqliteReadRepos) Adapters() AdapterReader         { return s.r.Adapters() }
 func (s sqliteReadRepos) Dynamic() DynamicReader          { return s.r.Dynamic() }
+func (s sqliteReadRepos) Rotations() RotationReader       { return s.r.Rotations() }
 func (s sqliteReadRepos) SSH() SSHReader                  { return s.r.SSH() }
 func (s sqliteReadRepos) Definitions() DefinitionsReader  { return s.r.Definitions() }
 
@@ -84,6 +85,7 @@ func (p pgReadRepos) Audit() AuditReader              { return p.r.Audit() }
 func (p pgReadRepos) Remotes() RemoteReader           { return p.r.Remotes() }
 func (p pgReadRepos) Adapters() AdapterReader         { return p.r.Adapters() }
 func (p pgReadRepos) Dynamic() DynamicReader          { return p.r.Dynamic() }
+func (p pgReadRepos) Rotations() RotationReader       { return p.r.Rotations() }
 func (p pgReadRepos) SSH() SSHReader                  { return p.r.SSH() }
 func (p pgReadRepos) Definitions() DefinitionsReader  { return p.r.Definitions() }
 
@@ -111,8 +113,8 @@ func fixedStamp(t time.Time) string { return CanonTime(t).Format(fixedStampLayou
 
 func parseStamp(s string) (time.Time, error) { return time.Parse(timeFormat, s) }
 
-func validMetadata(m json.RawMessage) error {
-	if !json.Valid(m) {
+func validMetadata(m jsontext.Value) error {
+	if !m.IsValid() {
 		return errors.New("store: org metadata is not valid JSON")
 	}
 	return nil
@@ -412,7 +414,7 @@ func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
 	if row.Active != 0 && row.Active != 1 {
 		return Org{}, fmt.Errorf("store: org %s: active = %d, not a boolean", row.ID, row.Active)
 	}
-	metadata := json.RawMessage(row.Metadata)
+	metadata := jsontext.Value(row.Metadata)
 	if err := validMetadata(metadata); err != nil {
 		return Org{}, fmt.Errorf("store: org %s: %w", row.ID, err)
 	}
@@ -890,8 +892,10 @@ func (r sqliteEnvs) Delete(ctx context.Context, p authz.Proof) error {
 	if err != nil {
 		return err
 	}
-	// Shared by direct deletion and definitions apply. Retain every issuance
-	// row; even a revoked certificate may still require CRL publication.
+	// Backstop for any caller that skips purgeEnvironmentLiveRows, which purges
+	// terminal certificate history and names live certificates (#1420). A
+	// remaining row is refused: even a revoked certificate may still require CRL
+	// publication.
 	count, err := r.q.CountEnvironmentPKICertificates(ctx, sqlitegen.CountEnvironmentPKICertificatesParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: string(chain.Env),
 	})
@@ -899,7 +903,7 @@ func (r sqliteEnvs) Delete(ctx context.Context, p authz.Proof) error {
 		return err
 	}
 	if count != 0 {
-		return domain.ErrPKICertificateRetention
+		return ErrPKICertificateAppeared
 	}
 	return affected(r.q.DeleteEnvironment(ctx, sqlitegen.DeleteEnvironmentParams{
 		OrgID:     string(chain.Org),
@@ -1179,7 +1183,7 @@ func orgFromPG(row pggen.GetOrgRow) (Org, error) {
 	if !row.CreatedAt.Valid {
 		return Org{}, fmt.Errorf("store: org %s: null created_at", row.ID)
 	}
-	metadata := json.RawMessage(row.Metadata)
+	metadata := jsontext.Value(row.Metadata)
 	if err := validMetadata(metadata); err != nil {
 		return Org{}, fmt.Errorf("store: org %s: %w", row.ID, err)
 	}
@@ -1645,8 +1649,10 @@ func (r pgEnvs) Delete(ctx context.Context, p authz.Proof) error {
 	if err != nil {
 		return err
 	}
-	// Shared by direct deletion and definitions apply. Retain every issuance
-	// row; even a revoked certificate may still require CRL publication.
+	// Backstop for any caller that skips purgeEnvironmentLiveRows, which purges
+	// terminal certificate history and names live certificates (#1420). A
+	// remaining row is refused: even a revoked certificate may still require CRL
+	// publication.
 	count, err := r.q.CountEnvironmentPKICertificates(ctx, pggen.CountEnvironmentPKICertificatesParams{
 		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: string(chain.Env),
 	})
@@ -1654,7 +1660,7 @@ func (r pgEnvs) Delete(ctx context.Context, p authz.Proof) error {
 		return err
 	}
 	if count != 0 {
-		return domain.ErrPKICertificateRetention
+		return ErrPKICertificateAppeared
 	}
 	return affected(r.q.DeleteEnvironment(ctx, pggen.DeleteEnvironmentParams{
 		ChainOrgID:     string(chain.Org),

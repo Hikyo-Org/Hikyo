@@ -780,6 +780,35 @@ type HaNode struct {
 	HeartbeatAt        pgtype.Timestamptz
 }
 
+type Incident struct {
+	ID         string
+	ScopeKind  string
+	ScopeID    string
+	OrgID      string
+	Status     string
+	OpenedBy   string
+	OpenedAt   pgtype.Timestamptz
+	ClosedBy   pgtype.Text
+	ClosedAt   pgtype.Timestamptz
+	RowVersion int64
+}
+
+type IncidentItem struct {
+	ID            string
+	IncidentID    string
+	OwnerFunction string
+	ObjectKind    string
+	ObjectID      string
+	Scope         string
+	Outcome       string
+	Reason        string
+	AttestedBy    pgtype.Text
+	AttestedAt    pgtype.Timestamptz
+	RowVersion    int64
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type InstanceConnection struct {
 	ID              string
 	PrincipalID     string
@@ -943,21 +972,23 @@ type OfflineRecord struct {
 }
 
 type OidcProvider struct {
-	ID              string
-	Slug            string
-	DisplayName     string
-	Kind            string
-	Issuer          string
-	ClientID        string
-	ClientSecret    []byte
-	Scopes          string
-	RedirectUri     string
-	AssurancePolicy pgtype.Text
-	Enabled         int64
-	DekVersion      int64
-	RowVersion      int64
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID               string
+	Slug             string
+	DisplayName      string
+	Kind             string
+	Issuer           string
+	ClientID         string
+	ClientSecret     []byte
+	Scopes           string
+	RedirectUri      string
+	AssurancePolicy  pgtype.Text
+	Enabled          int64
+	DekVersion       int64
+	RowVersion       int64
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	LifecycleProfile pgtype.Text
+	LifecycleSecret  []byte
 }
 
 type OidcTransaction struct {
@@ -1168,13 +1199,16 @@ type PkiProfileBinding struct {
 }
 
 type Principal struct {
-	ID                string
-	Kind              string
-	CreatedAt         pgtype.Timestamptz
-	SessionGeneration int64
-	Class             pgtype.Text
-	ReconciledEpoch   int64
-	PrivacyState      string
+	ID                  string
+	Kind                string
+	CreatedAt           pgtype.Timestamptz
+	SessionGeneration   int64
+	Class               pgtype.Text
+	ReconciledEpoch     int64
+	PrivacyState        string
+	ContainmentState    string
+	ContainedAt         pgtype.Timestamptz
+	ContainedIncidentID pgtype.Text
 }
 
 type Project struct {
@@ -1366,6 +1400,78 @@ type RevisionPin struct {
 	SchemaOverride       bool
 }
 
+type Rotation struct {
+	ID                     string
+	OrgID                  string
+	ProjectID              string
+	EnvironmentID          string
+	ProviderID             string
+	KeyID                  string
+	UsernameKeyID          string
+	IntervalSeconds        int64
+	RevocationDelaySeconds int64
+	AuthorityPrincipalID   string
+	CreatedBy              string
+	State                  string
+	HaltReason             pgtype.Text
+	NextRunAt              pgtype.Timestamptz
+	Generation             int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	ManualRunID            pgtype.Text
+	ManualSkipOverlap      bool
+	RestoreHold            bool
+	DeferredFrom           pgtype.Timestamptz
+}
+
+type RotationEffect struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	EnvironmentID  string
+	RunID          string
+	Kind           string
+	IntentAuditID  string
+	OutcomeAuditID pgtype.Text
+	Outcome        pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	FinishedAt     pgtype.Timestamptz
+}
+
+type RotationKeyClaim struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	RotationID    string
+}
+
+type RotationRun struct {
+	ID                         string
+	OrgID                      string
+	ProjectID                  string
+	EnvironmentID              string
+	RotationID                 string
+	Generation                 int64
+	RunTrigger                 string
+	Phase                      string
+	CandidateHandle            string
+	SupersededHandle           pgtype.Text
+	CandidateValidUntil        pgtype.Timestamptz
+	PublishedRevision          pgtype.Int8
+	RevocationDelaySeconds     int64
+	StartedAt                  pgtype.Timestamptz
+	PhaseAt                    pgtype.Timestamptz
+	LeaseOwner                 pgtype.Text
+	LeaseExpiresAt             pgtype.Timestamptz
+	LeaseClaimToken            int64
+	AttemptCount               int64
+	NextAttemptAt              pgtype.Timestamptz
+	LastError                  pgtype.Text
+	RevokeNotBeforeAt          pgtype.Timestamptz
+	NotConvergedAdapterTargets pgtype.Int8
+}
+
 type Rule struct {
 	ID          string
 	PrincipalID string
@@ -1375,6 +1481,7 @@ type Rule struct {
 	KeyMode     string
 	CreatedBy   string
 	CreatedAt   pgtype.Timestamptz
+	ProjectMode string
 }
 
 type RuleItem struct {
@@ -1382,7 +1489,7 @@ type RuleItem struct {
 	RuleID     string
 	OrgID      string
 	Axis       string
-	ProjectID  string
+	ProjectID  pgtype.Text
 	EnvID      pgtype.Text
 	KeyID      pgtype.Text
 	FolderPath pgtype.Text

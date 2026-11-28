@@ -2,7 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
@@ -34,7 +35,8 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Now().UTC()
 			zero := 0
-			health := apigen.RetentionHealth{LastPruneSuccess: &now, Backup: healthyBackup(now), Diagnostics: tc.diagnostics, PkiCertificatesUnknown: &zero, PkiIssuersOnHold: &zero}
+			health := apigen.RetentionHealth{LastPruneSuccess: &now, Backup: healthyBackup(now), Diagnostics: tc.diagnostics, PkiCertificatesUnknown: &zero, PkiIssuersOnHold: &zero,
+				RotationHalted: &zero, RotationRestoreHeld: &zero, RotationRunsQuarantined: &zero, RotationRunsRevokeRefused: &zero, RotationRunsUnknownOutcome: &zero, RotationOverdue: &zero, RotationCredentialsExpiring: &zero}
 			requests := 0
 			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
@@ -45,9 +47,9 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 				}
 				switch r.URL.Path {
 				case api.PathPrefix + "/instance/retention-health":
-					_ = json.NewEncoder(w).Encode(health)
+					_ = jsonwire.Encode(w, health)
 				case api.PathPrefix + "/instance/saml-providers":
-					_ = json.NewEncoder(w).Encode(apigen.SamlProviderList{Providers: []apigen.SamlProvider{}})
+					_ = jsonwire.Encode(w, apigen.SamlProviderList{Providers: []apigen.SamlProvider{}})
 				default:
 					t.Errorf("unexpected doctor request %s", r.URL.Path)
 					w.WriteHeader(http.StatusNotFound)
@@ -122,11 +124,11 @@ func TestDoctorPreservesAllOperationalDiagnosticCodes(t *testing.T) {
 		diagnostics = append(diagnostics, apigen.OpsDiagnosticFinding{Code: code, Severity: apigen.OpsDiagnosticFindingSeverityUnknown, Message: "server measurement: " + code})
 	}
 	result, _ := doctorResults(apigen.SamlProviderList{}, apigen.RetentionHealth{Diagnostics: &diagnostics}, time.Now())
-	if len(result.Findings) != 14 || result.Status != "warning" {
+	if len(result.Findings) != 15 || result.Status != "warning" {
 		t.Fatalf("doctor lost existing or new families: %+v", result)
 	}
 	for i, code := range codes {
-		if got := result.Findings[i+7]; got.Code != code || got.Severity != "unknown" || got.Message != diagnostics[i].Message {
+		if got := result.Findings[i+8]; got.Code != code || got.Severity != "unknown" || got.Message != diagnostics[i].Message {
 			t.Fatalf("diagnostic was recalculated or discarded: %+v", got)
 		}
 	}

@@ -10,13 +10,21 @@
 // effects, idempotency, error semantics), and no schema differ can police
 // that. What CI *can* police is that the document and the Go registries agree
 // — see the cross-check tests beside this file.
+//
+// After any openapi.yaml change, regenerate the Go types from the repo root, in
+// this order (omitzero-overlay.yaml makes optional properties `omitzero`, which
+// encoding/json/v2 needs to keep present empty values; see api/omitzero):
+//
+//	go run ./api/omitzero
+//	go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml
 package api
 
 import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -77,7 +85,23 @@ var SpecYAML []byte
 // overlay fields and developer-credential personal consent.
 // Revision 16 adds the email invitation of an existing account: send, list,
 // revoke, preview and accept (#1207).
-const Revision = 16
+// Revision 17 adds scheduled credential rotation configuration (#148): create,
+// list, show, pause, resume and delete. Execution arrives in a later slice.
+// Revision 18 adds run-now and the runs list of a rotation, and the delete's
+// `abandon` flag (#148).
+// Revision 19 adds the scheduled-rotation health counts to the retention health
+// read, the `restore_hold` flag of a rotation, its `release-hold` route and the
+// `credential_valid_until` of a revoke_refused or quarantine run with its
+// `credential_valid_until_lower_bound` flag (#148).
+// Revision 20 adds the OIDC provider's directory lifecycle settings (profile,
+// write-only signing secret, endpoint URL) and the signed lifecycle event route.
+// It also adds, to a scheduled rotation, the fixed-word `halt_reason`, its
+// `last_run` and the `owed_drop_runs` counts (#148).
+// Revision 21 adds the server-side "Who can...?" resolver, rule.resolve (#1474).
+// Revision 21 also adds member access rules over all projects (#1446): the
+// `project_mode` of a rule's `where`. A create with `project_mode` `all` lists
+// exactly the organisation's current projects (owner decision R2).
+const Revision = 21
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.
@@ -142,14 +166,14 @@ func scimJSONDecoder(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ ope
 		return nil, errors.New("api: the SCIM request body exceeds the bound")
 	}
 	var decoded any
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := dec.Decode(&decoded); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, &decoded); err != nil {
 		return nil, err
 	}
-	// A single Decode stops at the end of the first JSON value, so
+	// A single decode stops at the end of the first JSON value, so
 	// `{"a":1}{"b":2}` would validate as `{"a":1}` and the handler would parse
 	// something the contract never saw. Require the reader to be spent.
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("api: trailing content after the SCIM request body")
 	}
 	return decoded, nil

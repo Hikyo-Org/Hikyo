@@ -20,6 +20,7 @@ const request: MintRequest = {
   accountId: 'msa_123e4567-e89b-12d3-a456-426614174020',
   accountName: 'api-gateway',
   rotating: false,
+  lifetimeId: 'default',
   reach: [
     { id: PROD, name: 'production', current: true, historical: false },
     { id: STAGING, name: 'staging', current: true, historical: false },
@@ -64,6 +65,8 @@ export const Reviewing: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('dialog', { name: 'Mint credential · api-gateway' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Use a passkey and mint' })).toBeEnabled();
+    await expect(canvas.getByLabelText('Credential lifetime')).toHaveValue('default');
+    await expect(canvas.getByText(/may shorten it/)).toBeVisible();
     await expect(canvas.getByText(/decrypts production \(current plaintext\), staging \(current plaintext\)/)).toBeVisible();
     const stepUp = canvas.getByText(/Confirm it.s you/).closest('.ceremony__stepup');
     await expect(stepUp?.querySelector('svg')?.getAttribute('data-glyph')).toBe('passkey');

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -247,5 +248,40 @@ func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 	}
 	if live != nextVersion {
 		t.Fatalf("concurrent schema change did not commit: %d", live)
+	}
+}
+
+// A setup failure after BEGIN must return the error (no nil-transaction panic)
+// and roll back, leaving the pooled connection outside any transaction.
+func TestBeginPostgresExportSnapshotRollsBackOnSetupFailure(t *testing.T) {
+	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("CI requires HIKYO_TEST_POSTGRES_DSN")
+		}
+		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	conn, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	setupErr := errors.New("setup failed")
+	tx, err := beginPostgresExportSnapshot(t.Context(), conn, func(pgx.Tx) error { return setupErr })
+	if !errors.Is(err, setupErr) || tx != nil {
+		t.Fatalf("tx=%v err=%v, want the setup error and no transaction", tx, err)
+	}
+	if status := conn.Conn().PgConn().TxStatus(); status != 'I' {
+		t.Fatalf("connection tx status = %q, want idle 'I' (rolled back)", status)
 	}
 }

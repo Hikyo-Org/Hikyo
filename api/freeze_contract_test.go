@@ -1,14 +1,16 @@
 package api_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The document-coordinate layer (#1217). Every refused case below is a change
@@ -94,7 +96,7 @@ func contractTree(t *testing.T, doc string, fn func(root map[string]any)) string
 		t.Fatal(err)
 	}
 	fn(root)
-	out, err := json.Marshal(root)
+	out, err := json.Marshal(root, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +153,17 @@ func contractViolations(t *testing.T, base, revised string) []api.Violation {
 
 func hasContractViolation(vs []api.Violation) bool {
 	return slices.ContainsFunc(vs, func(v api.Violation) bool { return strings.HasPrefix(v.ID, "hikyo-contract-") })
+}
+
+// logContractViolations shows which violation refused a case, so a pass can be
+// checked against the location it was meant to refuse.
+func logContractViolations(t *testing.T, vs []api.Violation) {
+	t.Helper()
+	for _, v := range vs {
+		if strings.HasPrefix(v.ID, "hikyo-contract-") {
+			t.Log(v)
+		}
+	}
 }
 
 func TestFreezeContractRefusesForbiddenChanges(t *testing.T) {
@@ -295,11 +308,7 @@ func TestFreezeContractRefusesForbiddenChanges(t *testing.T) {
 			if !hasContractViolation(violations) {
 				t.Fatalf("the document-coordinate layer did not refuse it:\n%s", render(violations))
 			}
-			for _, v := range violations {
-				if strings.HasPrefix(v.ID, "hikyo-contract-") {
-					t.Log(v)
-				}
-			}
+			logContractViolations(t, violations)
 		})
 	}
 }
@@ -354,6 +363,7 @@ func TestFreezeContractRefusesForbiddenChangesInTheRealSpec(t *testing.T) {
 			if !hasContractViolation(violations) {
 				t.Fatalf("the document-coordinate layer did not refuse it:\n%s", render(violations))
 			}
+			logContractViolations(t, violations)
 		})
 	}
 }
@@ -485,6 +495,35 @@ func TestMLDSA65EnumLocations(t *testing.T) {
 	}
 }
 
+// Failures of the mint (#1516) and access (#1531) reauth amendments in document
+// coordinates.
+func TestReauthEnumLocations(t *testing.T) {
+	for name, tc := range map[string]struct {
+		pair      func(*testing.T) (string, string)
+		locations *map[string]string
+	}{
+		"mint":   {mintReauthPair, &api.MintReauthEnumLocations},
+		"access": {accessReauthPair, &api.AccessReauthEnumLocations},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if n := len(*tc.locations); n != 4 {
+				t.Fatalf("the amendment lists %d document locations, want 4", n)
+			}
+			base, revised := tc.pair(t)
+			all := *tc.locations
+			t.Cleanup(func() { *tc.locations = all })
+			for want := range all {
+				*tc.locations = maps.Clone(all)
+				delete(*tc.locations, want)
+				got := contractViolations(t, base, revised)
+				if len(got) != 1 || got[0].ID != "hikyo-contract-added" || !strings.Contains(got[0].Text, want) {
+					t.Errorf("without %s the guard reported:\n%s", want, render(got))
+				}
+			}
+		})
+	}
+}
+
 // Known and accepted false refusals (#1217 comments). They pin which source
 // still refuses each, so a change in that is noticed rather than silent.
 func TestFreezeKnownFalseRefusals(t *testing.T) {
@@ -562,7 +601,7 @@ func TestFreezeContractRefusesDirectionlessAndMisreadChanges(t *testing.T) {
 			"          headers:\n            X-Mode: {schema: {enum: " + values + "}}\n"
 	}
 	encoded := func(header string) string {
-		return contractThing(`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"},"encoding":{"f":{"headers":{"X-Enc":{"schema":` + header + `}}}}}}}},` + contractOK)
+		return contractThing(`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"},"encoding":{"f":{"headers":{"X-Enc":{"schema":` + header + `}}}}}}},` + contractOK)
 	}
 	component := func(header, schema string) string {
 		return contractDoc(`{"/api/v1/thing":{"post":{"requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/In"}}}},` +

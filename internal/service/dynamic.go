@@ -44,6 +44,10 @@ var (
 	// ErrProviderHasActiveLeases refuses a provider delete that would strand
 	// live leases unless the caller asks to revoke them all.
 	ErrProviderHasActiveLeases = fmt.Errorf("%w: provider still has active leases; pass revoke_all to revoke them", domain.ErrConflict)
+	// ErrProviderHasLiveRotationRuns refuses a provider delete while a rotation
+	// run may still hold a live role or owe the revoke of one: the provider is
+	// the only way to settle it (#148).
+	ErrProviderHasLiveRotationRuns = fmt.Errorf("%w: a credential rotation run on this provider has not settled; let it finish or abandon it first", domain.ErrConflict)
 	// ErrProviderUnreachable reports a provider that could not be reached or
 	// authenticated at configuration time. Fail loud: a provider that cannot
 	// mint is never recorded as usable.
@@ -330,6 +334,11 @@ func (s *Dynamic) RevokeCredential(ctx context.Context, actor Actor, scope domai
 		if err := r.Dynamic().RevokeProviderCredential(ctx, proof, providerID, now); err != nil {
 			return err
 		}
+		// A rotation that mints from this provider can no longer mint: pause it
+		// in the same transaction rather than let it fail every cycle (#148).
+		if err := pauseRotationsForProvider(ctx, r, proof, caller.Principal, providerID, "provider_credential_revoked", now); err != nil {
+			return err
+		}
 		ev, err := domainEvent(ctx, audit.EventDynamicProviderCredentialRevoke, caller.Principal,
 			audit.Object{Type: "dynamic-provider", ID: providerID}, audit.Payload{"credential_present": false})
 		if err != nil {
@@ -359,6 +368,16 @@ func (s *Dynamic) Delete(ctx context.Context, actor Actor, scope domain.Scope, p
 		}
 		if _, err := r.Dynamic().GetProvider(ctx, proof, providerID); err != nil {
 			return err
+		}
+		// A rotation run that may still hold a live role, or any run that owes the
+		// revoke of a role this provider minted, needs this provider to settle it:
+		// the delete waits for the run (#148).
+		live, err := r.Rotations().ProviderLiveRuns(ctx, proof, providerID)
+		if err != nil {
+			return err
+		}
+		if live > 0 {
+			return ErrProviderHasLiveRotationRuns
 		}
 		active, err := r.Dynamic().ActiveLeaseIDsForProvider(ctx, proof, providerID)
 		if err != nil {
@@ -391,6 +410,12 @@ func (s *Dynamic) Delete(ctx context.Context, actor Actor, scope domain.Scope, p
 			}
 		}
 		if err := r.Dynamic().DeleteProvider(ctx, proof, providerID, now); err != nil {
+			return err
+		}
+		// A deleted provider is a soft tombstone, not a foreign-key failure, so a
+		// rotation would stay active against it: pause the dependants with the
+		// delete (#148).
+		if err := pauseRotationsForProvider(ctx, r, proof, caller.Principal, providerID, "provider_deleted", now); err != nil {
 			return err
 		}
 		ev, err := domainEvent(ctx, audit.EventDynamicProviderDeleted, caller.Principal,

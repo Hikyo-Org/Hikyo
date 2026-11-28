@@ -3,7 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -102,7 +103,7 @@ func TestOwnerRuntimeReloadsProjectKeyLimit(t *testing.T) {
 		t.Helper()
 		var buffer bytes.Buffer
 		if body != nil {
-			if err := json.NewEncoder(&buffer).Encode(body); err != nil {
+			if err := json.MarshalWrite(&buffer, body, jsonwire.Stable); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -116,7 +117,7 @@ func TestOwnerRuntimeReloadsProjectKeyLimit(t *testing.T) {
 		}
 		var capacity apigen.ProjectCapacity
 		if want == http.StatusOK {
-			if err := json.NewDecoder(response.Body).Decode(&capacity); err != nil {
+			if err := json.UnmarshalRead(response.Body, &capacity); err != nil {
 				t.Fatal(err)
 			}
 		}

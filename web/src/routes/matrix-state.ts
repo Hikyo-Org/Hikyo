@@ -9,6 +9,8 @@ import { zJSONText } from '../lib/jsonText.ts';
  * test that clicked enough cells to infer this would be slower and less exact.
  */
 
+export type MatrixClassification = 'secret' | 'config';
+
 export type MatrixPresence =
   | { readonly mode: 'all' }
   | { readonly mode: 'none' }
@@ -201,7 +203,7 @@ export function toggleVisibleEnvironment(
 }
 
 export function draftValueForMatrixCell(
-  classification: 'secret' | 'config',
+  classification: MatrixClassification,
   publishedValue: string | undefined,
   pendingOperation: 'set' | 'unset' | undefined,
   pendingPreview: string | undefined,
@@ -404,4 +406,16 @@ export function validateMatrixDeclaration(
     return validation('error', `Enter ${rules.map(describeMatrixRule).join(', or ')}.`);
   }
   return results[0] ?? validation('notice', 'Full declaration validation runs when publishing.');
+}
+
+/**
+ * Whether a value must be treated as a secret: its key is classified secret, or
+ * the cell itself is. Either one wins, so a secret cell under a config key never
+ * shows its text. The matrix and the row editor both decide with this.
+ */
+export function isSecret(
+  cell: { readonly classification: MatrixClassification } | undefined,
+  key: { readonly classification: MatrixClassification },
+): boolean {
+  return key.classification === 'secret' || cell?.classification === 'secret';
 }

@@ -31,10 +31,12 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -45,6 +47,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pathutil"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
@@ -52,6 +55,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"modernc.org/sqlite"
 )
 
@@ -69,7 +73,7 @@ const (
 // Manifest describes an archive: what produced it, and what a restore needs
 // to know before it commits anything.
 type Manifest struct {
-	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitempty"`
+	Upgrade *backupreceipt.Snapshot `json:"upgrade,omitzero"`
 	Format  string                  `json:"format"`
 	Engine  Engine                  `json:"engine"`
 	// SchemaVersion is the highest applied goose migration. Restore refuses
@@ -185,10 +189,24 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 	}
 
 	snapshot := filepath.Join(workDir, "snapshot.db")
-	// VACUUM INTO refuses an existing target, which is the behaviour wanted:
-	// a stale snapshot must never be framed as this one.
+	// Create the target empty and owner-only first: SQLite would otherwise
+	// create it under the process umask, and VACUUM INTO accepts an existing
+	// empty file. The work directory is fresh per export, so a stale snapshot
+	// cannot be framed as this one. SQLite's -journal side files, if a kill
+	// leaves any, are created by SQLite itself and share the file's mode.
+	pre, err := createStaged(snapshot)
+	if err != nil {
+		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
+	}
+	if err := pre.Close(); err != nil {
+		return fmt.Errorf("store: stage sqlite snapshot: %w", err)
+	}
 	if _, err := db.sqWrite.ExecContext(ctx, "VACUUM INTO ?", snapshot); err != nil {
 		return fmt.Errorf("store: sqlite snapshot: %w", err)
+	}
+	// Belt and braces: the copy must be owner-only whatever SQLite did.
+	if err := os.Chmod(snapshot, 0o600); err != nil {
+		return fmt.Errorf("store: restrict sqlite snapshot: %w", err)
 	}
 	// Read the archived database itself. Reading the live version before
 	// VACUUM can attach an older schema version to a newer snapshot.
@@ -216,8 +234,11 @@ func exportSQLite(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, work
 }
 
 // exportPostgres owns admission in the same serializable snapshot as COPY.
-// The shared control lock is acquired before READ ONLY. Serialization failure
-// remains a loud failed export; no DEFERRABLE safe-snapshot claim is made.
+// The shared control lock is acquired before READ ONLY. The snapshot setup
+// (admission guard, schema version, table and sequence listing) writes nothing
+// to the archive, so a serialization failure there is retried on a fresh
+// transaction; once COPY streams into the archive a failure stays loud. No
+// DEFERRABLE safe-snapshot claim is made.
 func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, workDir string, upgrade *UpgradeExportRequest) error {
 	conn, err := db.pool.Acquire(ctx)
 	if err != nil {
@@ -225,47 +246,49 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 	}
 	defer conn.Release()
 
-	tx, err := conn.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.Serializable,
-		AccessMode: pgx.ReadWrite,
+	var tx pgx.Tx
+	var tables []string
+	err = retryPostgresSerialization(ctx, func() error {
+		var err error
+		tx, err = beginPostgresExportSnapshot(ctx, conn, func(tx pgx.Tx) error {
+			var err error
+			if upgrade != nil && upgrade.preparation.Valid() {
+				err = upgrade.preparation.GuardPostgres(ctx, tx)
+			} else {
+				err = db.admission.GuardPostgres(ctx, tx)
+			}
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
+				return err
+			}
+			var version int64
+			scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
+			m.SchemaVersion, err = schemaVersionResult(version, scanErr)
+			if err != nil {
+				return err
+			}
+			tables, err = pgTableOrder(ctx, tx)
+			if err != nil {
+				return err
+			}
+			sequences, err := pgSequencePositions(ctx, tx)
+			if err != nil {
+				return err
+			}
+			m.Tables, m.Sequences = tables, sequences
+			if upgrade != nil {
+				return upgrade.bindPostgres(ctx, tx, m)
+			}
+			return nil
+		})
+		return err
 	})
 	if err != nil {
-		return fmt.Errorf("store: begin export snapshot: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	if upgrade != nil && upgrade.preparation.Valid() {
-		err = upgrade.preparation.GuardPostgres(ctx, tx)
-	} else {
-		err = db.admission.GuardPostgres(ctx, tx)
-	}
-	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "SET TRANSACTION READ ONLY"); err != nil {
-		return err
-	}
-
-	var version int64
-	scanErr := tx.QueryRow(ctx, schemaVersionQuery).Scan(&version)
-	m.SchemaVersion, err = schemaVersionResult(version, scanErr)
-	if err != nil {
-		return err
-	}
-
-	tables, err := pgTableOrder(ctx, tx)
-	if err != nil {
-		return err
-	}
-	sequences, err := pgSequencePositions(ctx, tx)
-	if err != nil {
-		return err
-	}
-	m.Tables, m.Sequences = tables, sequences
-	if upgrade != nil {
-		if err := upgrade.bindPostgres(ctx, tx, m); err != nil {
-			return err
-		}
-	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	if err := writeManifest(tw, *m); err != nil {
 		return err
 	}
@@ -276,7 +299,7 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		if !pathutil.Within(baseClean, targetClean) {
 			return fmt.Errorf("invalid file path")
 		}
-		f, err := os.Create(targetClean)
+		f, err := createStaged(targetClean)
 		if err != nil {
 			return fmt.Errorf("store: stage copy stream for %s: %w", table, err)
 		}
@@ -293,6 +316,56 @@ func exportPostgres(ctx context.Context, db *DB, tw *tar.Writer, m *Manifest, wo
 		}
 	}
 	return nil
+}
+
+// beginPostgresExportSnapshot opens the export transaction and runs setup in
+// it. The statements stay in exportPostgres, the reviewed engine protocol. On
+// error the transaction is already rolled back and none is returned.
+func beginPostgresExportSnapshot(ctx context.Context, conn *pgxpool.Conn, setup func(pgx.Tx) error) (pgx.Tx, error) {
+	opened, err := conn.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store: begin export snapshot: %w", err)
+	}
+	if err := setup(opened); err != nil {
+		// opened is a local, so the rollback target survives the error returns.
+		_ = opened.Rollback(ctx)
+		return nil, err
+	}
+	return opened, nil
+}
+
+// IsPostgresSerializationFailure reports SQLSTATE 40001 (serialization_failure)
+// or 40P01 (deadlock_detected): transient conflicts that succeed on a new transaction.
+func IsPostgresSerializationFailure(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (pgErr.Code == "40001" || pgErr.Code == "40P01")
+}
+
+// postgresRetryBackoff is one jittered delay per retry: an initial try plus 3 retries.
+var postgresRetryBackoff = [...]time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 250 * time.Millisecond}
+
+// retryPostgresSerialization runs attempt, retrying only transient Postgres
+// serialization failures a bounded number of times with jittered backoff.
+// attempt must leave no side effects when it fails.
+func retryPostgresSerialization(ctx context.Context, attempt func() error) error {
+	var err error
+	for i := 0; i <= len(postgresRetryBackoff); i++ {
+		if i > 0 {
+			d := postgresRetryBackoff[i-1]
+			select {
+			case <-time.After(d/2 + rand.N(d/2)):
+			case <-ctx.Done():
+				return errors.Join(ctx.Err(), err)
+			}
+		}
+		if err = attempt(); err == nil || !IsPostgresSerializationFailure(err) {
+			return err
+		}
+	}
+	return fmt.Errorf("store: postgres serialization retries exhausted after %d attempts: %w", len(postgresRetryBackoff)+1, err)
 }
 
 // pgTableOrder returns every table in the current schema, parents before
@@ -458,7 +531,7 @@ func pgSequenceBounds(ctx context.Context, tx pgx.Tx) (map[string]pgSequenceBoun
 }
 
 func writeManifest(tw *tar.Writer, m Manifest) error {
-	body, err := json.MarshalIndent(m, "", "  ")
+	body, err := json.Marshal(m, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return fmt.Errorf("store: encode manifest: %w", err)
 	}
@@ -472,7 +545,27 @@ func writeManifest(tw *tar.Writer, m Manifest) error {
 	return nil
 }
 
+// createStaged creates a plaintext staging file owner-only, refusing an
+// existing one.
+func createStaged(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+}
+
+// writeFileMember archives one staged plaintext file and removes it as soon as
+// it is archived, so a killed export has less plaintext on disk. Nothing reads
+// a staged file again after this call, and every export stages into a fresh
+// directory, so no retry depends on the file surviving.
 func writeFileMember(tw *tar.Writer, name, path string) error {
+	if err := copyFileMember(tw, name, path); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("store: remove staged archive member %s: %w", name, err)
+	}
+	return nil
+}
+
+func copyFileMember(tw *tar.Writer, name, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("store: read archive member %s: %w", name, err)

@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +36,7 @@ func TestRequestRefusalSupportedInstanceConsumers(t *testing.T) {
 		browser := refusalSession(t, db, crypto.ArtifactBrowserSession, "live")
 		revoked := refusalSession(t, db, crypto.ArtifactCLISession, "revoked")
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		srv := httptest.NewTLSServer(server.New(&server.API{Auth: auth, Audits: &service.Audits{DB: db}, Refusals: signals}, nil))
 		t.Cleanup(srv.Close)
 		resp := confirmedRefusal(t, signals, func() *http.Response {
@@ -118,6 +119,7 @@ func TestRequestRefusalCanonicalAdmissionSignal(t *testing.T) {
 		}
 		auth := authService(t, db)
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		h := server.New(&server.API{Auth: auth, Settings: &service.ProjectSettings{DB: db, Auth: auth}, Admission: limiter, Refusals: signals}, nil)
 		token, _, err := crypto.NewArtifact(crypto.ArtifactDeveloper)
 		if err != nil {
@@ -156,6 +158,7 @@ func TestRequestRefusalSessionBudgetSignal(t *testing.T) {
 		}
 		budget := service.NewBudgetWithClock(func() time.Time { return time.Date(2026, 10, 28, 12, 0, 30, 0, time.UTC) })
 		signals := service.NewRefusalSignals(db)
+		signals.Deadline = 10 * time.Second // these count every sample exactly; see RefusalSignals.Deadline
 		h := server.New(&server.API{Auth: authService(t, db), Admission: limiter, RequestBudget: budget, Refusals: signals}, nil)
 		const kind = crypto.ArtifactCLISession
 		token := preauthSession(t, db, kind, "signal")

@@ -10,7 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +27,7 @@ import (
 	"github.com/aws/smithy-go"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
 )
 
@@ -279,7 +280,7 @@ func (c *Client) do(ctx context.Context, operation string, in, out any) error {
 	if c.credentials == nil {
 		return errors.New("aws-secrets-manager: client was released")
 	}
-	body, err := json.Marshal(in)
+	body, err := json.Marshal(in, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -424,7 +425,7 @@ func (c *Client) DescribeSecret(ctx context.Context, name string) (SecretMetadat
 		ARN                string              `json:"ARN"`
 		Name               string              `json:"Name"`
 		KmsKeyID           string              `json:"KmsKeyId"`
-		DeletedDate        *json.Number        `json:"DeletedDate"`
+		DeletedDate        *float64            `json:"DeletedDate"`
 		Tags               []tag               `json:"Tags"`
 		VersionIdsToStages map[string][]string `json:"VersionIdsToStages"`
 	}

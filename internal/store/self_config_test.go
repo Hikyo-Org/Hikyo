@@ -292,7 +292,7 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			if _, err := r.SelfConfig().BeginJob(ctx, p, want); !errors.Is(err, domain.ErrConflict) {
 				return fmt.Errorf("parallel apply = %v", err)
 			}
-			if _, err := r.SelfConfig().CommitJob(ctx, p, job.ID, now.Add(2*time.Second)); !errors.Is(err, domain.ErrConflict) {
+			if _, err := r.SelfConfig().CommitJob(ctx, p, job.ID); !errors.Is(err, domain.ErrConflict) {
 				return fmt.Errorf("unprepared commit = %v", err)
 			}
 			return nil
@@ -310,8 +310,8 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 				if err != nil {
 					return err
 				}
-				// Caller-supplied timestamps cannot make a stale or future worker fresh.
-				if _, err := r.SelfConfig().CommitJob(ctx, p, job.ID, heartbeat); !errors.Is(err, domain.ErrConflict) {
+				// A stale or future node heartbeat cannot be committed.
+				if _, err := r.SelfConfig().CommitJob(ctx, p, job.ID); !errors.Is(err, domain.ErrConflict) {
 					return fmt.Errorf("invalid heartbeat committed: %v", err)
 				}
 				return nil
@@ -332,7 +332,7 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			if err != nil {
 				return err
 			}
-			b, err := r.SelfConfig().CommitJob(ctx, p, job.ID, now.Add(3*time.Second))
+			b, err := r.SelfConfig().CommitJob(ctx, p, job.ID)
 			if err != nil {
 				return err
 			}

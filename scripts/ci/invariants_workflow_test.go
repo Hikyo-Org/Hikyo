@@ -2,7 +2,7 @@ package ci_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,7 +118,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		fail("pull_request types %v: base edits must not start head-only tests", trigger.Types)
 	}
 	wantPaths := []string{
-		"**.go", "go.mod", "go.sum", ".golangci.yml", ".github/**", ".githooks/**", "scripts/**", "release/**",
+		"**.go", "go.mod", "go.sum", ".golangci.yml", ".golangci-strict.yml", ".github/**", ".githooks/**", "scripts/**", "release/**",
 		"internal/store/**", "internal/lint/testdata/**", ".goreleaser.yaml", "web/e2e/**", "web/playwright.config.ts",
 	}
 	if !reflect.DeepEqual(trigger.Paths, wantPaths) {
@@ -139,8 +139,8 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 	if job.Name != invariantsJobName || strings.Contains(job.Name, "${{") {
 		fail("job name %q must be the static %q", job.Name, invariantsJobName)
 	}
-	if job.Runner != "ubuntu-latest" || job.Timeout != 20 {
-		fail("job must run on ubuntu-latest with a 20 minute budget, got %q and %d", job.Runner, job.Timeout)
+	if job.Runner != "ubuntu-latest" || job.Timeout != 40 {
+		fail("job must run on ubuntu-latest with a 40 minute budget, got %q and %d", job.Runner, job.Timeout)
 	}
 	if !reflect.DeepEqual(job.Env, map[string]string{"EXPECTED_HEAD": invariantsHeadRef}) {
 		fail("job env %v, want only EXPECTED_HEAD", job.Env)
@@ -184,7 +184,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		},
 		{
 			Name: "Lint driver tests",
-			Run:  "go test -count=1 " + invariantsLintPackage,
+			Run:  "go test -count=1 -timeout=20m " + invariantsLintPackage,
 		},
 	}
 	if len(job.Steps) != len(want) {
@@ -286,7 +286,7 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"extra path":               replace("      - 'release/**'\n", "      - 'release/**'\n      - 'docs/**'\n"),
 		"write permission":         replace("  contents: read\n", "  contents: write\n"),
 		"extra permission":         replace("  contents: read\n", "  contents: read\n  pull-requests: write\n"),
-		"job permission override":  replace("    timeout-minutes: 20\n", "    timeout-minutes: 20\n    permissions:\n      contents: write\n"),
+		"job permission override":  replace("    timeout-minutes: 40\n", "    timeout-minutes: 40\n    permissions:\n      contents: write\n"),
 		"secret in environment":    replace("    env:\n", "    env:\n      TOKEN: ${{ secrets.CI_TOKEN }}\n"),
 		"token in environment":     replace("    env:\n", "    env:\n      GH_TOKEN: ${{ github.token }}\n"),
 		"other runner":             replace("runs-on: ubuntu-latest", "runs-on: ubuntu-24.04"),
@@ -294,8 +294,8 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"dynamic job name":         replace("name: "+invariantsJobName, "name: "+invariantsJobName+" ${{ github.event.action }}"),
 		"renamed job":              replace("name: "+invariantsJobName, "name: invariants"),
 		"conditional job":          replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    if: github.event.action != 'edited'\n"),
-		"continue on error":        replace("    timeout-minutes: 20\n", "    timeout-minutes: 20\n    continue-on-error: true\n"),
-		"longer budget":            replace("timeout-minutes: 20", "timeout-minutes: 60"),
+		"continue on error":        replace("    timeout-minutes: 40\n", "    timeout-minutes: 40\n    continue-on-error: true\n"),
+		"longer budget":            replace("timeout-minutes: 40", "timeout-minutes: 60"),
 		"no cancellation":          replace("cancel-in-progress: true", "cancel-in-progress: false"),
 		"shared concurrency group": replace("repository-invariants-${{ github.event.pull_request.number }}", "ci-advisory-invariants"),
 		"extra job":                appendStep("  other:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"),

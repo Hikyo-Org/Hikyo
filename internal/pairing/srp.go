@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 
 	srp "github.com/ProtonMail/go-srp"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 const (
@@ -93,7 +95,7 @@ func ContextSalt(context Context) ([]byte, error) {
 		Domain  string  `json:"domain"`
 		Context Context `json:"context"`
 	}{Domain: "hikyo-instance-pairing-srp-v1", Context: context}
-	encoded, err := json.Marshal(profile)
+	encoded, err := json.Marshal(profile, jsonwire.Stable)
 	if err != nil {
 		return nil, ErrInvalidExchange
 	}

@@ -2,7 +2,7 @@ package schema
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The value-validation engine. One declaration, one string, one verdict.
@@ -62,13 +64,16 @@ type Verdict struct {
 	Errors []Failure `json:"errors,omitempty"`
 }
 
-// Normalize is the write-time trim, and the only place it lives: leading and
-// trailing whitespace is removed on every write path, for every type, using
-// Unicode whitespace semantics. It runs BEFORE validation, so a whitespace-only
-// value becomes empty and is then refused by `allow_empty` rather than stored.
+// Normalize is the write-time trim: leading and trailing whitespace is removed
+// on every write path, for every type, using Unicode whitespace semantics.
+// It runs BEFORE validation, so a whitespace-only value becomes empty and is
+// then refused by `allow_empty` rather than stored.
 //
 // It is separate from Validate because its RESULT is plaintext: the write path
 // needs the normalized bytes, and nothing else does.
+//
+// internal/config is a leaf package, so its bootstrap seed inlines the same
+// strings.TrimSpace; TestManagedSeedTrimMatchesSchemaNormalize pins the two.
 func Normalize(value string) string { return strings.TrimSpace(value) }
 
 // integerRe is the ADR's integer grammar: no leading `+`, no underscores, no
@@ -233,7 +238,7 @@ func capFailures(in []Failure) []Failure {
 // structs) costs nothing worth optimising, and it is the only measurement that
 // cannot drift from the encoder.
 func encodedSize(failures []Failure) int {
-	encoded, err := json.Marshal(Verdict{Errors: failures})
+	encoded, err := json.Marshal(Verdict{Errors: failures}, jsonwire.Stable)
 	if err != nil {
 		// Unreachable: every field is a string or an int. Reported as
 		// over-budget so the caps fail CLOSED rather than open.

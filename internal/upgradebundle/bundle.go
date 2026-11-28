@@ -5,7 +5,7 @@ package upgradebundle
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +14,7 @@ import (
 	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
@@ -195,7 +196,7 @@ func Load(ctx context.Context, directory string, pinned releasetrust.PinnedTrust
 		}
 		bundle.bridges = append(bundle.bridges, bridge)
 	}
-	encodedMaterial, err := json.Marshal(reader.documents)
+	encodedMaterial, err := json.Marshal(reader.documents, jsonwire.Stable)
 	if err != nil {
 		return Bundle{}, err
 	}

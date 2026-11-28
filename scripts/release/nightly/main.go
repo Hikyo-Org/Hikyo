@@ -3,7 +3,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -62,7 +64,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(output).Encode(release.Identity())
+		return jsonwire.Encode(output, release.Identity())
 	case "legacy-bridges":
 		release, err := upgradebundle.VerifyNightlyDirectory(ctx, directory, snapshot)
 		if err != nil {
@@ -94,7 +96,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 					return err
 				}
 				statement := releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: release.PolicyDigest(), SourceMigrations: source.Migrations, TargetMigrations: manifest, SourceSchemaSHA256: source.SchemaSHA256, TargetSchemaSHA256: schema, Mode: "maintenance"}
-				statementRaw, err := json.MarshalIndent(statement, "", "  ")
+				statementRaw, err := json.Marshal(statement, jsonwire.Stable, jsontext.WithIndent("  "))
 				if err != nil {
 					return err
 				}
@@ -124,6 +126,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if document.Schema != "hikyo.dev/upgrade-sources/v1" || len(document.Engines) != 2 {
 			return errors.New("invalid reviewed source inventory")
 		}
+		dropStableReleaseEdges(document.Engines)
 		// Every verified predecessor becomes an exact-schema source edge, so a
 		// route can skip a revoked or missing nightly as long as an older
 		// declared predecessor still exists (#700). Identities must be distinct
@@ -165,7 +168,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return errors.Join(json.NewEncoder(file).Encode(document), file.Close())
+		return errors.Join(jsonwire.Encode(file, document), file.Close())
 	default:
 		return errors.New("unknown nightly operation")
 	}
@@ -279,6 +282,17 @@ func loadTrust(directory string) (releasetrust.Snapshot, []byte, error) {
 // MaxPredecessors bounds how many signed predecessors one nightly declares as
 // direct upgrade sources. Each costs a full verified release download in CI.
 const MaxPredecessors = 8
+
+// dropStableReleaseEdges removes the reviewed stable release-source edges: a
+// nightly declaration cannot name a stable source (profile transitions need a
+// recovery bridge), and sources.json carries them for stable releases only.
+func dropStableReleaseEdges(engines map[releaseidentity.Engine][]upgradecompat.SourceEdge) {
+	for engine, edges := range engines {
+		engines[engine] = slices.DeleteFunc(edges, func(edge upgradecompat.SourceEdge) bool {
+			return edge.Source.IsRelease() && edge.Source.Release.Profile != releaseidentity.NightlyV1
+		})
+	}
+}
 
 type multiFlag []string
 

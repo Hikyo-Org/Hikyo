@@ -316,7 +316,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 87, while the
+// The runtime-created fixture includes migrations 45 through 87 (88 on PostgreSQL), then 89 through 99, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -336,10 +336,24 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+43 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 only")
+	// 00088 (audit commit-order lookup) is PostgreSQL-only.
+	versions := []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87}
+	if engine == releaseidentity.Postgres {
+		versions = append(versions, 88)
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87} {
+	// 00089 (principal containment), 00090 (incident ledger), 00091 (credential
+	// rotation), 00092 (rotation revoke deadline), 00093 (rotation manual run),
+	// 00094 (rotation restore hold), 00095 (OIDC lifecycle), 00096 (owed-run index
+	// on rotation_runs, which goes with that table), 00097 (mint reauth handoff
+	// checks on the empty cli_reauth_handoffs), 00098 (access reauth handoff
+	// checks on the same table) and 00099 (the all-projects rule mode, on the
+	// rules and rule_items tables the 00070 reversal drops whole) are on both
+	// engines.
+	versions = append(versions, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99)
+	if len(current.Entries) != len(legacy.Entries)+len(versions) || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 87 (88 on PostgreSQL), then 89 through 99 only")
+	}
+	for i, version := range versions {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -397,6 +411,16 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// 00085: a customised hue, mark or uploaded image is operator evidence.
 		"SELECT COUNT(*) FROM orgs WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
 		"SELECT COUNT(*) FROM projects WHERE identity_hue <> 195 OR identity_mark IS NOT NULL OR identity_image IS NOT NULL OR identity_image_type IS NOT NULL OR identity_image_version IS NOT NULL",
+		// 00091 (credential rotation): a configured rotation or recorded run is
+		// operator evidence.
+		"SELECT COUNT(*) FROM rotations",
+		"SELECT COUNT(*) FROM rotation_runs",
+		"SELECT COUNT(*) FROM rotation_effects",
+		// 00090 (incident ledger): a recorded incident is incident evidence.
+		"SELECT COUNT(*) FROM incidents",
+		"SELECT COUNT(*) FROM incident_items",
+		// 00089 (principal containment): a held principal is incident evidence.
+		"SELECT COUNT(*) FROM principals WHERE containment_state <> 'none' OR contained_at IS NOT NULL OR contained_incident_id IS NOT NULL",
 		// 00087 (email invitations): a pending invitation is operator evidence.
 		"SELECT COUNT(*) FROM org_email_invitations",
 		// 00057 (social sign-in): nothing registration-shaped may be discarded,
@@ -443,6 +467,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM pki_profiles",
 		"SELECT COUNT(*) FROM pki_profile_bindings",
 		"SELECT COUNT(*) FROM pki_certificates",
+		// 00095 (OIDC lifecycle): no profile or sealed signing secret may be
+		// discarded by the reversal below.
+		"SELECT COUNT(*) FROM oidc_providers WHERE lifecycle_profile IS NOT NULL OR lifecycle_secret IS NOT NULL",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -453,6 +480,24 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		if err != nil || evidence != 0 {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
+	}
+	// Reverse 00095 only after proving no lifecycle profile is configured. The
+	// secret's CHECK names the profile column, so it goes first.
+	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_secret")
+	drillExec(t, db, "ALTER TABLE oidc_providers DROP COLUMN lifecycle_profile")
+	// Reverse 00091 (and with it 00092 to 00094 and 00096, whose columns live on these tables) only
+	// after proving no rotation is configured. Effects, runs and key claims
+	// reference rotations, so they go first.
+	drillExec(t, db, "DROP TABLE rotation_key_claims")
+	drillExec(t, db, "DROP TABLE rotation_effects")
+	drillExec(t, db, "DROP TABLE rotation_runs")
+	drillExec(t, db, "DROP TABLE rotations")
+	// Reverse 00090 only after proving no incident is recorded.
+	drillExec(t, db, "DROP TABLE incident_items")
+	drillExec(t, db, "DROP TABLE incidents")
+	// Reverse 00089 only after proving no principal is contained.
+	for _, column := range []string{"contained_incident_id", "contained_at", "containment_state"} {
+		drillExec(t, db, "ALTER TABLE principals DROP COLUMN "+column)
 	}
 	// Reverse 00087 only after proving no pending email invitation is discarded.
 	drillExec(t, db, "DROP TABLE org_email_invitations")
@@ -643,6 +688,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_operation_check CHECK (operation IN ('adapter.configure','adapter.credential-set','adapter.adopt','adapter.sync','value.reveal','value.copy-source'))")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_purpose_check")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_purpose_check CHECK (purpose IN ('adapter','reveal','copy'))")
+		// Reverse 00097's and 00098's key_set widening to the legacy 00032 declaration.
+		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_key_set_check")
+		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_key_set_check CHECK ((purpose = 'adapter' AND key_set = '') OR (purpose <> 'adapter' AND key_set <> ''))")
 		// Reverse 00054: drop the partial index and restore the unconditional
 		// UNIQUE constraint under its original name so the backing index matches
 		// the legacy genesis declaration.
@@ -684,10 +732,30 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87)",
 	} {
 		drillExec(t, db, query)
 	}
+	if engine == releaseidentity.Postgres {
+		// Reverse 00088: restore the two commit-order functions exactly as 00011
+		// defines them, read from the embedded migration, never retyped.
+		raw, err := store.MigrationsFS.ReadFile("migrations/postgres/00011_audit_export_order.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"assign_audit_tenant_commit_seq", "assign_audit_instance_commit_seq"} {
+			_, rest, ok := strings.Cut(string(raw), "CREATE OR REPLACE FUNCTION "+name+"()")
+			if !ok {
+				t.Fatalf("missing legacy %s declaration", name)
+			}
+			body, _, ok := strings.Cut(rest, "$$;")
+			if !ok {
+				t.Fatalf("unterminated legacy %s declaration", name)
+			}
+			drillExec(t, db, "CREATE OR REPLACE FUNCTION "+name+"()"+body+"$$;")
+		}
+		drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id = 88")
+	}
+	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,89,90,91,92,93,94,95,96,97,98,99)")
 }
 
 // reverseAWSAdapter undoes 00067 on a pristine fixture. On PostgreSQL only

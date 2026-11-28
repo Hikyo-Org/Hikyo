@@ -16,7 +16,7 @@ import (
 
 // verificationState is the historical on-disk encoding, retained as a migration fixture.
 type verificationState struct {
-	CatalogSequence        int64   `json:"catalog_sequence,omitempty"`
+	CatalogSequence        int64   `json:"catalog_sequence,omitzero"`
 	CatalogSHA256          string  `json:"catalog_sha256,omitempty"`
 	TrustSequence          int64   `json:"trust_sequence"`
 	HighestReleaseSequence *int64  `json:"highest_release_sequence"`

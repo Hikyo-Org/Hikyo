@@ -14,6 +14,7 @@ import type { z } from 'zod';
 
 import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { isAppMode, noteSignedOut } from '../app/shell.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 import { rememberOIDCReturn } from './oidcChannel.ts';
 import { useSensitiveMutation } from './sensitiveMutation.ts';
@@ -146,7 +147,10 @@ export function useLogout() {
   return useMutation({
     onMutate: auth.captureTransition,
     mutationFn: () => ok(logoutOp, {}),
-    onSuccess: (_result, _input, guard) => auth.endSession(guard),
+    onSuccess: (_result, _input, guard) => {
+      if (isAppMode()) noteSignedOut();
+      auth.endSession(guard);
+    },
   });
 }
 

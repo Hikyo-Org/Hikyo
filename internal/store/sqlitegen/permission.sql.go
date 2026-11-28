@@ -509,7 +509,7 @@ func (q *Queries) ListLiveAccessGrantsForPrincipal(ctx context.Context, arg List
 const listManageMembersHoldersAtInstance = `-- name: ListManageMembersHoldersAtInstance :many
 SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members' AND org_id IS NULL
-AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 ORDER BY principal_id
 `
 
@@ -542,7 +542,7 @@ SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members'
   AND project_id IS NULL
   AND (org_id = ? OR org_id IS NULL)
-AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 ORDER BY principal_id
 `
 
@@ -569,6 +569,68 @@ func (q *Queries) ListManageMembersHoldersForOrg(ctx context.Context, orgID sql.
 			return nil, err
 		}
 		items = append(items, principal_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrgLevelGrantsWithOriginsForCapability = `-- name: ListOrgLevelGrantsWithOriginsForCapability :many
+SELECT g.id, g.principal_id, g.capability, g.org_id, g.project_id, g.env_id,
+       g.created_at, o.kind, o.subject
+FROM grants AS g
+INNER JOIN grant_origins AS o ON o.grant_id = g.id
+WHERE g.org_id = ? AND g.project_id IS NULL
+  AND g.capability = ?
+ORDER BY g.principal_id, g.capability, g.id, o.kind, o.subject
+`
+
+type ListOrgLevelGrantsWithOriginsForCapabilityParams struct {
+	OrgID      sql.NullString
+	Capability string
+}
+
+type ListOrgLevelGrantsWithOriginsForCapabilityRow struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       sql.NullString
+	ProjectID   sql.NullString
+	EnvID       sql.NullString
+	CreatedAt   string
+	Kind        string
+	Subject     string
+}
+
+// hikyo:reason rule.resolve reads only the grant lines scoped AT one org (project_id IS NULL), filtered to the asked capability (the only line that can decide a principal's answer; See is read from the principal's own grants), so org-level holders reach the "Who can...?" population without reading sibling-project membership; instance grants and every project or env row stay out.
+// hikyo:authn-resolution
+func (q *Queries) ListOrgLevelGrantsWithOriginsForCapability(ctx context.Context, arg ListOrgLevelGrantsWithOriginsForCapabilityParams) ([]ListOrgLevelGrantsWithOriginsForCapabilityRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOrgLevelGrantsWithOriginsForCapability, arg.OrgID, arg.Capability)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrgLevelGrantsWithOriginsForCapabilityRow
+	for rows.Next() {
+		var i ListOrgLevelGrantsWithOriginsForCapabilityRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.CreatedAt,
+			&i.Kind,
+			&i.Subject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

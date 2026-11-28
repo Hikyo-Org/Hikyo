@@ -2,7 +2,7 @@ package cli_test
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"os"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The inline TOTP disclosure ceremony (reveal_window.go): a dead window with
@@ -30,13 +31,13 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			window.Live = live
-			_ = json.NewEncoder(w).Encode(window)
+			_ = jsonwire.Encode(w, window)
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
 			// The inline path dispatches on enrolment: an authenticator stands.
-			_ = json.NewEncoder(w).Encode(apigen.TotpStatus{Confirmed: true})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
 		case strings.HasSuffix(r.URL.Path, "/auth/reauth/totp"):
 			var body apigen.TotpReauthRequest
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			_ = json.UnmarshalRead(r.Body, &body)
 			environment, err := body.AsTotpEnvironmentReauthRequest()
 			if err != nil || environment.Code != "123456" || string(environment.EnvironmentId) != "env_70" {
 				w.WriteHeader(http.StatusUnauthorized)
@@ -44,7 +45,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			live = true
-			_ = json.NewEncoder(w).Encode(apigen.ReauthResult{
+			_ = jsonwire.Encode(w, apigen.ReauthResult{
 				EnvironmentId: "env_70", SessionId: "ses_rotated", SessionToken: &rotated,
 				WindowExpires: apigen.Timestamp(time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)),
 			})
@@ -55,7 +56,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			v := "s3cret"
-			_ = json.NewEncoder(w).Encode(apigen.ExportedValues{Items: []apigen.ExportedValue{{Name: "DATABASE_PASSWORD", Classification: apigen.KeyClassificationSecret, Value: &v}}})
+			_ = jsonwire.Encode(w, apigen.ExportedValues{Items: []apigen.ExportedValue{{Name: "DATABASE_PASSWORD", Classification: apigen.KeyClassificationSecret, Value: &v}}})
 		case strings.HasSuffix(r.URL.Path, "/values/DATABASE_PASSWORD/reveal"):
 			if !live || !strings.Contains(r.Header.Get("Authorization"), rotated) {
 				w.WriteHeader(http.StatusForbidden)
@@ -63,7 +64,7 @@ func ceremonyServer(t *testing.T, window apigen.RevealWindow) (http.Handler, *[]
 				return
 			}
 			v := "s3cret"
-			_ = json.NewEncoder(w).Encode(apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_1", Set: true, Revealed: true, Value: &v})
+			_ = jsonwire.Encode(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_1", Set: true, Revealed: true, Value: &v})
 		default:
 			http.NotFound(w, r)
 		}
@@ -129,19 +130,52 @@ func TestRevealCeremonyOpensWindowByTOTPAndPersistsRotatedToken(t *testing.T) {
 }
 
 func TestRevealCeremonyRefusesZeroWindowNamingTheBrowserPath(t *testing.T) {
-	handler, _ := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 0, Protected: true})
-	ios, _, stderr := definitionsTestIO(t, handler)
-	ios.ReadPassword = func(string) (string, error) {
-		t.Fatal("a 0-window environment must not prompt for a code")
-		return "", nil
-	}
-	if code := cli.Run(t.Context(), ios, revealArgs()); code != cli.ExitAuth {
-		t.Fatalf("exit %d, want ExitAuth; stderr=%s", code, stderr.String())
-	}
-	for _, want := range []string{"protected environment", "ceremony is the browser's", "project-settings set --env env_70 --reauth-window-seconds"} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Errorf("refusal lacks %q: %s", want, stderr.String())
-		}
+	// Raising the window is offered only where it can help: the server caps a
+	// protected environment's window at 0 (ErrProtectedWindowCap).
+	for _, tc := range []struct {
+		name   string
+		window apigen.RevealWindow
+		want   []string
+		lacks  []string
+	}{
+		{"protected", apigen.RevealWindow{CanReveal: true, Protected: true},
+			[]string{"protected environment", "ceremony is the browser's"}, []string{"reauth-window-seconds", "enrol"}},
+		{"zero_window", apigen.RevealWindow{CanReveal: true},
+			[]string{"reveal window is 0", "ceremony is the browser's", "project-settings set --env env_70 --reauth-window-seconds"}, []string{"enrol"}},
+		// A window above 0 is offered with TOTP; with no confirmed authenticator
+		// the remedy is enrolling one, never raising a window that is already open.
+		{"no_authenticator", apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true},
+			[]string{"no authenticator is enrolled", "hikyo account factor enrol-totp", "/settings?tab=factors"}, []string{"reauth-window-seconds"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ceremony, _ := ceremonyServer(t, tc.window)
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/auth/totp") {
+					w.Header().Set("Content-Type", "application/json")
+					_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
+					return
+				}
+				ceremony.ServeHTTP(w, r)
+			})
+			ios, _, stderr := definitionsTestIO(t, handler)
+			ios.ReadPassword = func(string) (string, error) {
+				t.Fatal("an environment without a usable window must not prompt for a code")
+				return "", nil
+			}
+			if code := cli.Run(t.Context(), ios, revealArgs()); code != cli.ExitAuth {
+				t.Fatalf("exit %d, want ExitAuth; stderr=%s", code, stderr.String())
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("refusal lacks %q: %s", want, stderr.String())
+				}
+			}
+			for _, lack := range tc.lacks {
+				if strings.Contains(stderr.String(), lack) {
+					t.Errorf("refusal offers %q, which cannot help here: %s", lack, stderr.String())
+				}
+			}
+		})
 	}
 }
 
@@ -188,14 +222,14 @@ func TestRevealCeremonyHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0, Live: live})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, Protected: true, EffectiveWindowSeconds: 0, Live: live})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = json.NewEncoder(w).Encode(apigen.ValueList{Items: []apigen.ValueCell{
+			_ = jsonwire.Encode(w, apigen.ValueList{Items: []apigen.ValueCell{
 				{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true},
 				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
 			}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
-			_ = json.NewDecoder(r.Body).Decode(&startBody)
+			_ = json.UnmarshalRead(r.Body, &startBody)
 			callbackURI, _ = startBody["redirect_uri"].(string)
 			_, _ = w.Write([]byte(`{"state":"hik_1_hs_reveal","expires_at":"2030-01-01T00:00:00Z"}`))
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/redeem"):
@@ -208,7 +242,7 @@ func TestRevealCeremonyHandsOffToTheBrowserAtZeroWindow(t *testing.T) {
 				return
 			}
 			v := "s3cret"
-			_ = json.NewEncoder(w).Encode(apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true, Revealed: true, Value: &v})
+			_ = jsonwire.Encode(w, apigen.ValueCell{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true, Revealed: true, Value: &v})
 		default:
 			http.NotFound(w, r)
 		}
@@ -254,11 +288,11 @@ func TestRevealCeremonyHandsOffWhenNoAuthenticatorIsEnrolled(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
-			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, Live: started})
+			_ = jsonwire.Encode(w, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, Live: started})
 		case strings.HasSuffix(r.URL.Path, "/auth/totp"):
-			_ = json.NewEncoder(w).Encode(apigen.TotpStatus{Confirmed: false})
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: false})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/environments/env_70/values"):
-			_ = json.NewEncoder(w).Encode(apigen.ValueList{Items: []apigen.ValueCell{{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true}}})
+			_ = jsonwire.Encode(w, apigen.ValueList{Items: []apigen.ValueCell{{Name: "DATABASE_PASSWORD", Classification: "secret", KeyId: "key_pw", Set: true}}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
 			started = true
 			// The handoff began; the test needs no browser round trip to prove
@@ -441,7 +475,7 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 				{Name: "LOG_LEVEL", Classification: "config", KeyId: "key_ll", Set: true},
 			}})
 		case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):
-			if err := json.NewDecoder(r.Body).Decode(&startBody); err != nil {
+			if err := json.UnmarshalRead(r.Body, &startBody); err != nil {
 				t.Errorf("decode handoff start: %v", err)
 			}
 			callbackURI, _ = startBody["redirect_uri"].(string)
@@ -492,7 +526,7 @@ func TestDeclareHandsOffBoundToTheDeclaredKeyID(t *testing.T) {
 // cannot be encoded.
 func encodeOrFail(t *testing.T, w http.ResponseWriter, v any) {
 	t.Helper()
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	if err := jsonwire.Encode(w, v); err != nil {
 		t.Errorf("encode stub reply: %v", err)
 	}
 }

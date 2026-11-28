@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 )
 
 // Interleave keys and reverse environment order so equivalence also checks
@@ -50,7 +50,7 @@ func TestPresenceIndexEquivalence(t *testing.T) {
 					t.Fatal(err)
 				}
 				got, err := keyOf(key, index[key.ID])
-				if err != nil || !reflect.DeepEqual(got, want) {
+				if err != nil || !reflectx.Equal(got, want) {
 					t.Fatalf("key %s: indexed = %+v, %v; scan = %+v", key.ID, got, err, want)
 				}
 			}
@@ -77,7 +77,7 @@ func TestPresenceIndexModesAndSnapshotLifetime(t *testing.T) {
 			if forbidden == schema.PresenceExplicit {
 				want.Forbidden.Environments = []string{"env_c"}
 			}
-			if !reflect.DeepEqual(got, want) {
+			if !reflectx.Equal(got, want) {
 				t.Fatalf("modes %s/%s: got %+v, want %+v", required, forbidden, got, want)
 			}
 		}
@@ -140,25 +140,25 @@ func TestBuildCurrentStatePresenceEquivalence(t *testing.T) {
 			// A non-name order proves construction follows catalogue order.
 			keys[0], keys[99] = keys[99], keys[0]
 			cat := &presenceCatalogueReader{keys: keys, rows: rows}
-			cur, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, nil)
+			cur, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, realProof(t))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if cur.SchemaRevision != 73 || len(cur.Keys) != len(keys) || cur.KeyGroups[0].ID != "group" || cur.Environments[0].ID != "env_b" {
 				t.Fatalf("snapshot metadata/order changed: %+v", cur)
 			}
-			if want := []string{"keys", "presence", "personal", "groups", "revision"}; !reflect.DeepEqual(cat.calls, want) {
+			if want := []string{"keys", "presence", "personal", "groups", "revision"}; !reflectx.Equal(cat.calls, want) {
 				t.Fatalf("catalogue reads = %v, want %v", cat.calls, want)
 			}
 			for i, key := range keys {
 				want := presenceOf(key.ID, key.RequiredMode, key.ForbiddenMode, rows)
 				got := schema.PresenceRules{Required: cur.Keys[i].Required, Forbidden: cur.Keys[i].Forbidden}
-				if cur.Keys[i].ID != key.ID || !reflect.DeepEqual(got, want) {
+				if cur.Keys[i].ID != key.ID || !reflectx.Equal(got, want) {
 					t.Fatalf("key %d: got %+v, want %s %+v", i, cur.Keys[i], key.ID, want)
 				}
 			}
 			keys[0].Declaration = "invalid"
-			if _, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, nil); err == nil {
+			if _, err := buildCurrentState(t.Context(), cat, presenceEnvironmentReader{}, realProof(t)); err == nil {
 				t.Fatal("unreadable declaration was silently accepted")
 			}
 		})

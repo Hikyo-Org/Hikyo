@@ -6,7 +6,8 @@ import (
 	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -84,7 +85,7 @@ type passkey struct {
 }
 
 func (f *fixture) assert(t *target, path string, body any, out any) error {
-	var options json.RawMessage
+	var options jsontext.Value
 	if err := t.expect("POST", path+"/start", f.admin, body, 200, &options); err != nil {
 		return err
 	}
@@ -92,10 +93,10 @@ func (f *fixture) assert(t *target, path string, body any, out any) error {
 	if err != nil {
 		return err
 	}
-	return t.expect("POST", path+"/finish", f.admin, json.RawMessage(assertion), 200, out)
+	return t.expect("POST", path+"/finish", f.admin, jsontext.Value(assertion), 200, out)
 }
 
-func (f *fixture) signedAssertion(options json.RawMessage) (string, error) {
+func (f *fixture) signedAssertion(options jsontext.Value) (string, error) {
 	parsed, err := vw.ParseAssertionOptions(string(options))
 	if err != nil {
 		return "", errors.New("native assertion options invalid")
@@ -125,7 +126,7 @@ func (f *fixture) browserLogin(t *target) (err error) {
 		return errors.New("native login omitted enrolled WebAuthn challenge")
 	}
 	path := "/api/v1/auth/login/challenge/" + challenge.ID + "/webauthn"
-	var options json.RawMessage
+	var options jsontext.Value
 	if err = t.expect("POST", path+"/start", "", map[string]any{}, 200, &options); err != nil {
 		return err
 	}
@@ -133,7 +134,7 @@ func (f *fixture) browserLogin(t *target) (err error) {
 	if err != nil {
 		return err
 	}
-	completed, err := t.request("POST", path+"/finish", "", json.RawMessage(assertion))
+	completed, err := t.request("POST", path+"/finish", "", jsontext.Value(assertion))
 	if err != nil {
 		return err
 	}
@@ -224,7 +225,7 @@ func (f *fixture) stepUp(t *target) error {
 	return nil
 }
 func (f *fixture) enrolFactor(t *target) error {
-	var options json.RawMessage
+	var options jsontext.Value
 	if err := t.expect("POST", "/api/v1/auth/webauthn/enrol/start", f.admin, map[string]string{"password": f.password}, 200, &options); err != nil {
 		return err
 	}
@@ -242,7 +243,7 @@ func (f *fixture) enrolFactor(t *target) error {
 	authenticator.AddCredential(f.device.credential)
 	attestation := vw.CreateAttestationResponse(f.device.rp, authenticator, f.device.credential, *parsed)
 	var confirmed login
-	if err = t.expect("POST", "/api/v1/auth/webauthn/enrol/finish", f.admin, json.RawMessage(attestation), 200, &confirmed); err != nil {
+	if err = t.expect("POST", "/api/v1/auth/webauthn/enrol/finish", f.admin, jsontext.Value(attestation), 200, &confirmed); err != nil {
 		return err
 	}
 	f.admin = confirmed.Token

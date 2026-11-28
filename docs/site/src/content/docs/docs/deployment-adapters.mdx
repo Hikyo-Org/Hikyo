@@ -1,6 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo, GitHub Actions, GitLab, Cloudflare, AWS Secrets Manager, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, GitLab, Cloudflare, AWS Secrets Manager, Vault/OpenBao KV v2, or an encrypted webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -32,7 +32,7 @@ reads settings but decodes only names and types, discarding plaintext fields.
 AWS and Vault read metadata only; their provider sections explain how metadata
 detects external changes. CI adapters cannot detect provider-side value drift;
 run a converge to restore published Hikyo values. The
-[sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
+[encrypted webhook](#encrypted-webhook-receivers) adapter pushes to a generic HTTPS receiver
 an instance administrator has pinned; it has no read path at all.
 
 ## Requirements
@@ -71,6 +71,17 @@ and `selected`, or adding selected ids is a widening ceremony; `all` to
 is a storage-level property, not an override guarantee: a repository-
 level secret or variable with the same name shadows the organization-level
 value for workflows in that repository.
+
+Warning for GitHub: values written to a repository or organization target are
+readable by any workflow run that can reference secrets, from any branch, for
+example through `toJSON(secrets)`. Keep production secrets out of CI. Prefer
+environment targets protected by deployment-branch rules and, where your plan
+offers them, required reviewers, and let production workloads fetch at runtime.
+GitHub Free, Pro and Team offer required reviewers only on public repositories;
+deployment-branch rules also work on private repositories with Pro or Team.
+Where neither is available, keep the value out of GitHub and let the workload
+fetch it at runtime. See
+[Keep production secrets out of CI](/docs/machine-identities/#keep-production-secrets-out-of-ci).
 
 For GitHub, a repository environment is the recommended multi-environment
 shape: map dev, stage, and production to separate GitHub environments with no
@@ -132,6 +143,13 @@ silently: adoption requires an exact conflict artifact, generation,
 destination, and `(surface, name)` pairs. If multiple exact-match artifacts are
 eligible, pass `--artifact` explicitly.
 
+A retried converge raises each conflict once, per target, generation, surface
+and name, instead of minting a new artifact per attempt, and `adapter show` lists
+only conflicts for the target's current generation; older ones stay in the audit
+history but can no longer be adopted. Adoption retries a transient provider lease; genuine
+contention on a ledger name or provider lease is a conflict (HTTP `409`), not a
+server error.
+
 `hikyo adapter show` includes every target's sync status, converged revision,
 failed names, and pending conflict artifacts. Its table view prints the pending
 `surface:name` pairs; JSON retains the full artifact id, generation,
@@ -177,6 +195,14 @@ sentinels last. `--keep-remote` releases custody instead and loudly lists the
 orphaned names. Remove targets while the PAT still authenticates. If a dead or
 revoked credential prevents scrub, Hikyo completes local teardown but reports
 the remote names as orphaned.
+
+Removed targets are tombstoned, not deleted, and their delivery records are
+retained. Deleting an environment that has any adapter target, live or
+tombstoned, or a configure record left by a failed environment setup, is
+refused with a conflict that says the environment "still has adapter targets
+(live or tombstoned) or configure fences, whose delivery records are retained"
+and lists up to ten ids. Whether and how adapter history becomes deletable is
+tracked in [#1525](https://github.com/Hikyo-Org/Hikyo/issues/1525).
 
 ## GitLab CI/CD variables
 
@@ -308,7 +334,10 @@ catch-up converge, and prints the published revision it reaches.
 newest wins, a second request supersedes the first, and neither bypasses
 adoption nor prunes beyond the ledger.
 
-**Removal** keeps the explicit retain-or-prune decision described above. The
+**Removal** keeps the explicit retain-or-prune decision described above. A
+deleted adapter releases its origin: you can create a new adapter at the same
+origin in the same project at once, while an active or moving adapter still
+reserves it. The
 browser offers the same choice in a dialog with neither option preselected, for
 one target (*Remove*) and for the whole adapter (*Delete adapter*).
 
@@ -623,14 +652,16 @@ hikyo adapter create --provider vault-kv \
 For a private Vault address, add an egress exception keyed by
 `https://HOST:PORT` (without the namespace).
 
-## Sealed webhook receivers
+## Encrypted webhook receivers
 
-The `sealed-webhook` adapter pushes values to your own HTTPS service. Each
+The encrypted webhook adapter pushes values to your own HTTPS service. Its
+provider type is `sealed-webhook`, the name that the CLI, the API and the
+stored adapter keep. Each
 value is encrypted to the receiver's pinned age key and each request is
 signed by the Hikyo instance, so the values never appear in a URL, header,
 log, audit payload, or response. The receiver answers with a signed
 acknowledgement bound to the exact request. The wire contract is
-[the sealed webhook protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/sealed-webhook.md),
+[the receiver protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/sealed-webhook.md),
 and `cmd/hikyo-receiver-example` is a reference receiver.
 
 **Endpoints are instance configuration.** A project cannot point Hikyo at an
@@ -680,7 +711,7 @@ acknowledgement (wrong key, bad signature, wrong request binding) fails the
 job and marks the target as needing attention. A receiver refuses to
 overwrite a name it did not receive from this target and answers `conflict`.
 Resolve it by releasing the name on the receiver or renaming with a prefix;
-`hikyo adapter adopt` is refused for sealed-webhook targets because the
+`hikyo adapter adopt` is refused for encrypted webhook targets because the
 protocol has no adopt intent.
 
 **Rotation.** To rotate the Hikyo signing key, pin the new public key on the

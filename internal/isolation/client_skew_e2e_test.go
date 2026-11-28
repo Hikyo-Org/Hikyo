@@ -2,7 +2,8 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -45,7 +47,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		// satisfy the Id grammar the frozen Zod schemas enforce.
 		operator := service.LocalPrincipal(root)
 		keyring := probeKeyring(t, db)
-		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "skew-transit-org", true, json.RawMessage(`{}`))
+		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "skew-transit-org", true, jsontext.Value(`{}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,6 +122,26 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		// Two unspent steps fit the production skew allowance at this fixed
 		// clock. HTTP workers never mutate the clock or the factor ledger.
 		clk = clk.Add(30 * time.Second)
+		// A real mint handoff (#1516) for the frozen consumer to read: its closed
+		// v1.0.0 purpose enum cannot name `mint`.
+		mintIntent, err := service.NewDisclosureReauthIntent(service.PurposeMint, []string{env.ID}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mintHandoff, err := admin.auth.StartCLIReauth(t.Context(), elevated.SessionToken, mintIntent, "lwOlGvjIUXONXxTB9fvvb0y4G0QnHYJeRXZmmN6Hbkg", "http://127.0.0.1:41235/callback")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The same for an emergency access handoff (#1531): `access` and
+		// `access.bypass` are the other two members the v1.0.0 enums lack.
+		accessIntent, err := service.NewDisclosureReauthIntent(service.PurposeAccess, []string{env.ID}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		accessHandoff, err := admin.auth.StartCLIReauth(t.Context(), elevated.SessionToken, accessIntent, "lwOlGvjIUXONXxTB9fvvb0y4G0QnHYJeRXZmmN6Hbkg", "http://127.0.0.1:41236/callback")
+		if err != nil {
+			t.Fatal(err)
+		}
 		// The clock stops changing before HTTP workers start.
 		httpServer := httptest.NewServer(server.New(&server.API{
 			Auth: admin.auth, Orgs: &service.Orgs{DB: db}, Version: "current-server-skew-fixture",
@@ -139,7 +161,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		var goList apigen.TransitKeyList
-		decodeErr := json.NewDecoder(listRes.Body).Decode(&goList)
+		decodeErr := json.UnmarshalRead(listRes.Body, &goList)
 		_ = listRes.Body.Close()
 		if listRes.StatusCode != http.StatusOK || decodeErr != nil || len(goList.Items) != 3 {
 			t.Fatalf("go decode of the transit list: status %d, %d items, err %v", listRes.StatusCode, len(goList.Items), decodeErr)
@@ -151,9 +173,9 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			"origin": httpServer.URL, "username": "factor-admin", "password": admin.password,
 			"elevated": elevated.SessionToken, "principal": string(admin.boot.PrincipalID),
 			"codes":         []string{totpCode(t, uri, clk), totpCode(t, uri, clk.Add(30*time.Second))},
-			"weak_username": "skew-unenrolled",
-			"scope":         map[string]string{"org": org.ID, "project": project.ID, "environment": env.ID},
-		})
+			"weak_username": "skew-unenrolled", "mint_state": mintHandoff.State, "access_state": accessHandoff.State,
+			"scope": map[string]string{"org": org.ID, "project": project.ID, "environment": env.ID},
+		}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

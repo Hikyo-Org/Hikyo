@@ -9,7 +9,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -61,9 +63,9 @@ type smokeEvidence struct {
 }
 
 type rpcResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  json.RawMessage `json:"result"`
+	JSONRPC string         `json:"jsonrpc"`
+	ID      jsontext.Value `json:"id"`
+	Result  jsontext.Value `json:"result"`
 	Error   *struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -229,7 +231,7 @@ func run(opts options, client *http.Client) error {
 			evidence.ReplacementVerifiedAt = time.Now().UTC()
 			evidence.Passed = true
 			if opts.evidence != nil {
-				if err := json.NewEncoder(opts.evidence).Encode(evidence); err != nil {
+				if err := jsonwire.Encode(opts.evidence, evidence); err != nil {
 					return errors.New("could not write redacted smoke receipt")
 				}
 			}
@@ -259,15 +261,15 @@ func requireStateless(operation, sessionID string) error {
 	return nil
 }
 
-func validateDiscovery(result json.RawMessage) error {
+func validateDiscovery(result jsontext.Value) error {
 	fields, err := profileResultFields(result, true)
 	if err != nil || len(fields) != 2 ||
 		fields["supportedVersions"] == nil || fields["capabilities"] == nil {
 		return errors.New("result did not match the exact discovery profile")
 	}
 	var discovery struct {
-		SupportedVersions []string                   `json:"supportedVersions"`
-		Capabilities      map[string]json.RawMessage `json:"capabilities"`
+		SupportedVersions []string                  `json:"supportedVersions"`
+		Capabilities      map[string]jsontext.Value `json:"capabilities"`
 	}
 	if json.Unmarshal(result, &discovery) != nil {
 		return errors.New("result did not match the discovery profile")
@@ -279,7 +281,7 @@ func validateDiscovery(result json.RawMessage) error {
 	if !ok || len(discovery.Capabilities) != 1 {
 		return errors.New("server capabilities were not the exact tools-only profile")
 	}
-	var toolCapabilities map[string]json.RawMessage
+	var toolCapabilities map[string]jsontext.Value
 	if json.Unmarshal(tools, &toolCapabilities) != nil || len(toolCapabilities) != 0 {
 		return errors.New("server advertised unapproved tool capabilities")
 	}
@@ -294,7 +296,7 @@ var serverDescriptions = map[string]bool{
 	"Hikyo configuration tools.":           true,
 }
 
-func validateCatalog(result json.RawMessage) error {
+func validateCatalog(result jsontext.Value) error {
 	fields, err := profileResultFields(result, true)
 	if err != nil || len(fields) != 1 || fields["tools"] == nil {
 		return errors.New("result did not match the exact tool catalog profile")
@@ -413,7 +415,7 @@ func invokeRaw(client *http.Client, endpoint, method, tool string, arguments map
 	}
 	body, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": method, "params": params,
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		return rawResponse{}, err
 	}
@@ -453,7 +455,7 @@ func decodeRPCResponse(encoded []byte) (rpcResponse, error) {
 	if definitions.RejectDuplicateMembers(encoded) != nil {
 		return rpcResponse{}, errors.New("response contained ambiguous JSON members")
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		return rpcResponse{}, errors.New("response was not JSON-RPC")
 	}
@@ -466,7 +468,7 @@ func decodeRPCResponse(encoded []byte) (rpcResponse, error) {
 		return rpcResponse{}, errors.New("response JSON-RPC version or request id did not match")
 	}
 	if decoded.Error != nil {
-		var errorFields map[string]json.RawMessage
+		var errorFields map[string]jsontext.Value
 		if json.Unmarshal(fields["error"], &errorFields) != nil || len(errorFields) != 2 ||
 			errorFields["code"] == nil || errorFields["message"] == nil {
 			return rpcResponse{}, errors.New("response carried a non-canonical JSON-RPC error")
@@ -475,7 +477,7 @@ func decodeRPCResponse(encoded []byte) (rpcResponse, error) {
 	return decoded, nil
 }
 
-func successfulToolResult(result json.RawMessage, orgID, projectID string) bool {
+func successfulToolResult(result jsontext.Value, orgID, projectID string) bool {
 	fields, err := profileResultFields(result, false)
 	if err != nil || len(fields) != 2 || fields["content"] == nil || fields["structuredContent"] == nil {
 		return false
@@ -488,14 +490,14 @@ func successfulToolResult(result json.RawMessage, orgID, projectID string) bool 
 		content[0].Type != "text" || content[0].Text != "Hikyo returned structured data." {
 		return false
 	}
-	var contentItems []json.RawMessage
-	var contentFields map[string]json.RawMessage
+	var contentItems []jsontext.Value
+	var contentFields map[string]jsontext.Value
 	if json.Unmarshal(fields["content"], &contentItems) != nil || len(contentItems) != 1 ||
 		json.Unmarshal(contentItems[0], &contentFields) != nil || len(contentFields) != 2 ||
 		contentFields["type"] == nil || contentFields["text"] == nil {
 		return false
 	}
-	var structuredFields map[string]json.RawMessage
+	var structuredFields map[string]jsontext.Value
 	if json.Unmarshal(fields["structuredContent"], &structuredFields) != nil ||
 		(len(structuredFields) != 4 && len(structuredFields) != 5) ||
 		structuredFields["org_id"] == nil || structuredFields["project_id"] == nil ||
@@ -541,16 +543,16 @@ func successfulToolResult(result json.RawMessage, orgID, projectID string) bool 
 // profileResultFields validates the modern SDK's public transport envelope
 // before the operation-specific checker examines its closed payload. Dropping
 // arbitrary _meta fields would hide a tenant disclosure in discovery/errors.
-func profileResultFields(result json.RawMessage, cacheable bool) (map[string]json.RawMessage, error) {
+func profileResultFields(result jsontext.Value, cacheable bool) (map[string]jsontext.Value, error) {
 	invalid := errors.New("result did not match the modern public transport profile")
 	if definitions.RejectDuplicateMembers(result) != nil {
 		return nil, invalid
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if json.Unmarshal(result, &fields) != nil || string(fields["resultType"]) != `"complete"` {
 		return nil, invalid
 	}
-	var metadata map[string]json.RawMessage
+	var metadata map[string]jsontext.Value
 	if json.Unmarshal(fields["_meta"], &metadata) != nil || len(metadata) != 1 {
 		return nil, invalid
 	}
@@ -578,12 +580,11 @@ func profileResultFields(result json.RawMessage, cacheable bool) (map[string]jso
 }
 
 func strictJSON(raw []byte, into any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(into); err != nil {
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(decoder, into, json.RejectUnknownMembers(true)); err != nil {
 		return err
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadValue(); !errors.Is(err, io.EOF) {
 		return errors.New("trailing JSON content")
 	}
 	return nil

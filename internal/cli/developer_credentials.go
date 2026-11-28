@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func runDeveloper(ctx context.Context, ios IO, args []string) error {
@@ -205,7 +205,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 
 func printDeveloperCredentials(ios IO, items []apigen.DeveloperCredential, output string, environmentLabel func(string) string) error {
 	if output == "json" {
-		return json.NewEncoder(ios.Stdout).Encode(items)
+		return jsonwire.Encode(ios.Stdout, items)
 	}
 	for _, c := range items {
 		fmt.Fprintf(ios.Stdout, "%s\t%s\t%s\t%s\n", c.Id, environmentLabel(string(c.EnvironmentId)), c.ExpiresAt.Format(time.RFC3339), idWithName(string(c.AuthorityPrincipalId), c.AuthorityPrincipalName))
@@ -221,7 +221,15 @@ func freshDeveloperReauth(ctx context.Context, client *Client, st *State, ios IO
 	if window.Protected || !window.CanReveal {
 		return failf(ExitRefused, "developer credentials require an unprotected environment with current read and reveal authority")
 	}
-	inline := window.EffectiveWindowSeconds > 0 && window.TotpOffered
+	browser, err := st.approveInBrowser(client.Entry.Name)
+	if err != nil {
+		return err
+	}
+	possible := window.EffectiveWindowSeconds > 0 && window.TotpOffered
+	// Blame the choice only when a code was offered without it; offered is not
+	// the same as enrolled, and the enrollment GET is skipped in browser mode.
+	chosen := browser && possible
+	inline := possible && !browser
 	if inline {
 		var status apigen.TotpStatus
 		if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/auth/totp", nil, &status); err != nil {
@@ -230,11 +238,18 @@ func freshDeveloperReauth(ctx context.Context, client *Client, st *State, ios IO
 		inline = status.Confirmed
 	}
 	if !inline {
+		open := ios.OpenURL
+		if chosen {
+			var err error
+			if open, err = chosenBrowserOpener(ios, st, client.Entry.Name); err != nil {
+				return err
+			}
+		}
 		ids := make([]string, len(keys))
 		for i, id := range keys {
 			ids[i] = string(id)
 		}
-		err := runCLIReauthHandoffIntents(ctx, client, st, *session, "developer-credential", "developer-credential.mint", []string{env}, ids, nil, &intent, ios.OpenURL)
+		err := runCLIReauthHandoffIntents(ctx, client, st, *session, "developer-credential", "developer-credential.mint", []string{env}, ids, nil, &intent, open)
 		// The server refuses a sign-in that cannot mint, such as an identity
 		// provider alone (O9), and names Settings > Security; give its address.
 		var failure *Error
@@ -311,7 +326,7 @@ func runDeveloperCredentialPolicy(ctx context.Context, ios IO, args []string) er
 		return err
 	}
 	if format == "json" {
-		return json.NewEncoder(ios.Stdout).Encode(policy)
+		return jsonwire.Encode(ios.Stdout, policy)
 	}
 	_, err = fmt.Fprintf(ios.Stdout, "max lifetime: %s\n", time.Duration(policy.MaxLifetimeSeconds)*time.Second)
 	return err

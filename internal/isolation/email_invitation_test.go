@@ -2,7 +2,8 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -179,7 +180,7 @@ func (r *emailInvitationRig) state(p domain.PrincipalID) targetState {
 
 func jsonKeys(t *testing.T, raw string) []string {
 	t.Helper()
-	var m map[string]json.RawMessage
+	var m map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(raw), &m); err != nil {
 		t.Fatal(err)
 	}
@@ -730,7 +731,7 @@ func runEmailInvitations(t *testing.T, db *store.DB) {
 	})
 
 	t.Run("deleting_the_org_removes_its_pending_rows", func(t *testing.T) {
-		org, err := (&service.Orgs{DB: db}).Create(ctx, service.LocalPrincipal(root), "ei-doomed", true, json.RawMessage(`{}`))
+		org, err := (&service.Orgs{DB: db}).Create(ctx, service.LocalPrincipal(root), "ei-doomed", true, jsontext.Value(`{}`))
 		if err != nil {
 			t.Fatal(err)
 		}

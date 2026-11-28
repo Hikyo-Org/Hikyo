@@ -1,9 +1,12 @@
 package oidctest
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
+	"strconv"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // The three issuer SHAPES federation must be exercised against (#62,
@@ -132,18 +135,21 @@ func ForgejoShape(instance, repository, ref, event string) Shape {
 
 // GitHubActionsShape is a GitHub Actions token.
 //
-// It is the one platform that exposes IMMUTABLE NUMERIC identifiers for the
+// It is the one platform that exposes IMMUTABLE numeric identifiers for the
 // repository and its owner, so the binding pins `repository_id` and
 // `repository_owner_id` rather than the names: a rename or transfer would
 // otherwise silently re-point a production binding at whatever now occupies the
-// old path. Both are pinned as JSON NUMBERS, and the validator never folds a
-// number to a string — `123` and `"123"` are different claim values.
+// old path. GitHub emits both, like `ref_protected` and `run_id`, as JSON
+// STRINGS ("74"), so the token carries and the binding pins strings; the
+// validator never folds kinds, so a numeric pin would never match.
 //
 // GitHub requires an explicit audience per request, so there is no shared
 // default in the Forgejo sense; the refused audience here is the repository
 // owner's URL, which older tooling used as a de-facto default.
 func GitHubActionsShape(repository string, repositoryID, ownerID int64, ref, event string) Shape {
 	owner, _ := splitRepo(repository)
+	repoIDClaim := strconv.FormatInt(repositoryID, 10)
+	ownerIDClaim := strconv.FormatInt(ownerID, 10)
 	subject := fmt.Sprintf("repo:%s:ref:%s", repository, ref)
 	if event == "pull_request" {
 		subject = fmt.Sprintf("repo:%s:pull_request", repository)
@@ -154,18 +160,23 @@ func GitHubActionsShape(repository string, repositoryID, ownerID int64, ref, eve
 		Claims: map[string]any{
 			"sub":                 subject,
 			"repository":          repository,
-			"repository_id":       repositoryID,
+			"repository_id":       repoIDClaim,
 			"repository_owner":    owner,
-			"repository_owner_id": ownerID,
+			"repository_owner_id": ownerIDClaim,
 			"ref":                 ref,
+			"ref_protected":       "true",
 			"event_name":          event,
 			"workflow_ref":        workflowRef,
+			"job_workflow_ref":    workflowRef,
 			"runner_environment":  "github-hosted",
 		},
 		Pinned: map[string]any{
-			"repository_id":       repositoryID,
-			"repository_owner_id": ownerID,
+			"repository_id":       repoIDClaim,
+			"repository_owner_id": ownerIDClaim,
 			"event_name":          event,
+			"ref_protected":       "true",
+			"runner_environment":  "github-hosted",
+			"job_workflow_ref":    workflowRef,
 			"workflow_ref":        workflowRef,
 		},
 		DefaultAudience: fmt.Sprintf("https://github.com/%s", owner),
@@ -216,7 +227,7 @@ func (p *IdP) JWKSDocument() (string, error) {
 		}
 	}
 	p.mu.Unlock()
-	raw, err := json.Marshal(map[string]any{"keys": keys})
+	raw, err := json.Marshal(map[string]any{"keys": keys}, jsonwire.Stable)
 	if err != nil {
 		return "", fmt.Errorf("oidctest: encode jwks: %w", err)
 	}

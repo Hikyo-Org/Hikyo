@@ -1,42 +1,54 @@
 package lint
 
 import (
-	"fmt"
 	"go/ast"
 	"go/types"
 	"strings"
 
-	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/analysis"
 )
 
-// CheckServiceSeams confines global reauthentication duration and schema-revision
-// advancement to their policy helpers. Type identity catches renamed receivers
-// and method values while allowing unrelated fields and methods with those names.
-// This checks the access boundary, not policy correctness inside the helpers.
-func CheckServiceSeams(pkgs []*packages.Package, servicePath, storePath string) []string {
-	var svc, store *packages.Package
-	for _, p := range flatten(pkgs) {
-		if p.PkgPath == servicePath {
-			svc = p
-		}
-		if p.PkgPath == storePath {
-			store = p
-		}
+// ServiceSeams is the serviceseams analyzer over the service package.
+var ServiceSeams = newServiceSeams(Module+"/internal/service", Module+"/internal/store")
+
+func newServiceSeams(service, store string) *analysis.Analyzer {
+	a := &analysis.Analyzer{
+		Name: "serviceseams",
+		Doc:  "reauth-window and schema-revision access stays inside its policy helpers",
 	}
-	if svc == nil || store == nil || svc.TypesInfo == nil || store.Types == nil {
-		return []string{"service seams: service/store type information not loaded"}
+	a.Flags.StringVar(&service, "service", service, "import path of the service package")
+	a.Flags.StringVar(&store, "store", store, "import path of the package declaring CatalogueRepo")
+	a.Run = func(pass *analysis.Pass) (any, error) {
+		runServiceSeams(pass, service, store)
+		return nil, nil
 	}
-	auth := svc.Types.Scope().Lookup("Auth")
-	catalogue := store.Types.Scope().Lookup("CatalogueRepo")
+	return a
+}
+
+func runServiceSeams(pass *analysis.Pass, servicePath, storePath string) {
+	if pass.Pkg.Path() != servicePath {
+		return
+	}
+	reportTarget(pass)
+	svc := pass.Pkg
+	store := findPackage(pass.Pkg, storePath)
+	if store == nil {
+		pass.Reportf(packagePos(pass), "store type information not loaded")
+		return
+	}
+	auth := svc.Scope().Lookup("Auth")
+	catalogue := store.Scope().Lookup("CatalogueRepo")
 	if auth == nil || catalogue == nil {
-		return []string{"service seams: Auth/CatalogueRepo types not found"}
+		pass.Reportf(packagePos(pass), "Auth/CatalogueRepo types not found")
+		return
 	}
-	window, _, _ := types.LookupFieldOrMethod(auth.Type(), true, svc.Types, "ReauthWindow")
-	opener, _, _ := types.LookupFieldOrMethod(auth.Type(), true, svc.Types, "effectiveReauthWindow")
-	bump, _, _ := types.LookupFieldOrMethod(catalogue.Type(), true, store.Types, "BumpSchemaRevision")
-	budget := svc.Types.Scope().Lookup("bumpSchemaRevision")
+	window, _, _ := types.LookupFieldOrMethod(auth.Type(), true, svc, "ReauthWindow")
+	opener, _, _ := types.LookupFieldOrMethod(auth.Type(), true, svc, "effectiveReauthWindow")
+	bump, _, _ := types.LookupFieldOrMethod(catalogue.Type(), true, store, "BumpSchemaRevision")
+	budget := svc.Scope().Lookup("bumpSchemaRevision")
 	if window == nil || opener == nil || bump == nil || budget == nil {
-		return []string{"service seams: protected members or policy helpers not found"}
+		pass.Reportf(packagePos(pass), "protected members or policy helpers not found")
+		return
 	}
 	rules := []struct {
 		member, owner types.Object
@@ -49,25 +61,24 @@ func CheckServiceSeams(pkgs []*packages.Package, servicePath, storePath string) 
 	// Settings updates compare the old/new duration to revoke live windows
 	// after a shrink. This exact method may inspect the global default, but
 	// window openers and disclosure slides must use effectiveReauthWindow.
-	if settings := svc.Types.Scope().Lookup("ProjectSettings"); settings != nil {
-		rules[0].otherOwner, _, _ = types.LookupFieldOrMethod(settings.Type(), true, svc.Types, "SetEnvironment")
+	if settings := svc.Scope().Lookup("ProjectSettings"); settings != nil {
+		rules[0].otherOwner, _, _ = types.LookupFieldOrMethod(settings.Type(), true, svc, "SetEnvironment")
 	}
-	var findings []string
-	for _, file := range svc.Syntax {
-		if strings.HasSuffix(svc.Fset.Position(file.Pos()).Filename, "_test.go") {
+	for _, file := range pass.Files {
+		if strings.HasSuffix(fileName(pass, file.Pos()), "_test.go") {
 			continue
 		}
 		for _, decl := range file.Decls {
 			var owner types.Object
 			if fn, ok := decl.(*ast.FuncDecl); ok {
-				owner = svc.TypesInfo.Defs[fn.Name]
+				owner = pass.TypesInfo.Defs[fn.Name]
 			}
 			ast.Inspect(decl, func(n ast.Node) bool {
 				sel, ok := n.(*ast.SelectorExpr)
 				if !ok {
 					return true
 				}
-				selection := svc.TypesInfo.Selections[sel]
+				selection := pass.TypesInfo.Selections[sel]
 				if selection == nil {
 					return true
 				}
@@ -79,7 +90,7 @@ func CheckServiceSeams(pkgs []*packages.Package, servicePath, storePath string) 
 					if owner == rule.owner {
 						rule.seen = true
 					} else if owner == nil || owner != rule.otherOwner {
-						findings = append(findings, fmt.Sprintf("service seams: %s: %s access outside %s", svc.Fset.Position(sel.Pos()), rule.member.Name(), rule.owner.Name()))
+						pass.Reportf(sel.Pos(), "%s access outside %s", rule.member.Name(), rule.owner.Name())
 					}
 				}
 				return true
@@ -88,10 +99,9 @@ func CheckServiceSeams(pkgs []*packages.Package, servicePath, storePath string) 
 	}
 	for _, rule := range rules {
 		if !rule.seen {
-			findings = append(findings, fmt.Sprintf("service seams: %s never accessed in %s", rule.member.Name(), rule.owner.Name()))
+			pass.Reportf(packagePos(pass), "%s never accessed in %s", rule.member.Name(), rule.owner.Name())
 		}
 	}
-	return findings
 }
 
 // A structural interface can rename the declaring type while preserving the

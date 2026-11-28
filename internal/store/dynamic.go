@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -70,6 +72,17 @@ type DynamicLease struct {
 	CreatedAt        string
 }
 
+// DynamicLeaseRef is the identifiers-and-state view of one non-terminal lease
+// that the incident enumeration lists. It carries no provider handle.
+type DynamicLeaseRef struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProviderID    string
+	State         string
+}
+
 // DynamicLeaseCreate is a mint's durable intent row (state=minting). The lease
 // row is itself the job: next_attempt_at is stamped now so a crashed synchronous
 // mint is picked up by the worker and settled.
@@ -117,6 +130,13 @@ type DynamicReader interface {
 	GetLease(ctx context.Context, p authz.Proof, leaseID string) (DynamicLease, error)
 	ListLeasesForEnvironment(ctx context.Context, p authz.Proof) ([]DynamicLease, error)
 	ActiveLeaseIDsForProvider(ctx context.Context, p authz.Proof, providerID string) ([]DynamicLease, error)
+	// ListNonTerminalLeasesInProject pages the project's leases that are not
+	// revoked, expired or failed, in id order; the limit is at most
+	// domain.MaxIncidentPage.
+	ListNonTerminalLeasesInProject(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error)
+	// ListNonTerminalLeasesInInstance is the same page across every org and
+	// takes an instance-scoped proof only.
+	ListNonTerminalLeasesInInstance(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error)
 	ListProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 }
 
@@ -131,6 +151,15 @@ type DynamicRepo interface {
 	FinishMint(ctx context.Context, p authz.Proof, mutation DynamicLeaseFinishMint) error
 	EnqueueTransition(ctx context.Context, p authz.Proof, mutation DynamicLeaseTransition) (DynamicLease, error)
 	ReencryptProvider(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
+	// PurgeEnvironment removes the proof's environment's lease and effect rows
+	// as part of the environment delete, once none is live. It is a
+	// *LiveRowsError (ErrDynamicLiveLease) while a lease is not revoked,
+	// expired or failed: its provider role would be orphaned.
+	PurgeEnvironment(ctx context.Context, p authz.Proof) error
+	// PurgeProjectProviders removes the proof's project's tombstoned providers
+	// as part of the project delete. It is a *LiveRowsError
+	// (ErrDynamicActiveProvider) while an active provider exists.
+	PurgeProjectProviders(ctx context.Context, p authz.Proof) error
 }
 
 type dynamicQueries struct {
@@ -291,6 +320,28 @@ func (r dynamicQueries) ListLeasesForEnvironment(ctx context.Context, p authz.Pr
 	return r.queries.dynamicListLeasesForEnvironment(ctx, chain)
 }
 
+func (r dynamicQueries) ListNonTerminalLeasesInProject(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeasesListNonTerminalProject, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain.Org == "" || chain.Project == "" || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.queries.dynamicListNonTerminalLeasesInProject(ctx, chain, afterID, limit)
+}
+
+func (r dynamicQueries) ListNonTerminalLeasesInInstance(ctx context.Context, p authz.Proof, afterID string, limit int) ([]DynamicLeaseRef, error) {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeasesListNonTerminalInstance, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	if chain != (domain.Scope{}) || limit < 1 || limit > domain.MaxIncidentPage {
+		return nil, ErrNotFound
+	}
+	return r.queries.dynamicListNonTerminalLeasesInInstance(ctx, afterID, limit)
+}
+
 func (r dynamicQueries) ActiveLeaseIDsForProvider(ctx context.Context, p authz.Proof, providerID string) ([]DynamicLease, error) {
 	chain, err := authz.Verify(p, authz.StoreDynamicLeasesActiveIDsForProvider, r.tok)
 	if err != nil {
@@ -376,4 +427,46 @@ func (r dynamicQueries) ListProvidersForReencrypt(ctx context.Context, p authz.P
 		return nil, err
 	}
 	return r.queries.dynamicListProvidersForReencrypt(ctx, chain, cursor, limit)
+}
+
+// ErrDynamicLiveLease refuses an environment delete while a lease in it is not
+// terminal (revoked, expired or failed): the provider role it pins must be
+// revoked first, never orphaned.
+var ErrDynamicLiveLease = fmt.Errorf("%w: the environment still has a live dynamic lease; revoke it first", ErrConflict)
+
+func (r dynamicQueries) PurgeEnvironment(ctx context.Context, p authz.Proof) error {
+	chain, err := authz.Verify(p, authz.StoreDynamicLeasesPurgeEnvironment, r.tok)
+	if err != nil {
+		return err
+	}
+	if chain.Env == "" {
+		return ErrNotFound
+	}
+	ids, err := r.queries.dynamicListLiveLeaseIDsForEnvironment(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrDynamicLiveLease, ids)
+	}
+	return r.queries.dynamicPurgeEnvironment(ctx, chain)
+}
+
+// ErrDynamicActiveProvider refuses a project delete while an active dynamic
+// provider exists: delete it first, which queues its leases for revocation.
+var ErrDynamicActiveProvider = fmt.Errorf("%w: the project still has an active dynamic provider; delete it first", ErrConflict)
+
+func (r dynamicQueries) PurgeProjectProviders(ctx context.Context, p authz.Proof) error {
+	chain, err := authz.Verify(p, authz.StoreDynamicProvidersPurgeProject, r.tok)
+	if err != nil {
+		return err
+	}
+	ids, err := r.queries.dynamicListActiveProviderIDsForProject(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrDynamicActiveProvider, ids)
+	}
+	return r.queries.dynamicPurgeTombstonedProviders(ctx, chain)
 }

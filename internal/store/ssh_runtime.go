@@ -2,11 +2,13 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // SSHRuntime is the SSH certificate sweeper's system boundary (#155). Tenant
@@ -65,7 +67,7 @@ func (r *SSHRuntime) RevokeForAuthority(ctx context.Context, c SSHSweepCandidate
 			return nil
 		}
 		changed = true
-		payload, err := json.Marshal(sshRevokedPayload{Serial: strconv.FormatInt(c.Serial, 10), Reason: "authority-withdrawn"})
+		payload, err := json.Marshal(sshRevokedPayload{Serial: strconv.FormatInt(c.Serial, 10), Reason: "authority-withdrawn"}, jsonwire.Stable)
 		if err != nil {
 			return err
 		}

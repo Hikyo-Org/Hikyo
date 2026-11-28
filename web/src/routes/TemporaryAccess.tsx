@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -31,6 +31,7 @@ import { Ceremony, type CeremonyRequest } from './Ceremony.tsx';
 import { Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { duration } from '../app/duration.ts';
 import { Sep } from '../ui/Sep.tsx';
+import { TableScroll } from '../ui/TableScroll.tsx';
 
 /**
  * Temporary access (#152): approval-mediated, time-bound access to one
@@ -131,6 +132,7 @@ export function TemporaryAccess() {
 }
 
 function ScopedTemporaryAccess({ org, project }: { org: string; project: string }) {
+  const policiesCaptionId = useId();
   const ref = { org, project };
   const me = useAuth().identity?.principal.id ?? '';
 
@@ -438,8 +440,9 @@ function ScopedTemporaryAccess({ org, project }: { org: string; project: string 
                 <p>No access policies. Nothing is requestable in this project yet.</p>
               ) : null}
               {isManager && policies.data.items.length > 0 ? (
-                <div className="table-scroll">
+                <TableScroll aria-labelledby={policiesCaptionId}>
                 <table className="temporary-access__policies">
+                  <caption id={policiesCaptionId} className="visually-hidden">Access policies for this project</caption>
                   <thead>
                     <tr>
                       <th>Environment</th>
@@ -495,7 +498,7 @@ function ScopedTemporaryAccess({ org, project }: { org: string; project: string 
                     ))}
                   </tbody>
                 </table>
-                </div>
+                </TableScroll>
               ) : null}
 
               {deletingPolicy === null ? null : (

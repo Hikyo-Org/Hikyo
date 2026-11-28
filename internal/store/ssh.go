@@ -2,13 +2,14 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -235,7 +236,7 @@ func encodeSSHList(in []string) (string, error) {
 	if in == nil {
 		in = []string{}
 	}
-	b, err := json.Marshal(in)
+	b, err := json.Marshal(in, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

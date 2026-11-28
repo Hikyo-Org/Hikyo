@@ -10,7 +10,8 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"maps"
@@ -26,6 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ktesting "k8s.io/client-go/testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // v1Golden is the SHA-256 of the signed command serialized by the code at
@@ -54,7 +57,7 @@ func TestCompatibilityProfileKeepsV1BytesAndSignerPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, signed := range map[string]SignedCommand{"SignCommand": legacy, "SignCommandFor": viaSet} {
-		raw, err := json.Marshal(signed)
+		raw, err := json.Marshal(signed, jsonwire.Stable)
 		sum := sha256.Sum256(raw)
 		if err != nil || hex.EncodeToString(sum[:]) != v1Golden {
 			t.Fatalf("%s changed the v1 bytes: %s", name, raw)
@@ -432,14 +435,12 @@ type enrollmentV0 struct {
 
 // signedCommandV0 is SignedCommand as it was before the strict envelope.
 type signedCommandV0 struct {
-	Command   json.RawMessage `json:"command"`
-	Signature []byte          `json:"signature"`
+	Command   jsontext.Value `json:"command"`
+	Signature []byte         `json:"signature"`
 }
 
 func strictDecode(raw []byte, out any) error {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(out)
+	return json.Unmarshal(raw, out, json.RejectUnknownMembers(true))
 }
 
 func TestOldAndNewControllerAndSignerCombinations(t *testing.T) {

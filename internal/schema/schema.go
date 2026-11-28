@@ -23,14 +23,19 @@
 package schema
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Classification is the key's `secret | config` classification (#7). It is an
@@ -241,14 +246,14 @@ type Rule struct {
 	Type Type `json:"type"`
 
 	// string
-	MinLength  *int   `json:"min_length,omitempty"`
-	MaxLength  *int   `json:"max_length,omitempty"`
+	MinLength  *int   `json:"min_length,omitzero"`
+	MaxLength  *int   `json:"max_length,omitzero"`
 	Pattern    string `json:"pattern,omitempty"`
-	AllowEmpty bool   `json:"allow_empty,omitempty"`
+	AllowEmpty bool   `json:"allow_empty,omitzero"`
 
 	// integer
-	Min *int64 `json:"min,omitempty"`
-	Max *int64 `json:"max,omitempty"`
+	Min *int64 `json:"min,omitzero"`
+	Max *int64 `json:"max,omitzero"`
 
 	// enum
 	Members []string `json:"members,omitempty"`
@@ -257,7 +262,7 @@ type Rule struct {
 	Schemes []string `json:"schemes,omitempty"`
 
 	// json
-	JSONSchema json.RawMessage `json:"json_schema,omitempty"`
+	JSONSchema jsontext.Value `json:"json_schema,omitzero"`
 }
 
 // Declaration is a key's value-dependent rule set: exactly one primitive
@@ -267,7 +272,7 @@ type Rule struct {
 // for operators and implementers alike. Overlapping alternatives are fine and
 // never an error.
 type Declaration struct {
-	Rule  *Rule  `json:"rule,omitempty"`
+	Rule  *Rule  `json:"rule,omitzero"`
 	AnyOf []Rule `json:"any_of,omitempty"`
 }
 
@@ -318,13 +323,12 @@ func (d Declaration) alternatives() []Rule {
 // rather than dropped: a declaration written by a newer version and silently
 // truncated by an older one would deliver a key under rules nobody declared.
 func ParseDeclaration(raw []byte) (Declaration, error) {
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
 	var d Declaration
-	if err := dec.Decode(&d); err != nil {
+	if err := json.UnmarshalDecode(dec, &d, json.RejectUnknownMembers(true)); err != nil {
 		return Declaration{}, declErr("parse declaration: %v", err)
 	}
-	if dec.More() {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return Declaration{}, declErr("parse declaration: trailing content after the document")
 	}
 	return d, nil
@@ -346,7 +350,7 @@ func Canonical(d Declaration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(n)
+	return json.Marshal(n, jsonwire.Stable)
 }
 
 // normalize applies the write-time trim to every declared string and
@@ -377,7 +381,7 @@ func normalize(d Declaration) (Declaration, error) {
 			if err := strictJSON(r.JSONSchema, &doc); err != nil {
 				return Rule{}, declErr("`json_schema`: parse: %v", err)
 			}
-			enc, err := json.Marshal(doc)
+			enc, err := json.Marshal(doc, jsonwire.Stable)
 			if err != nil {
 				return Rule{}, declErr("json_schema: re-encode: %v", err)
 			}

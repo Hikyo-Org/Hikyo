@@ -6,7 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"os/exec"
@@ -61,7 +62,7 @@ func (p *probe) smoke(ctx context.Context, dir string, revoke func() error) erro
 	if json.Unmarshal(output.Bytes(), &r) != nil || !r.Passed || r.Scope != "endpoint_smoke_only" || r.Observation != "polling_only_no_commit_receipt" {
 		return errors.New("bounded smoke receipt missing")
 	}
-	if err := writePrivate(filepath.Join(dir, "smoke-receipt.json"), json.RawMessage(output.Bytes())); err != nil {
+	if err := writePrivate(filepath.Join(dir, "smoke-receipt.json"), jsontext.Value(output.Bytes())); err != nil {
 		return err
 	}
 	p.receipt.Checks["existing_public_smoke_polling_only_replacement_recheck"] = "PASS; separate predecessor from first-call proof"

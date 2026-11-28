@@ -3,8 +3,7 @@ package isolation
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"reflect"
+	"encoding/json/v2"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -52,7 +52,7 @@ func TestAdapterRuntimeGeneratedIndeterminateEffectsPreserveLiveCustody(t *testi
 			}
 		}
 		own := adapterQueryScope{org: "org_gitlab", project: "prj_gitlab", environment: "env_gitlab_e2e"}
-		if got, err := read(own, at); err != nil || !reflect.DeepEqual(got, []string{"eff_cleanup_a", "eff_cleanup_b"}) {
+		if got, err := read(own, at); err != nil || !reflectx.Equal(got, []string{"eff_cleanup_a", "eff_cleanup_b"}) {
 			t.Fatalf("own unfinished unheld effects=%v err=%v", got, err)
 		}
 		for _, foreign := range []adapterQueryScope{{org: "org_other", project: own.project, environment: own.environment}, {org: own.org, project: "prj_other", environment: own.environment}, {org: own.org, project: own.project, environment: "env_gitlab_second"}} {
@@ -66,7 +66,7 @@ func TestAdapterRuntimeGeneratedIndeterminateEffectsPreserveLiveCustody(t *testi
 		if held := queryString(t, db, `SELECT provider_lease_effect_id FROM adapter_targets WHERE id='tgt_gitlab_a'`); held != "eff_cleanup_held" {
 			t.Fatalf("read query released custody: %q", held)
 		}
-		if got, err := read(own, at.Add(2*time.Hour)); err != nil || !reflect.DeepEqual(got, []string{"eff_cleanup_a", "eff_cleanup_b", "eff_cleanup_held"}) {
+		if got, err := read(own, at.Add(2*time.Hour)); err != nil || !reflectx.Equal(got, []string{"eff_cleanup_a", "eff_cleanup_b", "eff_cleanup_held"}) {
 			t.Fatalf("expired custody effects=%v err=%v", got, err)
 		}
 	})
@@ -182,7 +182,7 @@ func TestAdapterRuntimeGeneratedFinishJobMarksOnlyScopedMoveTargets(t *testing.T
 			t.Fatalf("owning status=%q", got)
 		}
 		var names []string
-		if err := json.Unmarshal([]byte(queryString(t, db, `SELECT CAST(failure_names AS TEXT) FROM adapter_targets WHERE id='tgt_gitlab_a'`)), &names); err != nil || !reflect.DeepEqual(names, []string{"route"}) {
+		if err := json.Unmarshal([]byte(queryString(t, db, `SELECT CAST(failure_names AS TEXT) FROM adapter_targets WHERE id='tgt_gitlab_a'`)), &names); err != nil || !reflectx.Equal(names, []string{"route"}) {
 			t.Fatalf("owning failure names=%v err=%v", names, err)
 		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_gitlab_a' AND active_job_id IS NULL`); n != 1 {

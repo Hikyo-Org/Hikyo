@@ -9,7 +9,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type adapterStoreQueries interface {
@@ -36,6 +35,8 @@ type adapterStoreQueries interface {
 	createAdapter(context.Context, domain.Scope, AdapterCreate, time.Time) error
 	updateAuthorityExpiry(context.Context, domain.Scope, string, string, time.Time) (int64, error)
 	targetActiveJob(context.Context, domain.Scope, string, string) (string, error)
+	environmentTargetIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
+	environmentFenceTargetIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error)
 	deleteTargetKeys(context.Context, domain.Scope, string, string) error
 	updateTargetConfig(context.Context, domain.Scope, AdapterTargetUpdate, []byte) (int64, error)
 	updateActiveAuthority(context.Context, domain.Scope, string, string) (int64, error)
@@ -520,7 +521,7 @@ func (q sqliteAdapterStoreQueries) planTarget(ctx context.Context, chain domain.
 	return adapterPlanTarget{environmentID: c.EnvironmentID, destinationID: c.DestinationID, repositoryID: c.RepositoryID, generation: c.Generation}, err
 }
 func (q sqliteAdapterStoreQueries) insertConflict(ctx context.Context, chain domain.Scope, id, artifactID, envID, targetID string, destinationID, repositoryID, generation int64, entry AdapterConflictEntry, at time.Time) (int64, error) {
-	return adapterAffected(q.queries.AdapterInsertConflict(ctx, sqlitegen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: adapterOptionalVersion(entry.ObservedProviderVersion), ObservedProviderWitness: entry.ObservedProviderWitness, CreatedAt: fixedStamp(at)}))
+	return adapterAffected(q.queries.AdapterInsertConflict(ctx, sqlitegen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: sqlNullInt(entry.ObservedProviderVersion), ObservedProviderWitness: entry.ObservedProviderWitness, CreatedAt: fixedStamp(at)}))
 }
 
 func (q pgAdapterStoreQueries) mapping(ctx context.Context, chain domain.Scope, targetID string) ([]adapter.ManifestEntry, error) {
@@ -589,7 +590,31 @@ func (q pgAdapterStoreQueries) planTarget(ctx context.Context, chain domain.Scop
 	return adapterPlanTarget{environmentID: c.EnvironmentID, destinationID: c.DestinationID, repositoryID: c.RepositoryID, generation: c.Generation}, err
 }
 func (q pgAdapterStoreQueries) insertConflict(ctx context.Context, chain domain.Scope, id, artifactID, envID, targetID string, destinationID, repositoryID, generation int64, entry AdapterConflictEntry, at time.Time) (int64, error) {
-	return adapterAffected(q.queries.AdapterInsertConflict(ctx, pggen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: pgtype.Int8{Int64: adapterOptionalVersion(entry.ObservedProviderVersion).Int64, Valid: adapterOptionalVersion(entry.ObservedProviderVersion).Valid}, ObservedProviderWitness: entry.ObservedProviderWitness, CreatedAt: pgRequiredTime(at)}))
+	return adapterAffected(q.queries.AdapterInsertConflict(ctx, pggen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: pgNullInt8(entry.ObservedProviderVersion), ObservedProviderWitness: entry.ObservedProviderWitness, CreatedAt: pgRequiredTime(at)}))
 }
 
 func adapterAffected(rows int64, err error) (int64, error) { return rows, constraint(err) }
+
+func (q sqliteAdapterStoreQueries) environmentTargetIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	return q.queries.AdapterListEnvironmentTargetIDs(ctx, sqlitegen.AdapterListEnvironmentTargetIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: int64(limit)})
+}
+
+func (q pgAdapterStoreQueries) environmentTargetIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	rowLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	return q.queries.AdapterListEnvironmentTargetIDs(ctx, pggen.AdapterListEnvironmentTargetIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: rowLimit})
+}
+
+func (q sqliteAdapterStoreQueries) environmentFenceTargetIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	return q.queries.AdapterListEnvironmentFenceTargetIDs(ctx, sqlitegen.AdapterListEnvironmentFenceTargetIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: int64(limit)})
+}
+
+func (q pgAdapterStoreQueries) environmentFenceTargetIDs(ctx context.Context, chain domain.Scope, limit int) ([]string, error) {
+	rowLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	return q.queries.AdapterListEnvironmentFenceTargetIDs(ctx, pggen.AdapterListEnvironmentFenceTargetIDsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), RowLimit: rowLimit})
+}

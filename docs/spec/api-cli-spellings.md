@@ -207,9 +207,9 @@ dimension is a hard error (exit 2) naming both sources.
 has no target) and an optional `slug` (the state-dir / default-runtime-dir path
 segment; `^[a-z0-9][a-z0-9-]*$`).
 
-**Not a documented flag:** `HIKYO_COMPOSE_DOCKER` overrides the resolved `docker`
-executable for `compose sync|doctor`. It is a test seam, kept out of the help
-text and documented only here and in the package doc.
+**Not a flag:** `HIKYO_COMPOSE_DOCKER` is a documented environment override of the
+resolved `docker` executable for `compose sync|doctor`. It is listed under client
+variables in the user docs and kept out of the help text.
 
 ### `sync` pre-render gate — interpretation of "same checks" (for human disposition)
 
@@ -601,7 +601,7 @@ decisions address one environment. Every verb is human-session only.
 - `access request approve <request>` / `access request reject <request>`: cast one vote; the approve that reaches the quorum grants.
 - `access request cancel <request>`: the requester withdraws an open request.
 - `access request revoke <request>`: end granted access now (holder, approver or member manager).
-- `access request emergency --capability C --reason R [--duration 30m]`: emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
+- `access request emergency --capability C --reason R [--duration D]` (defaults to 1h, capped by the policy maximum): emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
 
 ## Member access rules ([member-access-rules.md](../adr/member-access-rules.md), proposed amendment)
 
@@ -632,13 +632,23 @@ capability for one person; every verb is human-session only and needs
 
 - `access rule list [--org O] [--project P]`: the org's rules, or the rules
   naming the resolved project.
-- `access rule add --principal ID --capability C [--in-project P]... [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
+- `access rule add --principal ID --capability C [--in-project P... | --all-projects] [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
   `--org/--project/--env` stay the shared scope flags, so the rule's axes take
   distinct names. `--in-project` is repeatable and defaults to the resolved
   project. An environment or key id is qualified `PROJECT:ID` when the rule
   names several projects; a folder applies to every project unless qualified
   the same way. One axis takes only-items or except-items, never both.
+  `--all-projects` (#1446) covers every project of the org, including later
+  ones: the CLI lists the org's projects and sends exactly them with
+  `where.project_mode: all`; a stale list is refused with a conflict. It takes
+  unqualified folders only, never `--in-project`, environments or keys.
 - `access rule remove <rule>`.
+- An all-projects rule (#1446) reads back with `where.project_mode: all` and
+  `projects` listing the org's current projects (a project listing: that
+  project only), its folder items repeated
+  under each; `access rule list` shows it once as `all projects (now ...)`.
+  A create sends the same shape: the org's current projects, folders repeated
+  under each (owner decision R2).
 - `key update <key> --folder P --confirm-widening <principal>...` and
   `definitions apply --plan ID --confirm-widening <principal>...` confirm a
   widening move.

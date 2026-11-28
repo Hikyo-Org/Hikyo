@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -140,7 +141,7 @@ func TestCLIHandoffPreservesProviderAssuranceWithLocalFactor(t *testing.T) {
 				if status != 200 || json.Unmarshal(raw, &approved) != nil {
 					t.Fatalf("provider approval status%d", status)
 				}
-				body, err := json.Marshal(apigen.CLILoginRedeemRequest{Code: approved.Code, PkceVerifier: verifier, RedirectUri: loginRedirect})
+				body, err := json.Marshal(apigen.CLILoginRedeemRequest{Code: approved.Code, PkceVerifier: verifier, RedirectUri: loginRedirect}, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -341,7 +342,7 @@ func TestCLIHandoffRechecksEnrolledFactor(t *testing.T) {
 						}
 						return
 					} else if transport == "loopback" {
-						body, err := json.Marshal(apigen.CLILoginRedeemRequest{Code: approved.Code, PkceVerifier: verifier, RedirectUri: loginRedirect})
+						body, err := json.Marshal(apigen.CLILoginRedeemRequest{Code: approved.Code, PkceVerifier: verifier, RedirectUri: loginRedirect}, jsonwire.Stable)
 						if err != nil {
 							t.Fatal(err)
 						}

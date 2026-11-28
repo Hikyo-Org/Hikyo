@@ -130,7 +130,15 @@ for file in "$@"; do
 		nightly.yml | release.yml)
 			# Credential-isolated signing and native acceptance require macOS.
 			# Every other job in either release workflow remains Ubuntu-only.
-			for apple_job in apple-sign apple-notarize; do
+			desktop_app=false
+			apple_jobs='apple-sign apple-notarize'
+			if [ "$(basename "$file")" = release.yml ]; then
+				# The desktop app (#1215) is the one extra native job and gets the
+				# same runner, environment and cache checks as the signing jobs.
+				desktop_app=true
+				apple_jobs='apple-sign apple-notarize desktop-app'
+			fi
+			for apple_job in $apple_jobs; do
 				[ "$(grep -c "^  $apple_job:\$" "$file")" = 1 ] ||
 					fail "release workflows must declare exactly one $apple_job job"
 				apple=$(workflow_job_block "$file" "$apple_job")
@@ -184,8 +192,8 @@ for file in "$@"; do
 				fi
 			fi
 			runner_source=$(mktemp)
-			awk -v native_acceptance="$native_acceptance" '
-				$0 == "  apple-sign:" || $0 == "  apple-notarize:" || (native_acceptance == "true" && $0 == "  apple-acceptance:") { skip = 1; next }
+			awk -v native_acceptance="$native_acceptance" -v desktop_app="$desktop_app" '
+				$0 == "  apple-sign:" || $0 == "  apple-notarize:" || (desktop_app == "true" && $0 == "  desktop-app:") || (native_acceptance == "true" && $0 == "  apple-acceptance:") { skip = 1; next }
 				skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 				!skip { print }
 			' "$file" >"$runner_source"
@@ -360,7 +368,7 @@ for file in "$@"; do
 done
 
 require_line "$tool_modules" 'github.com/rhysd/actionlint@v1.7.12'
-require_line "$tool_modules" 'golang.org/x/vuln@v1.7.0'
+require_line "$tool_modules" 'golang.org/x/vuln@v1.10.0'
 require_line "$workflow" 'done < "$GITHUB_WORKSPACE/scripts/ci/go-tool-modules.txt"'
 require_line "$workflow" 'go mod download all'
 require_line "$workflow" 'run: ./scripts/ci/run-go-tool.sh actionlint'

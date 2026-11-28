@@ -75,17 +75,29 @@ but it is not a substitute for this signature.
   For WIP pushes only, set `HIKYO_PREPUSH_STORYBOOK=skip`; CI still runs the suite.
   Signatures are never skippable.
 - The hook also runs `scripts/ci/golangci-lint-new.sh <base>` when a push changes
-  Go code. It runs golangci-lint (errcheck, errorlint, errchkjson, noctx,
-  wastedassign, unused, staticcheck `SA*`/`QF1001`/`QF1003`, and gosec G115/G204/G306 outside tests, from
+  Go code. It runs golangci-lint (errcheck, errorlint, noctx,
+  staticcheck `SA*`/`QF1001`/`QF1003` except SA4006/SA4009, and gosec G115/G204/G306 outside tests, from
   `.golangci.yml`) and flags only issues on lines changed since the merge base, so
-  the existing baseline never blocks you. It lints a temporary worktree at the
+  the existing baseline of those rules never blocks you. A second strict pass runs wastedassign, unused and
+  staticcheck SA4006/SA4009 (`.golangci-strict.yml`) on every whole changed package
+  (a moved file counts for both packages), because those rules hold at zero across the repo. It lints a temporary worktree at the
   pushed commit, with that commit's config, pin and script, so any branch can be
-  pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` are ignored.
+  pushed from any worktree, and uncommitted files and uncommitted edits to `.golangci.yml` and `.golangci-strict.yml` are ignored.
   Fetch `hikyo-upstream` first: a stale base widens "new code". Only the default
   build is linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are
   not), and type errors are always reported in full. Reproduce with
   `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`. For WIP pushes only, set
   `HIKYO_PREPUSH_GOLANGCI=skip`; the advisory `ci-advisory-golangci` check still runs it.
+- Last, the hook runs `scripts/ci/go-affected-test.sh <merge base>`: the Go tests
+  of the packages the pushed changes can affect (changed or embedded files and
+  every package whose tests depend on them; all on `go.mod`/`go.sum`). A test
+  that reads a changed repository file without embedding it is missed unless the
+  selector has an explicit path rule for it, so CI stays the gate. It runs in a
+  locked worktree kept in the git directory. `internal/isolation` and `scripts/ci`
+  are never run by the hook, so only CI catches breaks in them. A cold run of a
+  widely depended-on change takes about 25 minutes. PostgreSQL tests need
+  `HIKYO_TEST_POSTGRES_DSN`. For WIP pushes only, set
+  `HIKYO_PREPUSH_GOTEST=skip`; CI still runs the suites.
 - For `web/` changes, also run the affected flow specs before requesting review and
   list them in the PR Evidence:
   `pnpm --dir web run build && pnpm --dir web exec playwright test --project=desktop e2e/flows/<spec>.spec.ts`
@@ -137,6 +149,22 @@ The skill covers signing, local validation, and an optional playground.
 - Keep commit messages in the Conventional Commits style already used in the
   history (`feat(web): …`, `fix(app): …`, `test(web): …`).
 
+## Keep user docs current
+
+A user-visible change updates its user docs in the same PR. That means a CLI
+command or flag, an `/api/v1` operation or field, a server setting, or behaviour
+an operator or user relies on. Edit the matching page under
+`docs/site/src/content/docs/docs/`: `cli-reference.mdx`, `configuration.mdx`,
+the feature page (`http-api.mdx` only for contract-wide API rules), and
+`upgrades.mdx` when operators must act.
+The `docs-impact` feedback check fails when `internal/cli/testdata/help.txt`,
+`api/openapi.yaml` or `internal/config/variables.go` changes without a change
+under `docs/site/src/content/docs/` or `docs/operations/`. It also fails when
+`desktop/internal/shell/shellroutes.go` or `desktop/main_darwin.go` changes without
+`docs/spec/desktop-shell-protocol.md` or `desktop/README.md`. When no docs change is
+needed, add a `Docs-Impact: none - <reason>` trailer to a commit in the PR, in
+the final trailer block next to `Signed-off-by`.
+
 ## Reviewing changes
 
 - Before requesting human review, have a fresh-context agent review the complete
@@ -145,6 +173,8 @@ The skill covers signing, local validation, and an optional playground.
   preference) or Pre-existing (present before this PR, so not the author's
   regression). Cite a file and line as evidence. Start the report with the count,
   and say plainly when nothing needs fixing.
+- A user-visible change with no docs update and no stated `Docs-Impact: none`
+  reason is an Important finding.
 - Fix every confirmed finding, Nits included. Record evidence only for a finding
   you reject as wrong. Fix a Pre-existing finding at its root cause in this PR
   when it is in scope; otherwise open an issue for it.

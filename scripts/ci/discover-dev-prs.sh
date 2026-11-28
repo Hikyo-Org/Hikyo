@@ -51,12 +51,18 @@ fi
 # by number and the window starts at count x cap mod open. It reads no check record and
 # writes no state, so nothing a run writes (or refreshes without changing state) can move
 # it, and every open PR is reached within ceil(open/cap) consecutive runs. A PR opened or
-# closed in between shifts the windows by at most one cycle; events and the retry path
-# settle checks regardless. A run that fails or is deferred still advances the count, so the
-# window it skipped is reached ceil(open/cap) runs later. That bound holds only when deferrals
-# are not periodic: with a deferral on every k-th run and k a multiple of the cycle length, the
-# same window is skipped each time. Events and the retry path still settle checks, so the sweep
-# is a backstop; a persisted cursor (see the shortcut below) would remove the gap.
+# closed in between shifts the windows by at most one cycle. A run that fails or is deferred
+# still advances the count, so within one 30-day epoch the window it skipped is reached within
+# the next ceil(open/cap) consecutive undeferred runs; an epoch boundary restarts the sequence
+# at an arbitrary offset (below), which can add one more cycle. Deferrals can delay it further:
+# two deferrals one cycle apart skip the same window twice, and a deferral on every k-th run (k
+# a multiple of the cycle length) skips it each time. A gate run that defers writes no check
+# record, so the event that started it leaves the check as it was; the retry path reruns the
+# deferred or failed publisher job within its attempt bound, and a spent window on the last
+# attempt, or a held check, stays pending until another gate run or the operator command
+# gh workflow run ci-queue-gate.yml -f pr_number=<n>. For a PR with no further event the sweep
+# is then the only automatic path to its check. A persisted cursor (see the shortcut below)
+# would remove the gap.
 # GitHub reports at most 1,000 results for a filtered list, and retention can delete old
 # runs, so a count of all schedule runs could stop moving. The count is therefore taken
 # within the current 30-day epoch only (created >= the epoch start, at most 720 runs even

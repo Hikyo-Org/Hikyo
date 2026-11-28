@@ -13,8 +13,12 @@ func TestSourceIPTrustedProxyBoundary(t *testing.T) {
 		name      string
 		remote    string
 		forwarded string
-		proxies   []string
-		want      string
+		// lines carries separate field lines, which HTTP defines as one
+		// comma-joined list. A proxy that appends its own line leaves the
+		// client's forged line first.
+		lines   []string
+		proxies []string
+		want    string
 	}{
 		{name: "no configured trust", remote: "192.0.2.10:4321", forwarded: "198.51.100.7", want: "192.0.2.10"},
 		{name: "untrusted peer cannot spoof", remote: "198.51.100.7:4321", forwarded: "203.0.113.8", proxies: []string{"192.0.2.0/24"}, want: "198.51.100.7"},
@@ -33,6 +37,8 @@ func TestSourceIPTrustedProxyBoundary(t *testing.T) {
 		{name: "untrusted IPv6 peer", remote: "[2001:db8:2::7]:4321", forwarded: "2001:db8:3::8", proxies: []string{"2001:db8:1::/48"}, want: "2001:db8:2::7"},
 		{name: "trusted IPv6 chain", remote: "[2001:db8:1::10]:4321", forwarded: "2001:db8:3::8, 2001:db8:2::7, 2001:db8:1::11", proxies: []string{"2001:db8:1::/48"}, want: "2001:db8:2::7"},
 		{name: "mixed address families", remote: "[2001:db8:1::10]:4321", forwarded: "198.51.100.7, 192.0.2.11", proxies: []string{"2001:db8:1::/48", "192.0.2.0/24"}, want: "198.51.100.7"},
+		{name: "separate field lines are one list", remote: "192.0.2.10:4321", lines: []string{"203.0.113.8", "198.51.100.7, 192.0.2.11"}, proxies: []string{"192.0.2.0/24"}, want: "198.51.100.7"},
+		{name: "forged first line cannot select the source", remote: "192.0.2.10:4321", lines: []string{"203.0.113.9", "198.51.100.7"}, proxies: []string{"192.0.2.0/24"}, want: "198.51.100.7"},
 		{name: "IPv6 all trusted", remote: "[2001:db8:1::10]:4321", forwarded: "2001:db8:1::11", proxies: []string{"2001:db8:1::/48"}, want: "2001:db8:1::10"},
 	}
 	for _, tc := range cases {
@@ -41,6 +47,9 @@ func TestSourceIPTrustedProxyBoundary(t *testing.T) {
 			r := httptest.NewRequest("GET", "/api/v1/auth/whoami", nil)
 			r.RemoteAddr = tc.remote
 			r.Header.Set("X-Forwarded-For", tc.forwarded)
+			if tc.lines != nil {
+				r.Header["X-Forwarded-For"] = tc.lines
+			}
 			if got := a.sourceIP(r); got != tc.want {
 				t.Fatalf("sourceIP = %q, want %q", got, tc.want)
 			}

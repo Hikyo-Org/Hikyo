@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,7 +127,6 @@ func TestBackupPruneJobRemovesOnlyAgedArchives(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	fresh := "hikyo-sqlite-" + now.Format("20060102T150405Z") + ".age"
 	old := "hikyo-sqlite-" + now.AddDate(0, 0, -400).Format("20060102T150405Z") + ".age"
 	for _, name := range []string{old} {
 		if err := os.WriteFile(filepath.Join(backupDir, name), []byte("archive"), 0o600); err != nil {
@@ -138,7 +140,7 @@ func TestBackupPruneJobRemovesOnlyAgedArchives(t *testing.T) {
 	if err := svc.RecordExport(t.Context(), service.TriggerManual, result); err != nil {
 		t.Fatal(err)
 	}
-	fresh = filepath.Base(result.Path)
+	fresh := filepath.Base(result.Path)
 	cfg.BackupRetainCount = 1
 	cfg.BackupRetainDays = 180
 	prune := backupJobs(cfg, quietLogger(), svc)[1]
@@ -163,5 +165,92 @@ func TestBackupScheduledGuardsJobRegistration(t *testing.T) {
 	cfg := &config.Config{Store: config.Datastore{Engine: config.EngineSQLite, Path: filepath.Join(t.TempDir(), "hikyo.db")}}
 	if cfg.BackupScheduled() {
 		t.Fatal("an unconfigured instance reports a schedule")
+	}
+}
+
+// A job refused by the runtime-configuration gate never reaches Run, so the
+// refusal must still land on the health row and the instance trail.
+func TestRefusedBackupExportRecordsFailure(t *testing.T) {
+	cfg, svc, backupDir := scheduleFixture(t)
+	refusal := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: could not serialize access"))
+	jobs := backupJobs(cfg, quietLogger(), svc)
+	gated := gateOnRuntimeConfig(jobs[0], 0, func(context.Context) error { return refusal })
+
+	err := gated.Run(t.Context())
+	if !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		t.Fatalf("refused run error = %v, want the refusal", err)
+	}
+	if n := countInstanceEvents(t, storeConfig(cfg), "backup.export_failed"); n != 1 {
+		t.Fatalf("backup.export_failed events = %d, want 1", n)
+	}
+	st, serr := svc.State(t.Context())
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	if st.LastFailureAt.IsZero() || !strings.Contains(st.LastFailureReason, "could not serialize access") {
+		t.Fatalf("refusal not recorded with its cause: %+v", st)
+	}
+	if n := archiveCount(t, backupDir); n != 0 {
+		t.Fatalf("a refused export published %d archives", n)
+	}
+	// A job without OnRefused (prune) just returns the refusal.
+	if err := gateOnRuntimeConfig(jobs[1], 0, func(context.Context) error { return refusal }).Run(t.Context()); !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		t.Fatalf("gated prune error = %v", err)
+	}
+}
+
+// Only a refusal of an export that was due is a failure. A fence is by design
+// and a not-due pass has nothing to fail, so neither may write the trail or
+// overwrite the health reason.
+func TestRefusedBackupExportOnlyRecordsDueNonFencedFailures(t *testing.T) {
+	cfg, svc, backupDir := scheduleFixture(t)
+	jobs := backupJobs(cfg, quietLogger(), svc)
+	fault := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: boom"))
+	refuse := func(err error) error {
+		return gateOnRuntimeConfig(jobs[0], 0, func(context.Context) error { return err }).Run(t.Context())
+	}
+	failed := func() int64 { return countInstanceEvents(t, storeConfig(cfg), "backup.export_failed") }
+
+	// Due, but fenced: refused, not recorded.
+	if err := refuse(service.ErrSelfConfigFenced); !errors.Is(err, service.ErrSelfConfigFenced) {
+		t.Fatalf("fenced refusal = %v", err)
+	}
+	if n := failed(); n != 0 {
+		t.Fatalf("a fenced refusal wrote %d failure events", n)
+	}
+
+	// Not due (an export just succeeded): a fault refusal is not recorded either.
+	if err := jobs[0].Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := refuse(fault); !errors.Is(err, service.ErrSelfConfigUnavailable) {
+		t.Fatalf("not-due refusal = %v", err)
+	}
+	if n := failed(); n != 0 {
+		t.Fatalf("a not-due refusal wrote %d failure events", n)
+	}
+	st, err := svc.State(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastFailureAt.IsZero() || st.LastFailureReason != "" {
+		t.Fatalf("health row overwritten by a refusal that was not a failure: %+v", st)
+	}
+	if n := archiveCount(t, backupDir); n != 1 {
+		t.Fatalf("archives = %d, want the single earlier export", n)
+	}
+}
+
+// When the due check itself fails the refusal must still surface, joined with
+// the check's error rather than replaced by it or silently dropped.
+func TestRefusedBackupExportKeepsDueCheckError(t *testing.T) {
+	cfg, svc, _ := scheduleFixture(t)
+	jobs := backupJobs(cfg, quietLogger(), svc)
+	refusal := errors.Join(service.ErrSelfConfigUnavailable, errors.New("read generation: boom"))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // svc.Due reads state with this context and fails.
+	err := gateOnRuntimeConfig(jobs[0], 0, func(context.Context) error { return refusal }).Run(ctx)
+	if !errors.Is(err, service.ErrSelfConfigUnavailable) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("refusal with failing due check = %v, want both the refusal and the due-check error", err)
 	}
 }

@@ -112,6 +112,7 @@ import {
   createProjectGrant,
   createRemotePairingInvite,
   createRevisionPin,
+  createRotation,
   createRule,
   createScimBinding,
   createScimMapping,
@@ -139,6 +140,7 @@ import {
   deletePersonalValueMember,
   deletePkiProfile,
   deleteProject,
+  deleteRotation,
   deleteSamlProvider,
   deleteScimBinding,
   deleteScimMapping,
@@ -261,6 +263,8 @@ import {
   listRemotes,
   listRevisionPins,
   listRevisions,
+  listRotationRuns,
+  listRotations,
   listSamlProviders,
   listSamlSpKeys,
   listScimBindings,
@@ -289,12 +293,14 @@ import {
   oauth2Callback,
   oauth2Start,
   oidcCallback,
+  oidcLifecycle,
   oidcStart,
   pairRemote,
   passkeyLoginFinish,
   passkeyLoginStart,
   patchSamlProvider,
   pauseAdapterTarget,
+  pauseRotation,
   planAdapterTarget,
   pollCliDevice,
   prepareRemotePairing,
@@ -325,6 +331,7 @@ import {
   regenerateRecoveryCodes,
   releasePkiIssuerHold,
   releaseRevisionPin,
+  releaseRotationHold,
   removeAdapterTarget,
   removePasskey,
   removeRemote,
@@ -345,8 +352,10 @@ import {
   reportFileTarget,
   requestInstanceUpdate,
   resetCredential,
+  resolveAccess,
   resumeAdapterMove,
   resumeAdapterTarget,
+  resumeRotation,
   retirePkiIssuer,
   retireSamlSpKey,
   retireSshCaKey,
@@ -386,6 +395,7 @@ import {
   rotateSshCa,
   rotateTokenKey,
   rotateTransitKey,
+  runRotationNow,
   samlAcs,
   samlMetadata,
   samlStart,
@@ -436,6 +446,7 @@ import {
   showPkiIssuer,
   showPkiProfile,
   showRemote,
+  showRotation,
   showSshCa,
   showSshCertificate,
   showSshProfile,
@@ -538,6 +549,7 @@ import type {
   CreateProjectGrantData,
   CreateRemotePairingInviteData,
   CreateRevisionPinData,
+  CreateRotationData,
   CreateRuleData,
   CreateScimBindingData,
   CreateScimMappingData,
@@ -565,6 +577,7 @@ import type {
   DeletePersonalValueMemberData,
   DeletePkiProfileData,
   DeleteProjectData,
+  DeleteRotationData,
   DeleteSamlProviderData,
   DeleteScimBindingData,
   DeleteScimMappingData,
@@ -687,6 +700,8 @@ import type {
   ListRemotesData,
   ListRevisionPinsData,
   ListRevisionsData,
+  ListRotationRunsData,
+  ListRotationsData,
   ListSamlProvidersData,
   ListSamlSpKeysData,
   ListScimBindingsData,
@@ -715,12 +730,14 @@ import type {
   Oauth2CallbackData,
   Oauth2StartData,
   OidcCallbackData,
+  OidcLifecycleData,
   OidcStartData,
   PairRemoteData,
   PasskeyLoginFinishData,
   PasskeyLoginStartData,
   PatchSamlProviderData,
   PauseAdapterTargetData,
+  PauseRotationData,
   PlanAdapterTargetData,
   PollCliDeviceData,
   PrepareRemotePairingData,
@@ -751,6 +768,7 @@ import type {
   RegenerateRecoveryCodesData,
   ReleasePkiIssuerHoldData,
   ReleaseRevisionPinData,
+  ReleaseRotationHoldData,
   RemoveAdapterTargetData,
   RemovePasskeyData,
   RemoveRemoteData,
@@ -771,8 +789,10 @@ import type {
   ReportFileTargetData,
   RequestInstanceUpdateData,
   ResetCredentialData,
+  ResolveAccessData,
   ResumeAdapterMoveData,
   ResumeAdapterTargetData,
+  ResumeRotationData,
   RetirePkiIssuerData,
   RetireSamlSpKeyData,
   RetireSshCaKeyData,
@@ -812,6 +832,7 @@ import type {
   RotateSshCaData,
   RotateTokenKeyData,
   RotateTransitKeyData,
+  RunRotationNowData,
   SamlAcsData,
   SamlMetadataData,
   SamlStartData,
@@ -862,6 +883,7 @@ import type {
   ShowPkiIssuerData,
   ShowPkiProfileData,
   ShowRemoteData,
+  ShowRotationData,
   ShowSshCaData,
   ShowSshCertificateData,
   ShowSshProfileData,
@@ -963,6 +985,7 @@ import {
   zCreateProjectResponse,
   zCreateRemotePairingInviteResponse,
   zCreateRevisionPinResponse,
+  zCreateRotationResponse,
   zCreateRuleResponse,
   zCreateScimBindingResponse,
   zCreateScimMappingResponse,
@@ -973,6 +996,7 @@ import {
   zDeclareValuesResponse,
   zDeleteAdapterResponse,
   zDeleteDynamicProviderResponse,
+  zDeleteRotationResponse,
   zDeleteScimMappingResponse,
   zDeleteSshProfileResponse,
   zDiffRevisionsResponse,
@@ -1090,6 +1114,8 @@ import {
   zListRemotesResponse,
   zListRevisionPinsResponse,
   zListRevisionsResponse,
+  zListRotationRunsResponse,
+  zListRotationsResponse,
   zListSamlProvidersResponse,
   zListSamlSpKeysResponse,
   zListScimBindingsResponse,
@@ -1123,6 +1149,7 @@ import {
   zPasskeyLoginStartResponse,
   zPatchSamlProviderResponse,
   zPauseAdapterTargetResponse,
+  zPauseRotationResponse,
   zPlanAdapterTargetResponse,
   zPollCliDeviceResponse,
   zPrepareRemotePairingResponse,
@@ -1153,6 +1180,7 @@ import {
   zRegenerateRecoveryCodesResponse,
   zReleasePkiIssuerHoldResponse,
   zReleaseRevisionPinResponse,
+  zReleaseRotationHoldResponse,
   zRemoveAdapterTargetResponse,
   zRemovePasskeyResponse,
   zRemoveTotpResponse,
@@ -1170,8 +1198,10 @@ import {
   zReplaceRulesResponse,
   zRequestInstanceUpdateResponse,
   zResetCredentialResponse,
+  zResolveAccessResponse,
   zResumeAdapterMoveResponse,
   zResumeAdapterTargetResponse,
+  zResumeRotationResponse,
   zRetirePkiIssuerResponse,
   zRetireSshCaKeyResponse,
   zRevealMyPersonalValueResponse,
@@ -1194,6 +1224,7 @@ import {
   zRotateSshCaResponse,
   zRotateTokenKeyResponse,
   zRotateTransitKeyResponse,
+  zRunRotationNowResponse,
   zSamlAcsResponse,
   zSamlMetadataResponse,
   zSamlStartResponse,
@@ -1240,6 +1271,7 @@ import {
   zShowPkiIssuerResponse,
   zShowPkiProfileResponse,
   zShowRemoteResponse,
+  zShowRotationResponse,
   zShowSshCaResponse,
   zShowSshCertificateResponse,
   zShowSshProfileResponse,
@@ -1337,6 +1369,7 @@ export const createProjectOp: BodyOperation<CreateProjectData, typeof zCreatePro
 export const createProjectGrantOp: BodyOperation<CreateProjectGrantData, typeof zCreateProjectGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createProjectGrant, [200], zCreateProjectGrantResponse);
 export const createRemotePairingInviteOp: BodyOperation<CreateRemotePairingInviteData, typeof zCreateRemotePairingInviteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRemotePairingInvite, [201], zCreateRemotePairingInviteResponse);
 export const createRevisionPinOp: BodyOperation<CreateRevisionPinData, typeof zCreateRevisionPinResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRevisionPin, [200], zCreateRevisionPinResponse);
+export const createRotationOp: BodyOperation<CreateRotationData, typeof zCreateRotationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRotation, [201], zCreateRotationResponse);
 export const createRuleOp: BodyOperation<CreateRuleData, typeof zCreateRuleResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRule, [201], zCreateRuleResponse);
 export const createScimBindingOp: BodyOperation<CreateScimBindingData, typeof zCreateScimBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createScimBinding, [200], zCreateScimBindingResponse);
 export const createScimMappingOp: BodyOperation<CreateScimMappingData, typeof zCreateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createScimMapping, [200], zCreateScimMappingResponse);
@@ -1347,6 +1380,7 @@ export const createTransitKeyOp: BodyOperation<CreateTransitKeyData, typeof zCre
 export const declareValuesOp: BodyOperation<DeclareValuesData, typeof zDeclareValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(declareValues, [200], zDeclareValuesResponse);
 export const deleteAdapterOp: BodyOperation<DeleteAdapterData, typeof zDeleteAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteAdapter, [200], zDeleteAdapterResponse);
 export const deleteDynamicProviderOp: BodyOperation<DeleteDynamicProviderData, typeof zDeleteDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteDynamicProvider, [200], zDeleteDynamicProviderResponse);
+export const deleteRotationOp: BodyOperation<DeleteRotationData, typeof zDeleteRotationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteRotation, [200], zDeleteRotationResponse);
 export const deleteScimMappingOp: BodyOperation<DeleteScimMappingData, typeof zDeleteScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteScimMapping, [200], zDeleteScimMappingResponse);
 export const deleteSshProfileOp: BodyOperation<DeleteSshProfileData, typeof zDeleteSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteSshProfile, [200], zDeleteSshProfileResponse);
 export const diffRevisionsOp: BodyOperation<DiffRevisionsData, typeof zDiffRevisionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffRevisions, [200], zDiffRevisionsResponse);
@@ -1464,6 +1498,8 @@ export const listRemotePairingInvitesOp: BodyOperation<ListRemotePairingInvitesD
 export const listRemotesOp: BodyOperation<ListRemotesData, typeof zListRemotesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRemotes, [200], zListRemotesResponse);
 export const listRevisionPinsOp: BodyOperation<ListRevisionPinsData, typeof zListRevisionPinsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRevisionPins, [200], zListRevisionPinsResponse);
 export const listRevisionsOp: BodyOperation<ListRevisionsData, typeof zListRevisionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRevisions, [200], zListRevisionsResponse);
+export const listRotationRunsOp: BodyOperation<ListRotationRunsData, typeof zListRotationRunsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRotationRuns, [200], zListRotationRunsResponse);
+export const listRotationsOp: BodyOperation<ListRotationsData, typeof zListRotationsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRotations, [200], zListRotationsResponse);
 export const listSamlProvidersOp: BodyOperation<ListSamlProvidersData, typeof zListSamlProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSamlProviders, [200], zListSamlProvidersResponse);
 export const listSamlSpKeysOp: BodyOperation<ListSamlSpKeysData, typeof zListSamlSpKeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSamlSpKeys, [200], zListSamlSpKeysResponse);
 export const listScimBindingsOp: BodyOperation<ListScimBindingsData, typeof zListScimBindingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listScimBindings, [200], zListScimBindingsResponse);
@@ -1497,6 +1533,7 @@ export const passkeyLoginFinishOp: BodyOperation<PasskeyLoginFinishData, typeof 
 export const passkeyLoginStartOp: BodyOperation<PasskeyLoginStartData, typeof zPasskeyLoginStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginStart, [200], zPasskeyLoginStartResponse);
 export const patchSamlProviderOp: BodyOperation<PatchSamlProviderData, typeof zPatchSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(patchSamlProvider, [200], zPatchSamlProviderResponse);
 export const pauseAdapterTargetOp: BodyOperation<PauseAdapterTargetData, typeof zPauseAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pauseAdapterTarget, [200], zPauseAdapterTargetResponse);
+export const pauseRotationOp: BodyOperation<PauseRotationData, typeof zPauseRotationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pauseRotation, [200], zPauseRotationResponse);
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
 export const pollCliDeviceOp: BodyOperation<PollCliDeviceData, typeof zPollCliDeviceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pollCliDevice, [200], zPollCliDeviceResponse);
 export const prepareRemotePairingOp: BodyOperation<PrepareRemotePairingData, typeof zPrepareRemotePairingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(prepareRemotePairing, [201], zPrepareRemotePairingResponse);
@@ -1527,6 +1564,7 @@ export const refreshSamlProviderMetadataOp: BodyOperation<RefreshSamlProviderMet
 export const regenerateRecoveryCodesOp: BodyOperation<RegenerateRecoveryCodesData, typeof zRegenerateRecoveryCodesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(regenerateRecoveryCodes, [200], zRegenerateRecoveryCodesResponse);
 export const releasePkiIssuerHoldOp: BodyOperation<ReleasePkiIssuerHoldData, typeof zReleasePkiIssuerHoldResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releasePkiIssuerHold, [200], zReleasePkiIssuerHoldResponse);
 export const releaseRevisionPinOp: BodyOperation<ReleaseRevisionPinData, typeof zReleaseRevisionPinResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releaseRevisionPin, [200], zReleaseRevisionPinResponse);
+export const releaseRotationHoldOp: BodyOperation<ReleaseRotationHoldData, typeof zReleaseRotationHoldResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releaseRotationHold, [200], zReleaseRotationHoldResponse);
 export const removeAdapterTargetOp: BodyOperation<RemoveAdapterTargetData, typeof zRemoveAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removeAdapterTarget, [200], zRemoveAdapterTargetResponse);
 export const removePasskeyOp: BodyOperation<RemovePasskeyData, typeof zRemovePasskeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removePasskey, [200], zRemovePasskeyResponse);
 export const removeTotpOp: BodyOperation<RemoveTotpData, typeof zRemoveTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removeTotp, [200], zRemoveTotpResponse);
@@ -1544,8 +1582,10 @@ export const reorderEnvironmentsOp: BodyOperation<ReorderEnvironmentsData, typeo
 export const replaceRulesOp: BodyOperation<ReplaceRulesData, typeof zReplaceRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(replaceRules, [200], zReplaceRulesResponse);
 export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, typeof zRequestInstanceUpdateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(requestInstanceUpdate, [202], zRequestInstanceUpdateResponse);
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
+export const resolveAccessOp: BodyOperation<ResolveAccessData, typeof zResolveAccessResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resolveAccess, [200], zResolveAccessResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
 export const resumeAdapterTargetOp: BodyOperation<ResumeAdapterTargetData, typeof zResumeAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterTarget, [202], zResumeAdapterTargetResponse);
+export const resumeRotationOp: BodyOperation<ResumeRotationData, typeof zResumeRotationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeRotation, [200], zResumeRotationResponse);
 export const retirePkiIssuerOp: BodyOperation<RetirePkiIssuerData, typeof zRetirePkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(retirePkiIssuer, [200], zRetirePkiIssuerResponse);
 export const retireSshCaKeyOp: BodyOperation<RetireSshCaKeyData, typeof zRetireSshCaKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(retireSshCaKey, [200], zRetireSshCaKeyResponse);
 export const revealMyPersonalValueOp: BodyOperation<RevealMyPersonalValueData, typeof zRevealMyPersonalValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealMyPersonalValue, [200], zRevealMyPersonalValueResponse);
@@ -1568,6 +1608,7 @@ export const rotateScanningKeyOp: BodyOperation<RotateScanningKeyData, typeof zR
 export const rotateSshCaOp: BodyOperation<RotateSshCaData, typeof zRotateSshCaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateSshCa, [200], zRotateSshCaResponse);
 export const rotateTokenKeyOp: BodyOperation<RotateTokenKeyData, typeof zRotateTokenKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateTokenKey, [200], zRotateTokenKeyResponse);
 export const rotateTransitKeyOp: BodyOperation<RotateTransitKeyData, typeof zRotateTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateTransitKey, [200], zRotateTransitKeyResponse);
+export const runRotationNowOp: BodyOperation<RunRotationNowData, typeof zRunRotationNowResponse> = /* @__PURE__ */ new GeneratedBodyOperation(runRotationNow, [202], zRunRotationNowResponse);
 export const samlAcsOp: BodyOperation<SamlAcsData, typeof zSamlAcsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlAcs, [200], zSamlAcsResponse);
 export const samlMetadataOp: BodyOperation<SamlMetadataData, typeof zSamlMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlMetadata, [200], zSamlMetadataResponse);
 export const samlStartOp: BodyOperation<SamlStartData, typeof zSamlStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlStart, [200], zSamlStartResponse);
@@ -1614,6 +1655,7 @@ export const showLeaseOp: BodyOperation<ShowLeaseData, typeof zShowLeaseResponse
 export const showPkiIssuerOp: BodyOperation<ShowPkiIssuerData, typeof zShowPkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showPkiIssuer, [200], zShowPkiIssuerResponse);
 export const showPkiProfileOp: BodyOperation<ShowPkiProfileData, typeof zShowPkiProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showPkiProfile, [200], zShowPkiProfileResponse);
 export const showRemoteOp: BodyOperation<ShowRemoteData, typeof zShowRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showRemote, [200], zShowRemoteResponse);
+export const showRotationOp: BodyOperation<ShowRotationData, typeof zShowRotationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showRotation, [200], zShowRotationResponse);
 export const showSshCaOp: BodyOperation<ShowSshCaData, typeof zShowSshCaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshCa, [200], zShowSshCaResponse);
 export const showSshCertificateOp: BodyOperation<ShowSshCertificateData, typeof zShowSshCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshCertificate, [200], zShowSshCertificateResponse);
 export const showSshProfileOp: BodyOperation<ShowSshProfileData, typeof zShowSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshProfile, [200], zShowSshProfileResponse);
@@ -1680,6 +1722,7 @@ export const deleteServiceAccountOp: BodylessOperation<DeleteServiceAccountData>
 export const deleteSshCaOp: BodylessOperation<DeleteSshCaData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteSshCa, [204]);
 export const establishCredentialOp: BodylessOperation<EstablishCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(establishCredential, [204]);
 export const logoutOp: BodylessOperation<LogoutData> = /* @__PURE__ */ new GeneratedBodylessOperation(logout, [204]);
+export const oidcLifecycleOp: BodylessOperation<OidcLifecycleData> = /* @__PURE__ */ new GeneratedBodylessOperation(oidcLifecycle, [204]);
 export const removeRemoteOp: BodylessOperation<RemoveRemoteData> = /* @__PURE__ */ new GeneratedBodylessOperation(removeRemote, [204]);
 export const reportDeliveryTargetOp: BodylessOperation<ReportDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportDeliveryTarget, [204]);
 export const reportFileTargetOp: BodylessOperation<ReportFileTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportFileTarget, [204]);

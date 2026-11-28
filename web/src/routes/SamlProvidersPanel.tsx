@@ -123,7 +123,7 @@ export function SamlProvidersPanel() {
           >
             <Glyph name="plus" /> configure SAML provider
           </Button>
-          <code className="instance-cli">$ hikyo provider saml add</code>
+          <code className="instance-cli">$ hikyo instance-config provider create --kind saml</code>
         </div>
     </Panel>
   );

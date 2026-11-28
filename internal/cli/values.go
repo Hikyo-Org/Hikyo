@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -726,7 +726,7 @@ func valueTable(list apigen.ValueList) Table {
 func diffTable(d apigen.ValueDiff) Table {
 	rows := make([][]string, 0, len(d.Items))
 	for _, row := range d.Items {
-		verdict := "unknown"
+		var verdict string
 		switch {
 		case row.Equal == nil:
 			// Both sides `set`, at least one unreadable: whether two secrets

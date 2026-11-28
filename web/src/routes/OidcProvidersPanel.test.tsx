@@ -73,3 +73,23 @@ it('replaces a shown server refusal with the field error on an invalid re-submit
   expect(alerts[0]?.textContent).toContain('The client secret is write-only');
   expect(control(container, 'Client secret').getAttribute('aria-invalid')).toBe('true');
 });
+
+it('shows the lifecycle secret field only once a directory profile is chosen', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({ providers: [] }))));
+  const { container, unmount } = await renderForm(<OidcProvidersPanel />);
+  cleanups.push(unmount);
+  await settleTask();
+
+  await click(container, 'add identity provider');
+  const hasSecret = () =>
+    [...container.querySelectorAll('label')].some((l) => l.textContent === 'Lifecycle signing secret');
+  expect(hasSecret()).toBe(false);
+
+  const select = container.querySelector('select');
+  if (select === null) throw new Error('no profile select');
+  await act(async () => {
+    select.value = 'clerk';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(hasSecret()).toBe(true);
+});

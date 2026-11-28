@@ -67,6 +67,24 @@ describe('DeliveryTargetsPanel', () => {
     expect(healthyTreatment(page)).toEqual([]);
   });
 
+  it('names each group table distinctly when two clusters share a namespace', async () => {
+    const other = target(2, 'reported', undefined, {
+      target: { ...target(2, 'reported').target, cluster_id: '1e0f9a8b-2c3d-4e4f-9a5b-6c7d8e9f0a12' },
+    });
+    const page = await render(viewOf(listing({ targets: [target(0, 'reported'), other] })));
+    const regions = [...page.querySelectorAll('.table-scroll[aria-labelledby]')].filter((region) =>
+      region.textContent?.includes('api-secrets-'),
+    );
+    expect(regions).toHaveLength(2);
+    const names = regions.map((region) => {
+      const id = region.getAttribute('aria-labelledby') ?? '';
+      return page.ownerDocument.getElementById(id)?.textContent ?? '';
+    });
+    expect(new Set(regions.map((region) => region.getAttribute('aria-labelledby'))).size).toBe(2);
+    expect(new Set(names).size).toBe(2);
+    for (const name of names) expect(name).toContain('namespace payments');
+  });
+
   it('says "no reports" for an empty listing, never healthy', async () => {
     const page = await render(viewOf(listing({ observed: false })));
     expect(page.textContent).toContain('No reports.');

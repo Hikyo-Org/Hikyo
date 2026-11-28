@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net"
 	"net/http"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type countedTrustListener struct {
@@ -175,7 +176,7 @@ func TestExistingAndProvisionedSPKITrustDoesNotRequireModeFlag(t *testing.T) {
 			entry := TrustEntry{Name: "ci", Origin: server.URL, SPKIPin: SPKIFingerprint(server.Certificate())}
 			bundlePath := ""
 			if provisioned {
-				raw, err := json.Marshal(entry)
+				raw, err := json.Marshal(entry, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

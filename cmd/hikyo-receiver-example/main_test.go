@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/sealedreceiver"
 )
 
@@ -54,7 +55,7 @@ func TestKeygenFingerprintAndConfigRoundTrip(t *testing.T) {
 		"identity_file": "identity.age", "ack_key_file": "ack.pem",
 		"senders":  []map[string]string{{"key": sender}, {"key": sender, "not_after": "2026-10-01T00:00:00Z"}},
 		"bindings": map[string]string{"prod": "token"},
-	})
+	}, jsonwire.Stable)
 	path := filepath.Join(dir, "receiver.json")
 	if err := os.WriteFile(path, cfg, 0o600); err != nil {
 		t.Fatal(err)
@@ -178,7 +179,7 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 		"hybrid_identity_file": "identity-hybrid.age", "ack_key_file": "ack.pem", "ack_key_mldsa65_file": "ack-mldsa65.pem",
 		"senders_v2": []map[string]string{{"key": senderEd["public_key"], "key_mldsa65": senderPQ["public_key"]}, {"key": senderEd["public_key"], "key_mldsa65": senderPQ["public_key"], "not_after": "2026-10-01T00:00:00Z"}},
 		"bindings":   map[string]string{"prod": "token"},
-	})
+	}, jsonwire.Stable)
 	path := filepath.Join(recvDir, "receiver.json")
 	if err := os.WriteFile(path, cfg, 0o600); err != nil {
 		t.Fatal(err)
@@ -206,7 +207,7 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 	broken, _ := json.Marshal(map[string]any{
 		"target_id": "payments", "instance_id": "hikyo", "generation": 4, "hybrid_identity_file": "identity-hybrid.age",
 		"ack_key_file": "ack.pem", "ack_key_mldsa65_file": "missing.pem", "senders_v2": []map[string]string{},
-	})
+	}, jsonwire.Stable)
 	if err := os.WriteFile(path, broken, 0o600); err != nil {
 		t.Fatal(err)
 	}

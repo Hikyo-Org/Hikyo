@@ -3,7 +3,7 @@ package pairing
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 

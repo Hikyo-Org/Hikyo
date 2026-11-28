@@ -78,8 +78,9 @@ before any generation or stamp changes.
 
 ## Plaintext and offline operation
 
-`run` writes no plaintext file. Rendered targets exist only in the absolute
-runtime directory, which must be tmpfs: `RuntimeDirectory=` under systemd or
+`run` writes no plaintext file. Rendered targets exist only in the runtime
+directory, an absolute, clean path (no `.` or `..` segments and no trailing
+slash) that must be tmpfs: `RuntimeDirectory=` under systemd or
 `$XDG_RUNTIME_DIR` for a user service. On Unix it must be owned by the user
 running `hikyo`, and its parent and every directory above it (including
 symlink targets) must be owned by that user or root and not writable by group
@@ -129,6 +130,9 @@ invokes `docker compose up -d` only when a target stamp moved. The shipped
 `install/systemd/hikyo-compose-sync.service` and `.timer` show a 5-minute
 one-shot schedule with `RuntimeDirectory=hikyo` and
 `LoadCredentialEncrypted=`. Copy and edit them; Hikyo ships no generator.
+Both commands find `docker` on `PATH`; set `HIKYO_COMPOSE_DOCKER` to an
+executable path when the service user's `PATH` lacks it; see
+[configuration](/docs/configuration/#client-variables).
 
 ## Credential channels and limits
 

@@ -1,0 +1,27 @@
+{
+  "protocols": {
+    "owner/owner.go:Clean": {"hash": "936be813ba76377a39c20fbb989d1464345d214b0bfbac30b78212318af8ed1a", "reason": "fixture: a pinned owner with nothing to report"},
+    "owner/owner.go:StaleBody": {"hash": "stale", "reason": "fixture: the body hash is stale"},
+    "owner/owner.go:StaleDependency": {"hash": "e6bb432ef903dd439016534748561990c6be4460ac186fbf98b20de6b784f758", "reason": "fixture: a helper in an imported package changed", "dependencies": ["helper/helper.go:Build", "deep/deep.go:Quote"]},
+    "owner/owner.go:StaleDeepDependency": {"hash": "fe89380d53dc85484d7109d685711567ca6ecd0c7d939270fe689c43bbbfcae3", "reason": "fixture: a helper two imports away changed", "dependencies": ["helper/helper.go:Wrap", "deep/deep.go:Escape"]},
+    "owner/owner.go:MissingDependency": {"hash": "48f2a22c09d4a40addd9c3a4a0928afe4c723f9c874d68c5b195b5d28754fa1a", "reason": "fixture: a helper the pin does not list"},
+    "owner/owner.go:DroppedDependencies": {"hash": "1f44fad68644a652b8965ebe20e3a3701d728e1ec83e061e617de83931435059", "reason": "fixture: pinned helpers the body no longer reaches", "dependencies": ["helper/helper.go:Spare", "helper/helper.go:Gone"]},
+    "owner/owner.go:Restricted": {"hash": "be88e17fff84ef6dc4b1b833493abd3f7e5391597cbf5830f9fc60882cbe73d4", "reason": "fixture: callable only from reviewed callers", "callers": {"owner/owner.go:Caller": "0a5a521abdba38e1234e9861ecbbf6e40c0c3c05e12e64b317ed0ee5c7cdb9ca", "owner/owner.go:OldCaller": "retired"}},
+    "owner/owner.go:ViaMethod": {"hash": "7b8c15bb1f48a3a3efdc4b706fff7885f3901434918a2ac0f660ce593bccdf0d", "reason": "fixture: a method of a package the owner does not import", "dependencies": ["helper/helper.go:NewQ", "deep/deep.go:Q.Lit"]},
+    "owner/owner.go:ViaUnexported": {"hash": "0305cff0f2f882f69649f3288290892482a0996aecc0c0d8875305c112d92342", "reason": "fixture: an unexported helper in an imported package", "dependencies": ["helper/helper.go:Build2", "helper/helper.go:quote2", "deep/deep.go:Quote"]},
+    "owner/gone.go:Vanished": {"hash": "retired", "reason": "fixture: no package declares this owner"},
+    "owner/gone.go:WindowsOnly": {"hash": "retired", "reason": "fixture: required in the windows source set only", "build_contexts": ["windows"]}
+  },
+  "helpers": {
+    "helper/helper.go:Build": "stale",
+    "deep/deep.go:Quote": "ec67b02af82349faed72c0df3aa275378a2bb33ffc4ca41eec2072e7aa5593a7",
+    "helper/helper.go:Wrap": "460480d3760d64a22e4b0406edf9bdb0d6506dfd0d7f673bc35ee1d8eb155551",
+    "deep/deep.go:Escape": "stale",
+    "helper/helper.go:Spare": "c6f1f8be6a55dcf84dde6dd0e4cfc62065dbdec4c83aa02c879a2ecbc4d29600",
+    "helper/helper.go:Gone": "gone",
+    "helper/helper.go:NewQ": "a9bbde87ff153b7abe7e0e29f5c4dd457ea38fdc186889245cd56341b3dd9346",
+    "deep/deep.go:Q.Lit": "stale",
+    "helper/helper.go:Build2": "e5e3ef67de3c415dfad13ee79451b9890ce8be0a1bcc2e4b8b5625cc61fb3922",
+    "helper/helper.go:quote2": "stale"
+  }
+}

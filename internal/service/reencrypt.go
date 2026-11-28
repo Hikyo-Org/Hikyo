@@ -384,6 +384,15 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 				return crypto.InstanceFieldAAD{OwnerTable: "oidc_providers", OwnerRowID: id, FieldTag: "client_secret"}
 			},
 			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptOidcProvider)},
+		{table: "oidc_providers.lifecycle_secret",
+			list: store.ReencryptRepo.ListOidcLifecycleSecretsForReencrypt,
+			versionOf: func(row store.ReencryptInstanceRow) (uint32, error) {
+				return crypto.RecordKeyVersion(row.Ciphertext)
+			},
+			aad: providerLifecycleAAD,
+			reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, _ uint32) (bool, error) {
+				return r.ReencryptOidcLifecycleSecret(ctx, p, row.ID, ciphertext, row.Ciphertext)
+			}},
 		{table: "oauth2_providers",
 			list:      store.ReencryptRepo.ListOauth2ProvidersForReencrypt,
 			versionOf: instanceColumnVersion,

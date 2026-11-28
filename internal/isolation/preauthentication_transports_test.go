@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -141,10 +142,12 @@ func TestPreauthenticationTrustedProxyAndDocument(t *testing.T) {
 			req.RemoteAddr = "203.0.113.7:1234"
 			req.Header.Set("Authorization", "Bearer "+token)
 			// The attacker-controlled leftmost hop changes. The rightmost
-			// untrusted hop remains the only attributable client.
+			// untrusted hop remains the only attributable client, whether the
+			// proxy extends the client's list or appends a separate field line
+			// behind a forged first one.
 			req.Header.Set("X-Forwarded-For", "198.51.100.1, 192.0.2.83, 203.0.113.8")
 			if i%2 == 1 {
-				req.Header.Set("X-Forwarded-For", "198.51.100.2, 192.0.2.83, 203.0.113.8")
+				req.Header["X-Forwarded-For"] = []string{"198.51.100." + strconv.Itoa(i+2), "192.0.2.83, 203.0.113.8"}
 			}
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)

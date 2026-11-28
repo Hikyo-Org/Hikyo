@@ -9,6 +9,7 @@ package authz
 // the store method set and the exemption fixture live.
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -323,5 +324,30 @@ func TestEnvironmentDefinitionFormulaExceptionRemainsClosed(t *testing.T) {
 		if err := validateSpec(op, operationTable[op]); err != nil {
 			t.Fatalf("reviewed rule-aware formula %s: %v", op, err)
 		}
+	}
+}
+
+// release-hold lifts a hold so the executor's Gate may start the rotation again,
+// and the Gate authorizes the recorded authority under resume's formula. The two
+// formulas, the post-grant reauthentication and the self-config membership must
+// stay equal, or a release could hand the Gate a rotation it halts at once.
+func TestRotationReleaseHoldMatchesResume(t *testing.T) {
+	resume, ok := registry.ops[OpRotationResume]
+	if !ok {
+		t.Fatal("rotation.resume is not registered")
+	}
+	release, ok := registry.ops[OpRotationReleaseHold]
+	if !ok {
+		t.Fatal("rotation.release_hold is not registered")
+	}
+	const advice = "rotation.release_hold and rotation.resume must change together (the Gate checks the recorded authority under resume's formula); update both registry rows"
+	if !reflect.DeepEqual(resume.formula, release.formula) {
+		t.Errorf("formulas differ: resume %v, release_hold %v; %s", resume.formula, release.formula, advice)
+	}
+	if resume.postGrantForbidden != release.postGrantForbidden {
+		t.Errorf("post-grant reauthentication differs; %s", advice)
+	}
+	if selfConfigOperations[OpRotationResume] != selfConfigOperations[OpRotationReleaseHold] {
+		t.Errorf("self-config membership differs; %s", advice)
 	}
 }

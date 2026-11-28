@@ -36,7 +36,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,6 +54,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
+	"github.com/Hikyo-Org/hikyo/internal/testutil/reflectx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
 
@@ -1006,25 +1006,12 @@ func queryBlobs(t *testing.T, db *store.DB, q string) [][]byte {
 func TestNoBulkAcceptInTheAPISurface(t *testing.T) {
 	// 1. No reconciliation method anywhere takes a collection. The signature
 	//    is the guarantee: one principal in, one answer out.
-	for _, subject := range []struct {
-		name string
-		typ  reflect.Type
-	}{
-		{"service.Restore", reflect.TypeOf(&service.Restore{})},
-		{"authz.TxAuthorizer", reflect.TypeOf(&authz.TxAuthorizer{})},
+	for name, subject := range map[string]any{
+		"service.Restore":    &service.Restore{},
+		"authz.TxAuthorizer": &authz.TxAuthorizer{},
 	} {
-		for i := 0; i < subject.typ.NumMethod(); i++ {
-			m := subject.typ.Method(i)
-			if !strings.Contains(strings.ToLower(m.Name), "reconcil") {
-				continue
-			}
-			for j := 0; j < m.Type.NumIn(); j++ {
-				in := m.Type.In(j)
-				if in.Kind() == reflect.Slice || in.Kind() == reflect.Map {
-					t.Errorf("%s.%s takes a %s: reconciliation is per principal and has no set-taking form",
-						subject.name, m.Name, in.Kind())
-				}
-			}
+		for _, taker := range reflectx.CollectionTakers(subject, "reconcil") {
+			t.Errorf("%s.%s: reconciliation is per principal and has no set-taking form", name, taker)
 		}
 	}
 

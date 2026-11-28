@@ -87,11 +87,36 @@ func (a *TxAuthorizer) AuthorizeKey(ctx context.Context, caller Identity, op Ope
 	return a.authorizeTenant(ctx, caller, op, spec, scope, &key, nil)
 }
 
-// rulesApply reports whether a caller's rules may be consulted. The rule
-// lookup itself admits only human principals; this spares machine callers
-// the read and keeps their query count what it was.
+// rulesApply reports whether a caller's rules may be consulted: people, and
+// workload and automation credentials. Other machine classes hold no rules,
+// so they skip the read and keep their query count what it was.
 func rulesApply(caller Identity) bool {
-	return caller.Class == "" || caller.Class == domain.ClassHuman
+	return caller.Class == "" || caller.Class == domain.ClassHuman || domain.IsServiceAccountKind(caller.Class)
+}
+
+// callerRules reads the rules the chokepoint may honour for caller. A machine
+// rule that fails its class's check reaches nothing, like a rule that does
+// not validate.
+func (a *TxAuthorizer) callerRules(ctx context.Context, caller Identity) ([]domain.Rule, error) {
+	if !domain.IsServiceAccountKind(caller.Class) {
+		return a.r.Rules(ctx, caller.Principal)
+	}
+	rules, err := a.r.MachineRules(ctx, caller.Principal)
+	if err != nil {
+		return nil, err
+	}
+	return admittedMachineRules(caller.Class, rules), nil
+}
+
+// admittedMachineRules keeps the rules a machine of class c may hold.
+func admittedMachineRules(c domain.PrincipalClass, rules []domain.Rule) []domain.Rule {
+	out := make([]domain.Rule, 0, len(rules))
+	for _, r := range rules {
+		if domain.CheckMachineRule(c, r) == domain.MachineRuleOK {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // ruleSatisfiable identifies ordinary project/environment formulas that may
@@ -189,6 +214,26 @@ func (a *TxAuthorizer) RuleIDsForProject(ctx context.Context, s domain.Scope) ([
 
 func (a *TxAuthorizer) RuleIDsForOrg(ctx context.Context, org domain.OrgID) ([]string, error) {
 	return a.r.RuleIDsForOrg(ctx, string(org))
+}
+
+// RuleOrgProjects lists the org's current projects: the projects an
+// all-projects rule covers today. lock takes them for a rule write (see
+// authn.Resolver.RuleOrgProjects).
+func (a *TxAuthorizer) RuleOrgProjects(ctx context.Context, org domain.OrgID, lock bool) ([]domain.ProjectID, error) {
+	return a.r.RuleOrgProjects(ctx, string(org), lock)
+}
+
+// LockOrgProjectsForDelete lists the org's projects for a project deletion,
+// locked so it serializes with other deletions and all-projects rule writes.
+func (a *TxAuthorizer) LockOrgProjectsForDelete(ctx context.Context, org domain.OrgID) ([]domain.ProjectID, error) {
+	return a.r.LockOrgProjectsForDelete(ctx, string(org))
+}
+
+// AllProjectsRulesInOrg lists the org's all-projects rules with their stored
+// item counts; the org's last project cannot be deleted while one exists, and
+// no project may be created that lists one past the v1 bounds.
+func (a *TxAuthorizer) AllProjectsRulesInOrg(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error) {
+	return a.r.AllProjectsRulesInOrg(ctx, string(org))
 }
 
 // RuleKeyExists reports ErrNotFound unless the key id exists in the project

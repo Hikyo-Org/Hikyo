@@ -2,12 +2,13 @@ package service
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Receipts attest delivery, not the client's later assertion that it served the
@@ -32,7 +33,7 @@ func (s *Delivery) issueOfflineReceipt(signer *crypto.DeliveryTokenSnapshot, pri
 		Revision: out.Revision, ChangeToken: out.ChangeToken,
 		IssuedAt:  out.IssuedAt.UTC(),
 		ExpiresAt: out.SnapshotExpiresAt.UTC(),
-	})
+	}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}

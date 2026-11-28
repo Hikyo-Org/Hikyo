@@ -1,12 +1,13 @@
 package releaseidentity_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -16,7 +17,7 @@ func TestSourceGenesisIsExplicitAndCannotInventARelease(t *testing.T) {
 		if err := source.Validate(); err != nil {
 			t.Fatal(err)
 		}
-		raw, err := json.Marshal(source)
+		raw, err := json.Marshal(source, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

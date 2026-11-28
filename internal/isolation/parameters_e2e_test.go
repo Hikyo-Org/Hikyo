@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -183,7 +184,7 @@ func TestParameterContractPublicationBound(t *testing.T) {
 		if err := envs.SetParameter(t.Context(), actor, scope, "VALUE", ".*", false); err != nil {
 			t.Fatal(err)
 		}
-		declaration, err := json.Marshal(map[string]any{"rule": map[string]any{"type": "string", "enum": []string{strings.Repeat("a", 15000), "x"}}})
+		declaration, err := json.Marshal(map[string]any{"rule": map[string]any{"type": "string", "enum": []string{strings.Repeat("a", 15000), "x"}}}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -2,7 +2,7 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -40,6 +40,29 @@ var MLDSA65EnumLocations = []string{
 	"/components/schemas/PkiPolicy/properties/key_algorithms/items/enum",
 	"/components/schemas/CertificateIssueRequest/properties/key_algorithm/enum",
 	"/components/schemas/TransitAlgorithm/enum",
+}
+
+// MintReauthEnumLocations is the same amendment as MintReauthEnumGrowth (the
+// api-cli-surface ADR banner of 2026-11-23, #1516), in document coordinates:
+// the only enums that may grow by `mint` or `identity.credential-mint`, each by
+// exactly its one value. Adding to it is an ADR amendment, not a code edit.
+var MintReauthEnumLocations = map[string]string{
+	"/components/schemas/CLIReauthStartRequest/properties/purpose/enum":   mintReauthPurpose,
+	"/components/schemas/CLIReauthStartRequest/properties/operation/enum": mintReauthOperation,
+	"/components/schemas/CLIReauthTransaction/properties/purpose/enum":    mintReauthPurpose,
+	"/components/schemas/CLIReauthTransaction/properties/operation/enum":  mintReauthOperation,
+}
+
+// AccessReauthEnumLocations is the same amendment as AccessReauthEnumGrowth
+// (the api-cli-surface ADR banner of 2026-11-23, #1531), in document
+// coordinates: the only enums that may grow by `access` or `access.bypass`,
+// each by exactly its one value. Adding to it is an ADR amendment, not a code
+// edit.
+var AccessReauthEnumLocations = map[string]string{
+	"/components/schemas/CLIReauthStartRequest/properties/purpose/enum":   accessReauthPurpose,
+	"/components/schemas/CLIReauthStartRequest/properties/operation/enum": accessReauthOperation,
+	"/components/schemas/CLIReauthTransaction/properties/purpose/enum":    accessReauthPurpose,
+	"/components/schemas/CLIReauthTransaction/properties/operation/enum":  accessReauthOperation,
 }
 
 // contractCtx records whether a schema is read by clients (response), written
@@ -127,29 +150,93 @@ func freezeContract(base, revised []byte) ([]Violation, error) {
 // parseContractDocument decodes exactly as kin-openapi's loader does (JSON
 // first, then oasdiff/yaml), so `off` or `yes` stays the string every other
 // consumer of the spec reads, not a YAML 1.1 boolean. Numbers stay
-// json.Number, so integers beyond float64 precision remain distinct (in YAML,
-// up to the uint64 range; yaml.v3 decodes larger ones as float64).
+// contractNumber, so integers beyond float64 precision remain distinct (in
+// YAML, up to the uint64 range; yaml.v3 decodes larger ones as float64).
 func parseContractDocument(raw []byte) (map[string]any, error) {
-	useNumber := func(d *json.Decoder) *json.Decoder { d.UseNumber(); return d }
-	var v any
-	dec := useNumber(json.NewDecoder(bytes.NewReader(raw)))
-	err := dec.Decode(&v)
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	v, err := readContractValue(dec)
 	if err == nil {
-		if _, end := dec.Token(); end != io.EOF {
+		if _, end := dec.ReadToken(); !errors.Is(end, io.EOF) {
 			err = errors.New("trailing data after the JSON document")
 		}
 	}
 	if err != nil {
-		v = nil
-		if _, err := yaml.Unmarshal(raw, &v, yaml.DecodeOpts{DisableTimestamps: true}, useNumber); err != nil {
+		// oasdiff/yaml hands the converted JSON to UnmarshalJSON, which reads it
+		// with the same number-preserving reader.
+		var doc contractDocument
+		if _, err := yaml.Unmarshal(raw, &doc, yaml.DecodeOpts{DisableTimestamps: true}); err != nil {
 			return nil, err
 		}
+		v = doc.value
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("the document is not a mapping")
 	}
 	return m, nil
+}
+
+// contractNumber keeps a JSON number's digits, distinct from a string.
+type contractNumber string
+
+// contractDocument receives oasdiff/yaml's JSON conversion of a YAML document.
+type contractDocument struct{ value any }
+
+func (d *contractDocument) UnmarshalJSON(raw []byte) (err error) {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	d.value, err = readContractValue(dec)
+	return err
+}
+
+// readContractValue reads one JSON value into maps, slices, strings, bools,
+// nil and contractNumber. Duplicate member names are an error.
+func readContractValue(dec *jsontext.Decoder) (any, error) {
+	switch kind := dec.PeekKind(); kind {
+	case '{':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		m := map[string]any{}
+		for dec.PeekKind() != '}' {
+			name, err := dec.ReadToken()
+			if err != nil {
+				return nil, err
+			}
+			if m[name.String()], err = readContractValue(dec); err != nil {
+				return nil, err
+			}
+		}
+		_, err := dec.ReadToken()
+		return m, err
+	case '[':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		a := []any{}
+		for dec.PeekKind() != ']' {
+			v, err := readContractValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			a = append(a, v)
+		}
+		_, err := dec.ReadToken()
+		return a, err
+	default:
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return nil, err
+		}
+		switch kind {
+		case 'n':
+			return nil, nil
+		case 't', 'f':
+			return tok.Bool(), nil
+		case '0':
+			return contractNumber(tok.String()), nil
+		}
+		return tok.String(), nil
+	}
 }
 
 func (w *contractWalker) report(id string, l loc, detail, what string) {
@@ -729,7 +816,7 @@ func (w *contractWalker) required(c contractCtx, b, r map[string]any) rule {
 	}
 }
 
-// enum has set semantics and never changes, except the mldsa65 amendment.
+// enum has set semantics and never changes, except the mldsa65, mint and access amendments.
 func (w *contractWalker) enum(l loc, b, r any, hb, hr bool) {
 	ba, ok1 := b.([]any)
 	ra, ok2 := r.([]any)
@@ -741,12 +828,26 @@ func (w *contractWalker) enum(l loc, b, r any, hb, hr bool) {
 	for _, v := range gone {
 		w.removed(l, fmt.Sprintf(" value %v", v))
 	}
-	if len(gone) == 0 && len(grown) == 1 && grown[0] == mldsa65 && slices.Contains(MLDSA65EnumLocations, l.String()) {
-		return
-	}
+	// Each amendment names one value at its own coordinates; growth by several
+	// amendments' values at once is each judged on its own, and any other value
+	// is refused. A removal anywhere refuses the whole enum.
 	for _, v := range grown {
+		if len(gone) == 0 && w.permittedEnumValue(l, v) {
+			continue
+		}
 		w.added(l, fmt.Sprintf(" value %v", v))
 	}
+}
+
+func (w *contractWalker) permittedEnumValue(l loc, v any) bool {
+	if v == mldsa65 && slices.Contains(MLDSA65EnumLocations, l.String()) {
+		return true
+	}
+	if want, ok := MintReauthEnumLocations[l.String()]; ok && v == want {
+		return true
+	}
+	want, ok := AccessReauthEnumLocations[l.String()]
+	return ok && v == want
 }
 
 // openEnum may grow: that is what declaring an enum open means.

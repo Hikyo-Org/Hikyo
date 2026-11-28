@@ -129,11 +129,22 @@ Acceptance criteria, in the issue's order:
 | 4 | Zero-recipient, exclusivity, scrypt bound, header and stanza counts, final-chunk authentication, safe file creation | PASS (existing tests unchanged and passing, plus new ones) |
 | 5 | About 2000-character recipients, real header size at the supported count, deterministic refusal | PASS: 1959 characters, 49,846-byte header at 32, 33 refused before output |
 | 6 | Readers open frozen legacy and hybrid archives; old readers fail clearly; migration docs and preflight set the minimum reader | PARTIAL: frozen fixtures, clear old-reader errors (run against the pre-change code) and docs are done; no preflight enforcement of a reader floor |
-| 7 | Round trip, wrong key, corruption, truncation, unknown algorithm or schema, mixed, bounds, interrupted export, restart, custody mismatch | PASS except restart: interrupted publication and retry are tested, a process restart is not |
+| 7 | Round trip, wrong key, corruption, truncation, unknown algorithm or schema, mixed, bounds, interrupted export, restart, custody mismatch | PASS: interrupted publication and retry are tested, and the debris a killed export leaves (a chunk-aligned `.partial` prefix and a work directory) is shown to refuse restore with `ErrTruncated`, and neither blocks the next export (`TestExportAfterInterruptedExport*`). The work directory holds an unencrypted datastore copy; the next export sweeps a dead one (free liveness lock) and spares a live one (#1412, same test; look-alikes and legacy shapes included). A real SIGKILL of a running process is not driven; the gate's process-level crash routes (`TestGatePopulatedProcessCrashRoutes`) kill the gate process at the sql-complete, healthy and schema-applied boundaries, not during an archive write |
 | 8 | Complete backup/restore and upgrade-custody drills on SQLite and PostgreSQL | PASS for the ordinary drill, the manual-route upgrade drill and the gate with a hybrid identity on both engines. PARTIAL for automatic upgrade custody: it stays X25519 and a hybrid policy refuses it, so no hybrid vault drill exists |
 | 9 | Document wrapper scope, passphrase entropy, rewrap limits | PASS |
-| 10 | Non-destructive migration, fresh hybrid receipts, rollback demonstration, docs, exact-revision evidence | PARTIAL: the procedure is documented. Receipts are written only for upgrade exports (`internal/service/backup.go:249`); `hikyo backup export` and scheduled exports write none (E-19, below). The rollback is documented, not demonstrated end to end |
+| 10 | Non-destructive migration, fresh hybrid receipts, rollback demonstration, docs, exact-revision evidence | PARTIAL: the procedure is documented. Receipts are written only for upgrade exports (`internal/service/backup.go:249`); `hikyo backup export` and scheduled exports write none (E-19, below). The rollback is demonstrated at restore level on both engines (`TestRollbackToX25519KeepsHybridArchivesRestorable*`): after the policy returns to an X25519 recipient the hybrid archive still restores with the retained hybrid identity and not with the X25519 one, and the new X25519 archive the reverse. Not run: the packaged `sudo hikyo upgrade` rollback |
 | | Strict backup restore provenance | HOLD (E-19) |
+
+## Slice 1 evidence: restore after root rotation (2026-11-16)
+
+Code at `8cdd3a1a5` (docs-only commits may follow). `go test -p 2 -parallel 2`
+through the job queue, PostgreSQL 18.6 with `fsync=on`, no test skipped.
+
+| Check | Result |
+| --- | --- |
+| `internal/isolation` `TestRestoreAfterRootRotation{SQLite,Postgres}`, X25519 and hybrid identity (14 subtests per engine and class): archive exported after a full prepare, install, verify, finalize rotation boots under the new root only; an archive exported before it restores and boots under the old root only; stanza, header MAC and final-chunk payload flips, a foreign X25519 and a foreign hybrid identity (age no-identity-match) and the root key file used as an identity are refused with the target untouched | ok |
+| `internal/upgradecustody` `TestRootRotationKeepsAHybridBackupIdentity`: a hybrid identity carried through stage and commit opens under both roots while staged, the retired root is refused after commit | ok |
+| Not covered | `rotate-root-key` end to end against an enrolled unattended vault that holds a hybrid identity: the isolation drill runs the rotation without the custody seam, and the vault only mints X25519 |
 
 ## Compatibility
 
@@ -146,7 +157,29 @@ Acceptance criteria, in the issue's order:
   hybrid identity gives `backup identity is not a valid age X25519 identity`, an
   X25519 identity against a hybrid archive gives `identity did not match any of
   the recipients`, and a hybrid recipient is refused at upgrade export. A v2
-  receipt is `invalid backup receipt` to a v1-only parser (by source reading).
+  receipt is `invalid closed upgrade artifact` to a v1-only parser (run in the downgrade drill below).
+* Downgrade drill (2026-11-16): the reader built from `b1274dc96`, the parent of
+  the #1158 merge, was given objects written by current code (a throwaway test
+  in a detached worktree, since removed). Every case refused loudly and none
+  decrypted or parsed silently:
+
+  | Old reader input | Result |
+  | --- | --- |
+  | hybrid identity on a hybrid archive | `backup identity is not a valid age X25519 identity` |
+  | X25519 identity on a hybrid archive | `identity did not match any of the recipients` |
+  | hybrid recipient to the old writer | `Validate` refuses it (`invalid type "age1pq"`) before any output |
+  | `backup-receipt/v2` JSON to `ParseReceipt` | `invalid closed upgrade artifact` |
+  | X25519 archive written by current code, X25519 identity | opens (the classical format is unchanged) |
+
+  Code at the PR head of slice 2, same queue and PostgreSQL 18.6 as above, no
+  skips: `TestExportAfterInterruptedExport{SQLite,Postgres}` and
+  `TestRollbackToX25519KeepsHybridArchivesRestorable{SQLite,Postgres}` ok.
+
+  The reverse direction (current reader, frozen pre-change archives and the v1
+  receipt) is pinned in the tree by `internal/crypto/backup/testdata/legacy` and
+  `artifacts_test.go`. The drill ran at library level; a scheduled export under
+  an old binary with a stored hybrid policy was not run through the packaged CLI
+  (NOTRUN).
 * **Minimum capable reader**: the release containing this change, for every host
   that may restore a hybrid archive or verify a v2 receipt. No preflight
   mechanism enforces that floor; it is documented only (remaining work).
@@ -182,7 +215,7 @@ Acceptance criteria, in the issue's order:
 | PQ signatures on receipts and attestation | HOLD (#1132) | P-256 stays |
 | Hybrid identity generation inside the custody vault | NOT BUILT | `create` and enrollment have no selection input. A vault record holding a hybrid identity works; nothing creates one |
 | Vault holds one `backup_identity` | NOT BUILT | Keeping an old identity beside a new one needs its own escrow or a vault format change |
-| Vault re-seal on root rotation | HOLD (#1154) | Out of scope; age-scrypt kept |
+| Vault re-seal on root rotation | DONE for the runtime-owned vault (#1154, PR #1337); the root-only host vault stays unreachable and is documented | Slice 1 adds a hybrid identity through stage and commit (`TestRootRotationKeepsAHybridBackupIdentity`) and archive restore after a real rotation on both engines (`TestRestoreAfterRootRotation*`) |
 | Secret-scanner rule for `AGE-SECRET-KEY-PQ-1...` | NOT BUILT | Checked with `Ruleset.Scan`: the built-in scanner finds **neither** an X25519 nor a hybrid age identity, because the vendored `age-secret-key` rule is not on `internal/scanning/rules/allowlist.txt` and so is not compiled. A rule for either class means an allowlist and generator change under the secret-scanning ADR (64-rule ceiling), not an edit. The migration policy's statement that only the PQ form is unmatched is incomplete |
 | Preflight minimum-reader floor | NOT BUILT | Documented only |
 | `scripts/ci/floor-acceptance.sh:27` and `scripts/ci/check-config-rollout-kind.py:1129` (`prepare_age_identity`) | NOT UPDATED, NOTRUN | Both require `AGE-SECRET-KEY-1` and use `age-keygen` without `-pq`. They are classical-custody runbook and rollout-drill checks; neither was run here and neither is changed |

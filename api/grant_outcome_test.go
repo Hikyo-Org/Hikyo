@@ -1,10 +1,11 @@
 package api_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func TestGrantOutcomeJSONIsClosed(t *testing.T) {
@@ -17,7 +18,7 @@ func TestGrantOutcomeJSONIsClosed(t *testing.T) {
 		{outcome: api.GrantOutcomeUnchanged(), wire: `"unchanged"`},
 	} {
 		t.Run(tc.outcome.String(), func(t *testing.T) {
-			encoded, err := json.Marshal(tc.outcome)
+			encoded, err := json.Marshal(tc.outcome, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +41,7 @@ func TestGrantOutcomeZeroValueIsInvalid(t *testing.T) {
 	if outcome.Valid() {
 		t.Fatal("zero outcome must be invalid")
 	}
-	if _, err := json.Marshal(outcome); err == nil {
+	if _, err := json.Marshal(outcome, jsonwire.Stable); err == nil {
 		t.Fatal("zero outcome must fail JSON encoding")
 	}
 }

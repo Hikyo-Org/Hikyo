@@ -475,6 +475,38 @@ func (q *Queries) DynamicGetProvider(ctx context.Context, arg DynamicGetProvider
 	return i, err
 }
 
+const dynamicListActiveProviderIDsForProject = `-- name: DynamicListActiveProviderIDsForProject :many
+SELECT id FROM dynamic_providers WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id LIMIT $3
+`
+
+type DynamicListActiveProviderIDsForProjectParams struct {
+	ChainOrg     string
+	ChainProject string
+	RowLimit     int32
+}
+
+// Project delete (#1420): an active provider refuses the delete; tombstoned ones
+// (kept only for the worker's revoke path) go with the project.
+func (q *Queries) DynamicListActiveProviderIDsForProject(ctx context.Context, arg DynamicListActiveProviderIDsForProjectParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, dynamicListActiveProviderIDsForProject, arg.ChainOrg, arg.ChainProject, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const dynamicListLeasesForEnvironment = `-- name: DynamicListLeasesForEnvironment :many
 SELECT id,provider_id,environment_id,principal_id,principal_class,provider_handle,state,issued_at,expires_at,max_ttl_seconds,last_transition_at,created_at FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 ORDER BY id
 `
@@ -522,6 +554,149 @@ func (q *Queries) DynamicListLeasesForEnvironment(ctx context.Context, arg Dynam
 			&i.MaxTtlSeconds,
 			&i.LastTransitionAt,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const dynamicListLiveLeaseIDsForEnvironment = `-- name: DynamicListLiveLeaseIDsForEnvironment :many
+SELECT id FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state NOT IN ('revoked','expired','failed') ORDER BY id LIMIT $4
+`
+
+type DynamicListLiveLeaseIDsForEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	RowLimit     int32
+}
+
+// Environment delete (#1420): the leases that are not revoked, expired or failed
+// still pin a provider role, so they refuse the delete; the terminal ones and
+// their effects are purged with it.
+func (q *Queries) DynamicListLiveLeaseIDsForEnvironment(ctx context.Context, arg DynamicListLiveLeaseIDsForEnvironmentParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, dynamicListLiveLeaseIDsForEnvironment,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const dynamicListNonTerminalLeasesInInstance = `-- name: DynamicListNonTerminalLeasesInInstance :many
+SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE state NOT IN ('revoked','expired','failed') AND id > $1 ORDER BY id LIMIT $2
+`
+
+type DynamicListNonTerminalLeasesInInstanceParams struct {
+	AfterID  string
+	RowLimit int32
+}
+
+type DynamicListNonTerminalLeasesInInstanceRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProviderID    string
+	State         string
+}
+
+// Incident enumeration at instance level: the non-terminal leases of every org,
+// in id order and bounded by the limit. The read is cross-tenant by definition,
+// like ListAllProjects, and selects identifiers and the state only.
+// hikyo:reason Instance-level incident enumeration lists non-terminal lease identifiers across orgs only behind the instance credential-reset operation, whose proof carries an empty chain; the page is bounded and no lease secret is selected.
+// hikyo:instance-scoped
+func (q *Queries) DynamicListNonTerminalLeasesInInstance(ctx context.Context, arg DynamicListNonTerminalLeasesInInstanceParams) ([]DynamicListNonTerminalLeasesInInstanceRow, error) {
+	rows, err := q.db.Query(ctx, dynamicListNonTerminalLeasesInInstance, arg.AfterID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DynamicListNonTerminalLeasesInInstanceRow
+	for rows.Next() {
+		var i DynamicListNonTerminalLeasesInInstanceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.State,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const dynamicListNonTerminalLeasesInProject = `-- name: DynamicListNonTerminalLeasesInProject :many
+SELECT id, org_id, project_id, environment_id, provider_id, state FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND state NOT IN ('revoked','expired','failed') AND id > $3 ORDER BY id LIMIT $4
+`
+
+type DynamicListNonTerminalLeasesInProjectParams struct {
+	ChainOrg     string
+	ChainProject string
+	AfterID      string
+	RowLimit     int32
+}
+
+type DynamicListNonTerminalLeasesInProjectRow struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProviderID    string
+	State         string
+}
+
+// Incident enumeration: the non-terminal leases of one project, in id order and
+// bounded by the limit. Only identifiers and the state are selected.
+func (q *Queries) DynamicListNonTerminalLeasesInProject(ctx context.Context, arg DynamicListNonTerminalLeasesInProjectParams) ([]DynamicListNonTerminalLeasesInProjectRow, error) {
+	rows, err := q.db.Query(ctx, dynamicListNonTerminalLeasesInProject,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DynamicListNonTerminalLeasesInProjectRow
+	for rows.Next() {
+		var i DynamicListNonTerminalLeasesInProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.ProviderID,
+			&i.State,
 		); err != nil {
 			return nil, err
 		}
@@ -642,6 +817,50 @@ func (q *Queries) DynamicProviderCredentialCiphertext(ctx context.Context, arg D
 	var admin_credential_ciphertext []byte
 	err := row.Scan(&admin_credential_ciphertext)
 	return admin_credential_ciphertext, err
+}
+
+const dynamicPurgeEffectsForEnvironment = `-- name: DynamicPurgeEffectsForEnvironment :exec
+DELETE FROM dynamic_effects WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type DynamicPurgeEffectsForEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) DynamicPurgeEffectsForEnvironment(ctx context.Context, arg DynamicPurgeEffectsForEnvironmentParams) error {
+	_, err := q.db.Exec(ctx, dynamicPurgeEffectsForEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const dynamicPurgeLeasesForEnvironment = `-- name: DynamicPurgeLeasesForEnvironment :exec
+DELETE FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND environment_id=$3
+`
+
+type DynamicPurgeLeasesForEnvironmentParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+func (q *Queries) DynamicPurgeLeasesForEnvironment(ctx context.Context, arg DynamicPurgeLeasesForEnvironmentParams) error {
+	_, err := q.db.Exec(ctx, dynamicPurgeLeasesForEnvironment, arg.ChainOrg, arg.ChainProject, arg.ChainEnv)
+	return err
+}
+
+const dynamicPurgeTombstonedProvidersForProject = `-- name: DynamicPurgeTombstonedProvidersForProject :exec
+DELETE FROM dynamic_providers WHERE org_id=$1 AND project_id=$2 AND state='tombstoned'
+`
+
+type DynamicPurgeTombstonedProvidersForProjectParams struct {
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) DynamicPurgeTombstonedProvidersForProject(ctx context.Context, arg DynamicPurgeTombstonedProvidersForProjectParams) error {
+	_, err := q.db.Exec(ctx, dynamicPurgeTombstonedProvidersForProject, arg.ChainOrg, arg.ChainProject)
+	return err
 }
 
 const dynamicReencryptProvider = `-- name: DynamicReencryptProvider :execrows

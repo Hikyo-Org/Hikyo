@@ -165,7 +165,7 @@ func (c *Client) Forget() { c.http.CloseIdleConnections() }
 // CanonicalOrigin accepts only a bare https origin: no userinfo, path, query,
 // or fragment. The protocol path is fixed and appended by the client.
 func CanonicalOrigin(raw string) (string, error) {
-	return adapter.CanonicalOrigin(adapter.SealedWebhookProvider, raw)
+	return adapter.CanonicalOrigin(adapter.EncryptedWebhookProvider, raw)
 }
 
 // Deliver posts one envelope and verifies the answer. Classification:

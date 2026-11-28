@@ -10,7 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"math/big"
 	"net/http"
@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -43,7 +44,7 @@ func testNativeSecretTypes(t *testing.T, cfg *rest.Config, sch *runtime.Scheme) 
 	passwordFile := os.Getenv("HIKYO_K8S_E2E_REGISTRY_PASSWORD_FILE")
 	password, err := os.ReadFile(passwordFile)
 	must(t, err)
-	registryJSON, err := json.Marshal(map[string]any{"auths": map[string]any{registry: map[string]string{"auth": base64.StdEncoding.EncodeToString(append([]byte("hikyo-test:"), password...))}}})
+	registryJSON, err := json.Marshal(map[string]any{"auths": map[string]any{registry: map[string]string{"auth": base64.StdEncoding.EncodeToString(append([]byte("hikyo-test:"), password...))}}}, jsonwire.Stable)
 	must(t, err)
 	certPEM, keyPEM := nativeTLSFixture(t)
 	e := newOpEnv(t, cfg, sch, false)

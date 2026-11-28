@@ -13,7 +13,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"math/big"
 	"net/url"
 	"testing"

@@ -62,6 +62,17 @@ INNER JOIN grant_origins AS o ON o.grant_id = g.id
 WHERE g.org_id = sqlc.arg(org_id) AND g.project_id = sqlc.arg(project_id)
 ORDER BY g.principal_id, g.capability, g.id, o.kind, o.subject;
 
+-- hikyo:reason rule.resolve reads only the grant lines scoped AT one org (project_id IS NULL), filtered to the asked capability (the only line that can decide a principal's answer; See is read from the principal's own grants), so org-level holders reach the "Who can...?" population without reading sibling-project membership; instance grants and every project or env row stay out.
+-- hikyo:authn-resolution
+-- name: ListOrgLevelGrantsWithOriginsForCapability :many
+SELECT g.id, g.principal_id, g.capability, g.org_id, g.project_id, g.env_id,
+       g.created_at, o.kind, o.subject
+FROM grants AS g
+INNER JOIN grant_origins AS o ON o.grant_id = g.id
+WHERE g.org_id = sqlc.arg(org_id) AND g.project_id IS NULL
+  AND g.capability = sqlc.arg(capability)
+ORDER BY g.principal_id, g.capability, g.id, o.kind, o.subject;
+
 -- hikyo:authn-resolution
 -- name: ListGrantsWithOriginsAtInstance :many
 SELECT g.id, g.principal_id, g.capability, g.org_id, g.project_id, g.env_id,
@@ -78,14 +89,14 @@ SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members'
   AND project_id IS NULL
   AND (org_id = sqlc.arg(org_id) OR org_id IS NULL)
-AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 ORDER BY principal_id;
 
 -- hikyo:authn-resolution
 -- name: ListManageMembersHoldersAtInstance :many
 SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members' AND org_id IS NULL
-AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active' AND principals.containment_state = 'none')
 ORDER BY principal_id;
 
 -- hikyo:authn-resolution

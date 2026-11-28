@@ -53,8 +53,10 @@ timelines:
   callback's head to every open dev PR on it. This is shown from the code: on #1158,
   retargeted to dev at 2026-11-04T16:46:23Z, the callback run 41870829461 completed
   `ci-dev-required` at 16:52:30, but a push and a `gate-dev` `edited` run arrived at
-  the same time. `TestDevGateDoesNotRerunOnPullRequestEdits` pins both the callback
-  and `ci-feedback`'s `edited` trigger.
+  the same time. `TestDevGateDoesNotRerunOnPullRequestEdits` pins the callback.
+  Since #1374, `ci-feedback-retarget` runs the retarget feedback instead of
+  `ci-feedback`'s own `edited` trigger, and `TestFeedbackRetargetRunsInItsOwnWorkflow`
+  pins that split.
 - `ci-feedback` does not start when the PR conflicts with its new base, or while a
   fork run awaits approval. The hourly schedule and manual dispatch then reassess.
 - Removing a trigger only removes publications. It cannot admit a head that the
@@ -82,6 +84,9 @@ timelines:
   `ci-advisory-dependencies` runs of a real base retarget. None of them hosted the record in the
   sample, but the `pull_request` workflow `ci-advisory-invariants` hosted it three
   times, so they can. Workflows defined in the PR branch itself can also add suites.
+- Update 2026-11-14: #1374 confirmed the `ci-feedback` case, and
+  [dev-required-check-edited-suite.md](./dev-required-check-edited-suite.md) moves
+  `edited` out of `ci-feedback` and `ci-advisory-dependencies`.
 - `ci-queue-gate.yml` has the same trigger types on main PRs. Whether the queue
   check has the same exposure is unverified.
 

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"maps"
@@ -230,7 +230,7 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 			break
 		}
 	}
-	if err := r.Orgs().Create(ctx, orgProof, store.Org{ID: orgID, Name: name, Active: true, Metadata: json.RawMessage(`{}`), CreatedAt: store.CanonTime(now)}); err != nil {
+	if err := r.Orgs().Create(ctx, orgProof, store.Org{ID: orgID, Name: name, Active: true, Metadata: jsontext.Value(`{}`), CreatedAt: store.CanonTime(now)}); err != nil {
 		return store.SelfConfigBinding{}, err
 	}
 	if err := selfConfigSeedEvent(ctx, r, orgProof, caller.Principal, audit.EventOrgCreated, "org", orgID, audit.Payload{"org_id": orgID, "org_name": name, "origin": "manual"}, true); err != nil {
@@ -247,6 +247,11 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	}
 	projectProof, err := az.Authorize(ctx, caller, authz.OpProjectCreate, orgScope)
 	if err != nil {
+		return store.SelfConfigBinding{}, err
+	}
+	// The org is new in this transaction, so no rule can block; checked anyway
+	// so every project creation passes the same gate.
+	if err := refuseProjectAboveAllProjectsRules(ctx, az, caller.Principal, domain.OrgID(orgID)); err != nil {
 		return store.SelfConfigBinding{}, err
 	}
 	projectName := "Hikyo " + seed.owner
@@ -323,7 +328,8 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	}
 	for _, key := range index.keys {
 		if value, ok := seed.values[key.Name]; ok {
-			// Seed writes preserve the effective input bytes. Snapshot creation
+			// Seed writes store the seed as given; config.ManagedSeedForNode has
+			// already trimmed every value. Snapshot creation
 			// then uses the same encrypted cells and lineage as normal publish.
 			id, err := newID("val")
 			if err != nil {

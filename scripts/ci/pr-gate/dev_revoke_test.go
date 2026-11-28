@@ -572,12 +572,14 @@ func (a *countingAPI) write(ctx context.Context, method, path string, payload, r
 }
 
 // attempt3PassRequests is what scripts/ci/queue_hourly_spend_test.go pins as the attempt-3 bypass.
-const attempt3PassRequests = 87
+const attempt3PassRequests = 95
 
-// The worst pass a final-attempt bypass can spend: the confirmation never catches up. It costs 87 on
-// every attempt (82 reads, 5 writes): the pass 38 reads + 2 writes, the confirmation listing 12 reads,
-// the fail-closed POST with the fail-safe re-list and re-POST (queue_refresh.go) 6 + 2, and the
-// admission-reserve refusal phase (withAdmissionBudget, refuseAdmission) 26 + 1.
+// The worst pass a final-attempt bypass can spend: the confirmation never catches up. It costs 95 on
+// every attempt (90 reads, 5 writes on dev; main counts 82 reads, because dev also lists the ci-feedback-retarget
+// source, 2 reads in each of 4 feedback listings): the pass 42 reads + 2 writes (38 + 2 on main), the
+// confirmation listing 12 reads, the fail-closed POST with the fail-safe re-list and re-POST
+// (queue_refresh.go) 6 + 2, and the admission-reserve refusal phase (withAdmissionBudget,
+// refuseAdmission) 30 reads + 1 write (26 + 1 on main).
 func TestDevAttempt3UnconfirmedPassCostIsPinnedForTheSizing(t *testing.T) {
 	t.Setenv("GITHUB_REF", "refs/heads/main")
 	t.Setenv("GITHUB_RUN_ATTEMPT", "3")

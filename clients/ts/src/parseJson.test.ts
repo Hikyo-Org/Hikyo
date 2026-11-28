@@ -71,6 +71,13 @@ test('wire integers retain exact digits without changing ordinary numeric fields
   assert.equal(parseJson('-9007199254740991'), Number.MIN_SAFE_INTEGER);
   assert.equal(parseJson('9007199254740993.0'), 9007199254740993n);
   assert.equal(parseJson('9.007199254740993e15'), 9007199254740993n);
+  assert.equal(parseJson('12345678901234567890.000'), 12345678901234567890n);
+  assert.equal(parseJson('-1.2345678901234567890123e22'), -12345678901234567890123n);
+  assert.equal(parseJson('1E+19'), 10000000000000000000n);
+  // Values that stay numbers must keep native JSON.parse results exactly.
+  for (const token of ['-0', '-0.0', '0', '1e-7', '5e-324', '-1.5e-10']) {
+    assert.ok(Object.is(parseJson(token), JSON.parse(token)), token);
+  }
   assert.throws(() => parseJson('{"revision":'), SyntaxError);
 });
 
@@ -138,7 +145,7 @@ test('wire object keys cannot fabricate inherited required properties', async ()
 });
 
 test('decoder refuses malformed JSON and rounded fractional integers', () => {
-  for (const wire of ['.1', '{"count":.1}', '01', '1.', '\u000b1', '{"count":1,}', '1.000000000000000000001', '1e-999', '-1e-999', '1.1e-999', '1e-10000001', '1e-100000000', '-1e-100000000', '1e999']) {
+  for (const wire of ['.1', '{"count":.1}', '01', '1.', '\u000b1', '{"count":1,}', '1.000000000000000000001', '1e-999', '-1e-999', '1.1e-999', '1e-10000001', '1e-100000000', '-1e-100000000', '1e999', '1_0', '1_000.5', '{"count":1_0}']) {
     assert.throws(() => parseJson(wire));
   }
   assert.equal(parseJson('1.234567890123456789'), 1.2345678901234567);
@@ -175,7 +182,7 @@ test('older-browser ponyfill preserves exact tokens and native object/syntax sem
     assert.equal(value.__proto__.revision, 9007199254740993n);
     assert.equal(value.count, 42);
     assert.equal(value.text, '123');
-    for (const text of ['.1', '01', '1.', '1e-999', '-1e-999', '1.1e-999', '1e-100000000', '{1:2}', '{true:1}', '{null:1}', '{false:1}', '{1e2:3}']) assert.throws(() => parseJson(text));
+    for (const text of ['.1', '01', '1.', '1e-999', '-1e-999', '1.1e-999', '1e-100000000', '1_0', '{1:2}', '{true:1}', '{null:1}', '{false:1}', '{1e2:3}']) assert.throws(() => parseJson(text));
     assert.equal(JSON.rawJSON, undefined);
   `;
   const result = spawnSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script], { encoding: 'utf8' });

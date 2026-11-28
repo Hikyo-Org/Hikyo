@@ -2,13 +2,14 @@ package releasetrust
 
 import (
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
@@ -121,7 +122,7 @@ func EncodePQFloor(f PQFloor) ([]byte, error) {
 	if f.zero() {
 		return nil, pqErr(ErrPQMalformed, "an empty PQ floor is not persisted")
 	}
-	raw, err := json.Marshal(f)
+	raw, err := json.Marshal(f, jsonwire.Stable)
 	return append(raw, '\n'), err
 }
 

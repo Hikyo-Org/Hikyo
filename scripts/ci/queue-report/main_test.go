@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/russross/blackfriday/v2"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type fixture struct {
@@ -85,7 +87,7 @@ func newFixture(t *testing.T) *fixture {
 		}
 		if req.Method != http.MethodGet {
 			var body map[string]any
-			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			if err := json.UnmarshalRead(req.Body, &body); err != nil {
 				t.Error(err)
 			}
 			f.writes = append(f.writes, body)
@@ -107,7 +109,7 @@ func newFixture(t *testing.T) *fixture {
 						current = f.writeMutate(current)
 					}
 					f.checks[i] = current
-					if err := json.NewEncoder(w).Encode(current); err != nil {
+					if err := jsonwire.Encode(w, current); err != nil {
 						t.Error(err)
 					}
 					return
@@ -154,7 +156,7 @@ func newFixture(t *testing.T) *fixture {
 		if f.mutate != nil {
 			result = f.mutate(path, result)
 		}
-		if err := json.NewEncoder(w).Encode(result); err != nil {
+		if err := jsonwire.Encode(w, result); err != nil {
 			t.Error(err)
 		}
 	}))
@@ -186,7 +188,7 @@ func (f *fixture) serveGraphQL(t *testing.T, w http.ResponseWriter, req *http.Re
 	var body struct {
 		Query string `json:"query"`
 	}
-	if req.Method != http.MethodPost || json.NewDecoder(req.Body).Decode(&body) != nil {
+	if req.Method != http.MethodPost || json.UnmarshalRead(req.Body, &body) != nil {
 		t.Error("GraphQL must be a POST with a query")
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -217,7 +219,7 @@ func (f *fixture) serveGraphQL(t *testing.T, w http.ResponseWriter, req *http.Re
 	if f.graphqlFault != "" {
 		response["errors"] = []map[string]string{{"message": f.graphqlFault}}
 	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := jsonwire.Encode(w, response); err != nil {
 		t.Error(err)
 	}
 }
@@ -598,7 +600,7 @@ func (transport *rejectNetworkTransport) RoundTrip(*http.Request) (*http.Respons
 
 func TestExecuteRejectsInvalidRepositoryBeforeAnyHTTPRequest(t *testing.T) {
 	f := newFixture(t)
-	data, err := json.Marshal(f.e)
+	data, err := json.Marshal(f.e, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

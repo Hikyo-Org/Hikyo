@@ -186,6 +186,43 @@ func TestEscrowDispatchPreservesServerRootIdentity(t *testing.T) {
 	}
 }
 
+// An unattended installation resolves its admitted inputs before any host command
+// runs; escrow and help open nothing, so they do not. Nothing here is enrolled, so
+// resolution is the only thing that can refuse.
+func TestUnattendedHostCommandsResolveBeforeDispatch(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "root")
+	if err := os.WriteFile(root, []byte(crypto.EncodeRootKey(bytes.Repeat([]byte{85}, 32))), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HIKYO_DB", "sqlite:"+filepath.Join(t.TempDir(), "unattended.db"))
+	t.Setenv("HIKYO_ROOT_KEY_FILE", root)
+	t.Setenv("HIKYO_ROOT_KEY", "")
+	t.Setenv("HIKYO_UPGRADE_UNATTENDED", "true")
+	t.Setenv("HIKYO_UPGRADE_STATE_DIR", t.TempDir())
+	for _, test := range []struct {
+		name, group string
+		args        []string
+		dispatched  bool
+	}{
+		{"admin refused before dispatch", "admin", []string{"create"}, false},
+		{"backup refused before dispatch", "backup", []string{"keygen"}, false},
+		{"restore refused before dispatch", "restore", []string{"status"}, false},
+		{"escrow needs no admitted release", "escrow", []string{"verify"}, true},
+		{"help needs no admitted release", "admin", []string{"create", "--help"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			code := runOperator(t.Context(), test.group, test.args, func(context.Context, *config.Config, *slog.Logger, []string, io.Writer, *disclose.TerminalSession, error) error {
+				called = true
+				return nil
+			})
+			if called != test.dispatched || (code == 0) != test.dispatched {
+				t.Fatalf("dispatched=%v code=%d, want dispatched=%v", called, code, test.dispatched)
+			}
+		})
+	}
+}
+
 func TestUsageCoversEveryMode(t *testing.T) {
 	// The mode switch in run() and the multicall help must not drift apart:
 	// every dispatched mode has a synopsis line, and no line names a mode

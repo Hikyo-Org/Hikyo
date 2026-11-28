@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type dispatchAPI struct {
@@ -27,7 +29,7 @@ func (a *dispatchAPI) write(ctx context.Context, method, path string, payload, o
 	if !ok || time.Until(deadline) > 5*time.Second {
 		return errors.New("dispatch is not individually bounded")
 	}
-	data, _ := json.Marshal(payload)
+	data, _ := json.Marshal(payload, jsonwire.Stable)
 	var p struct {
 		Ref    string            `json:"ref"`
 		Inputs map[string]string `json:"inputs"`
@@ -51,7 +53,7 @@ func (a *dispatchAPI) write(ctx context.Context, method, path string, payload, o
 	if a.badReceipt {
 		r.URL = "https://api.github.com/repos/other/repo/actions/runs/1"
 	}
-	data, _ = json.Marshal(r)
+	data, _ = json.Marshal(r, jsonwire.Stable)
 	return decode(data, out)
 }
 

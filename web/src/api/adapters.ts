@@ -1,3 +1,4 @@
+import { shellFailureText } from '../app/shell.ts';
 import {
   addAdapterTargetOp,
   adoptAdapterTargetNamesOp,
@@ -62,7 +63,7 @@ export function providerLabel(provider: string): string {
     case 'github-actions':
       return 'GitHub Actions';
     case 'sealed-webhook':
-      return 'Sealed webhook';
+      return 'Encrypted webhook';
     case 'vault-kv':
       return 'Vault / OpenBao KV';
     case 'aws-secrets-manager':
@@ -530,6 +531,8 @@ export function moveStateText(state: AdapterMove['state']): string {
 
 /** adapterRefusalText renders a refusal the way the surface speaks. */
 export function adapterRefusalText<Failure>(error: Failure): string {
+  const shell = shellFailureText(error);
+  if (shell !== undefined) return shell;
   if (error instanceof ApiError) {
     if (error.status === 401) {
       return 'Your session no longer authorises this; sign in again.';

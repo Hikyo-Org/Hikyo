@@ -81,7 +81,7 @@ Applies to every key below. None of it was run with real material.
 | Item | Rule | Source |
 | --- | --- | --- |
 | Backup identity (X25519 and hybrid) | Escrow in a failure domain separate from the root key and datastore. No command checks or records custody of this identity. `hikyo escrow verify --root-key-file FILE --assert-separate-custody` is the root key escrow check: it verifies the recovered root key against the hierarchy and records instance, incarnation, root epoch and the operator's assertion. Keep every identity that wrote a retained archive; keep the X25519 identity for archives written before the switch | #1126, migration |
-| `operator.age` custody record | Holds backup identity, P-256 attestation key and root escrow, sealed by age-scrypt at a 16-byte file key (category 1). Old copies hold a live `root_escrow`; retiring them needs root rotation. Root rotation does not re-seal it (#1154) | migration |
+| `operator.age` custody record | Holds backup identity, P-256 attestation key and root escrow, sealed by age-scrypt at a 16-byte file key (category 1). Old copies hold a live `root_escrow`; retiring them needs root rotation. Root rotation re-seals the runtime-owned vault (#1154) and not the root-only host vault | migration |
 | Webhook receiver identity and sender keys | Do not destroy the receiver's old identity while retained ciphertext needs it; sender pair rotates as a unit; never restore a retired pair | #1128 |
 | Rollout Ed25519 and ML-DSA keys | Keep the Ed25519 key until the PQ-only generation is confirmed, then destroy it; same custody for both; retired classical signatures stay forgeable after a quantum break (E-12) | #1131 |
 | Any PKI ML-DSA issuer, CRL or key | Never delete to roll back; PKI retire destroys only an eligible key. (Transit retire stops signing and retired keys still verify; see the Transit operations note.) | #1133, #1129 |
@@ -175,7 +175,84 @@ rehearsal, every `kubectl` and `helm` step and the real cluster are **NOTRUN**.
 | Private PKI ML-DSA (#1133) | `MLDSAEnabled` is false in production wiring |
 | Release trust (#1132) | No signer, no root, no caller of the verifiers on any shipping path; custody of the ML-DSA recovery key is not named. See the [signing runbook](pqc-release-signing-runbook.md), also not executable |
 | Pairing (#1130) | HOLD; no PQ protocol. The classical pairing and revocation drill is NOTRUN |
-| External routes (#1134) | No selector reaches them; nothing to enable |
+| External routes (#1134) | No selector reaches them; nothing to enable. The one operator-owned control is sshd key exchange, below |
+
+### Operator-owned: hybrid-only SSH key exchange (X07, F-03)
+
+Hikyo carries no SSH session and makes no claim about it. Where an operator
+wants an sshd to refuse a classical-only key exchange, the control is sshd's
+`KexAlgorithms`, not `WarnWeakCrypto`, which only logs a weak client. This is
+operator-owned, **NOTRUN** against any named fleet, and not a Hikyo setting.
+
+1. Check the server build supports the name. `ssh -Q kex` reports the build
+   of the `ssh` binary you run it with, so run it on the sshd host and make
+   sure the same OpenSSH build serves sshd: `ssh -Q kex | grep mlkem768x25519`.
+   Step 3 is the real server check.
+2. First save copies of every sshd configuration file you will change (the
+   main file and any drop-ins), and note any drop-in you create, so the
+   previous configuration can be restored. Then set in `sshd_config` (or a
+   `sshd_config.d` drop-in):
+   `KexAlgorithms mlkem768x25519-sha256`
+   This is the DEC-01 hybrid (X25519 with ML-KEM-768). It needs OpenSSH 9.9 or
+   later and is the default hybrid since 10.0 ([release notes][rn], read
+   2026-11-23). A name the server does not know can make `sshd -t` fail, so a
+   fleet with mixed versions needs per-version drop-ins.
+   Compatibility option, operator-owned and outside DEC-01: for clients older
+   than 9.9, append `,sntrup761x25519-sha512@openssh.com` (added in OpenSSH
+   8.5, in the default list since 8.9, preferred in 9.0; the unsuffixed
+   `sntrup761x25519-sha512` alias arrived in 9.9). It is a different hybrid
+   (Streamlined NTRU Prime with X25519), so it widens what the operator
+   accepts beyond the selected profile.
+3. Validate before reload: `sshd -t -f FILE [-o ...]`, then
+   `sshd -T -f FILE [-o ...] | grep -i '^kexalgorithms'`, using the same `-f`
+   and `-o` arguments the daemon starts with (a reload keeps them). `-C` is
+   not needed because `KexAlgorithms` is not allowed inside `Match`. Confirm
+   the printed list contains only the hybrid names. If `sshd -t` or `sshd -T`
+   fails, or the list shows any other name, do not reload: restore the saved
+   copies, remove any drop-in you created, and validate again. Before
+   reloading, open a session and keep it open. Reload, then test a fresh login
+   (`ssh -o ControlPath=none ...`). If that login fails, restore the saved
+   copies, remove any drop-in you created, and reload from the kept session.
+4. Expected result: a client offering only classical algorithms (for example
+   `ssh -o ControlPath=none -o KexAlgorithms=curve25519-sha256`) is refused
+   with no matching key exchange method. This was observed with
+   `KexAlgorithms mlkem768x25519-sha256` against OpenSSH 10.3p1
+   (`internal/sshca/openssh_negotiation_test.go`); nothing else was run,
+   including the sntrup761 option and any deployed sshd.
+
+With `mlkem768x25519-sha256` alone, every client that does not offer it is
+refused: OpenSSH before 9.9 (including 8.9 to 9.8, whose only default hybrid is
+sntrup761) and other SSH libraries without it. The sntrup761 option widens
+access back to 8.5 and later clients that offer
+`sntrup761x25519-sha512@openssh.com`. Check the algorithms clients actually
+offer, not their version: `ssh -G HOST | grep -i '^kexalgorithms'` on OpenSSH
+clients (`ssh -Q kex` lists only what the build supports). sshd does not log a
+client's KEX proposal at the default `LogLevel INFO`, so for other clients
+either run a test sshd on another port with the hybrid-only line and have those
+clients connect to it, or temporarily raise `LogLevel` to `DEBUG2` (the level
+that records the proposal; `INFO` and `VERBOSE` should not be relied on). Run
+the test sshd in the foreground by absolute path, for example
+`/usr/sbin/sshd -D -f TESTFILE -p PORT`, and stop it when done. Give
+`TESTFILE` its own `ListenAddress` and port (a `ListenAddress` with a port
+overrides `-p`) and `PidFile none` (or its own path), so it neither collides
+with the production listener nor overwrites the production PID file that
+reloads signal. Before any client connects, check the test daemon's effective
+list with the same `-f` and `-o` arguments it starts with:
+`sshd -T -f TESTFILE [-o ...] | grep -i '^kexalgorithms'`. sshd uses the first
+value it reads for each keyword, so a `-o KexAlgorithms=...`, an earlier
+`KexAlgorithms` line, or an earlier `Include` that sets it would override the
+hybrid-only line and let a classical-only client look compatible. Only the
+hybrid names may appear; otherwise remove that setting or move the hybrid-only
+line above it, and check again.
+sshd_config(5) says logging at a `DEBUG` level violates users' privacy and is
+not recommended, and it is high-volume, so keep it short, restrict log access,
+and restore the level.
+Do this before applying either line. The list syntax and the `+`, `-` and `^`
+prefixes are in [sshd_config(5)](https://man.openbsd.org/sshd_config#KexAlgorithms),
+read 2026-11-23. A hybrid key exchange protects session confidentiality only;
+it does not make host or user signatures post-quantum (E-02).
+
+[rn]: https://www.openssh.org/releasenotes.html
 
 ## Abort criteria (any one stops the stage)
 

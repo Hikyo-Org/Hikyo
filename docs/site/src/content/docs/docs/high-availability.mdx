@@ -22,6 +22,14 @@ unchanged.
   in an HA topology (a managed service, or Patroni, or similar) is the
   operator's responsibility, exactly as for a single node. SQLite is
   single-writer and is refused under HA at boot.
+- **The HA switch.** Set `HIKYO_HA=true` on every node; the Helm chart does this
+  when `ha.enabled` is set. Anything other than a boolean refuses startup, and
+  an unset or `false` value keeps the node single-node. It is a deployment
+  input, changed through the deployment or a
+  [configuration rollout](/docs/configuration-rollouts/), not through
+  `instance-config apply`. On an enrolled singleton, `topology.ha` in the managed
+  `HIKYO_BOOTSTRAP_SOURCES` value drives that rollout; `HIKYO_HA` itself is not a
+  managed key. A rollout refuses `false` while more than one replica runs.
 - **Stable, unique node identities.** Each node sets `HIKYO_NODE_ID`. The Helm
   chart derives it from the pod name.
 - **One shared root-key authority.** Every node mounts the same root key

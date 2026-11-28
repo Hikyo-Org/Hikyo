@@ -15,6 +15,7 @@ on:
       - go.mod
       - go.sum
       - .golangci.yml
+      - .golangci-strict.yml
       - scripts/ci/golangci-lint-version
       - scripts/ci/golangci-lint-new.sh
       - scripts/ci/run-go-tool.sh

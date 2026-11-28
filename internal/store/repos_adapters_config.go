@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 func (r adapterQueries) Get(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, error) {
@@ -303,7 +304,7 @@ func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err := refuseDestinationNameCollision(ctx, db, chain, m, manifest, ""); err != nil {
 		return err
 	}
-	selected, err := json.Marshal(m.SelectedRepositoryIDs)
+	selected, err := json.Marshal(m.SelectedRepositoryIDs, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -493,7 +494,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 			return AdapterTargetUpdateResult{}, constraint(err)
 		}
 	}
-	selectedJSON, err := json.Marshal(m.Target.SelectedRepositoryIDs)
+	selectedJSON, err := json.Marshal(m.Target.SelectedRepositoryIDs, jsonwire.Stable)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}

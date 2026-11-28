@@ -5,7 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -213,7 +214,7 @@ func matchAuthenticatedManifest(plain io.Reader, receipt Receipt) error {
 	// The owning store parser validates the complete envelope and payload before
 	// restore. Here only the nested authority is interpreted, without duplicating
 	// or weakening that closed schema in this leaf package.
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if definitions.RejectDuplicateMembers(raw) != nil || definitions.DecodeStrict(raw, &members) != nil {
 		return errors.New("invalid authenticated manifest JSON")
 	}

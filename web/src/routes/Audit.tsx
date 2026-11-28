@@ -26,6 +26,7 @@ import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import type { GlyphName } from '../ui/Glyph.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { Panel } from './Sections.tsx';
+import { isAppMode, shellDownloadBytes } from '../app/shell.ts';
 
 /** The tag each outcome wears, in the events list and the filter alike. */
 const OUTCOME_TAG: Record<AuditEvent['outcome'], { tone: BadgeTone; icon: GlyphName }> = {
@@ -56,7 +57,12 @@ function refusalText(error: unknown, scope: AuditScope): string {
           : scope.environment === undefined || scope.environment === ''
             ? 'this project'
             : 'this environment';
-      return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session. A member manager can grant it under Members.`;
+      // Grants inherit downward only: the scope dialog preselects an environment,
+      // and that grant never satisfies the whole-project trail.
+      const environmentHint = where === 'this project'
+        ? " A grant on one environment reaches only that environment's trail, not the whole project."
+        : '';
+      return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session.${environmentHint} A member manager can grant it under Members.`;
     }
     if (error.status === 400) {
       return error.detail ?? 'The filter is not valid.';
@@ -142,6 +148,13 @@ function AuditTrail({ org, project, instance = false }: { readonly org: string; 
     try {
       const blob = await downloadAuditExport(auditExportUrl(scope, applied), controller.signal);
       if (controller.signal.aborted) return;
+      if (isAppMode()) {
+        // The save panel is the consent; the blob was verified complete above.
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (controller.signal.aborted) return;
+        await shellDownloadBytes(bytes, auditExportFilename(scope), blob.type === '' ? 'application/x-ndjson' : blob.type);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;

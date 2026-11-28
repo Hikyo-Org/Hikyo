@@ -18,7 +18,7 @@ test -f "$fixture/root.key"
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-unattended-kind.XXXXXX")
 CLUSTER="hikyo-unattended-$(date +%s)-$$"
 NAMESPACE=hikyo-unattended
-NODE_IMAGE='kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5'
+NODE_IMAGE='kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed'
 POSTGRES_IMAGE='postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941'
 kubeconfig="$work/kubeconfig"
 export KUBECONFIG="$kubeconfig"
@@ -294,4 +294,21 @@ done
 custody_after=$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)
 [[ "$custody_before" == "$custody_after" ]] || exit 1
 kubectl -n "$NAMESPACE" exec deployment/postgres -- psql -U hikyo -d hikyo_scratch -Atc 'SELECT count(*) FROM upgrade_control' | grep -Fxq '1'
+# Host-only operator commands through kubectl exec in the admitted singleton pod. The
+# image has no shell, cat or tar: values go to --output-file in the runtime-owned state directory (read
+# back here through the disposable node), and nothing is exported or mounted by hand.
+operator_exec() { kubectl -n "$NAMESPACE" exec deployment/hikyo-hikyo -c server -- /usr/local/bin/hikyo "$@"; }
+operator_exec admin create --username operator --output-file /var/lib/hikyo-upgrade/operator-custody/operator-authority >"$work/operator-create.txt" 2>&1 || { cat "$work/operator-create.txt" >&2; exit 1; }
+if grep -Fq hik_ "$work/operator-create.txt"; then echo "operator create printed the authority" >&2; exit 1; fi
+docker exec "$node" sh -c 'test -s /var/lib/hikyo-unattended-state/operator-custody/operator-authority && test "$(stat -c %a /var/lib/hikyo-unattended-state/operator-custody/operator-authority)" = 600'
+operator_exec backup keygen --output-file /var/lib/hikyo-upgrade/operator-custody/operator-identity >"$work/operator-keygen.txt" 2>&1 || { cat "$work/operator-keygen.txt" >&2; exit 1; }
+recipient=$(grep -Eo 'age1[a-z0-9]+' "$work/operator-keygen.txt" | head -n1)
+operator_exec backup export --out /var/lib/hikyo-upgrade/operator-custody/operator-backup --recipient "$recipient" >"$work/operator-export.txt" 2>&1 || { cat "$work/operator-export.txt" >&2; exit 1; }
+docker exec "$node" sh -c 'find /var/lib/hikyo-unattended-state/operator-custody/operator-backup -type f -size +0 | grep -q .'
+operator_exec restore status >/dev/null
+operator_exec admin config status >/dev/null
+read_state >"$work/state-operator.json"
+jq -e --arg instance "$instance" '.instance == $instance and .maintenance == false and .pending.phase == "healthy"' "$work/state-operator.json" >/dev/null
+[[ "$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)" == "$custody_before" ]] || exit 1
+echo 'unattended-kind: kubectl exec operator commands passed in the admitted pod'
 echo 'unattended-kind: distroless A restart and A->B->C passed; root/custody PVC retained; PostgreSQL scratch restore and encrypted backups verified'

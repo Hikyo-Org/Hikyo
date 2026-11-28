@@ -45,14 +45,8 @@ func (s *Rules) Replace(ctx context.Context, actor Actor, spec ReplaceRulesSpec)
 			caller authz.Identity
 			proof  authz.Proof
 		}
-		type addition struct {
-			rule   domain.Rule
-			caller authz.Identity
-			proof  authz.Proof
-			unheld bool
-		}
 		removes := make([]removal, 0, len(spec.Revoke))
-		adds := make([]addition, 0, len(spec.Create))
+		adds := make([]preparedRule, 0, len(spec.Create))
 		for _, id := range spec.Revoke {
 			stored, caller, proof, err := prepareRuleRevoke(ctx, az, actor, spec.Org, id, now)
 			if err != nil {
@@ -64,11 +58,28 @@ func (s *Rules) Replace(ctx context.Context, actor Actor, spec ReplaceRulesSpec)
 			removes = append(removes, removal{stored, caller, proof})
 		}
 		for _, add := range spec.Create {
-			rule, caller, proof, unheld, err := prepareRuleCreate(ctx, az, actor, add, now)
+			prepared, err := prepareRuleCreate(ctx, az, actor, add, now)
 			if err != nil {
 				return err
 			}
-			adds = append(adds, addition{rule, caller, proof, unheld})
+			adds = append(adds, prepared)
+		}
+		// A machine card change is judged whole: what the removals take away
+		// offsets what the additions bring, so a narrowing edit widens nothing.
+		var widened [][]audit.Payload
+		if len(adds) > 0 {
+			removed := make([]string, 0, len(removes))
+			for _, remove := range removes {
+				removed = append(removed, remove.stored.Rule.ID)
+			}
+			rules := make([]domain.Rule, 0, len(adds))
+			for _, add := range adds {
+				rules = append(rules, add.rule)
+			}
+			var err error
+			if widened, err = s.gateMachineRules(ctx, az, adds[0].caller, adds[0].class, removed, rules); err != nil {
+				return err
+			}
 		}
 		existing, err := az.RuleIDsForOrg(ctx, spec.Org)
 		if err != nil {
@@ -89,7 +100,7 @@ func (s *Rules) Replace(ctx context.Context, actor Actor, spec ReplaceRulesSpec)
 			}
 		}
 		out = make([]RuleView, 0, len(adds))
-		for _, add := range adds {
+		for i, add := range adds {
 			id, err := newID("rul")
 			if err != nil {
 				return err
@@ -98,16 +109,10 @@ func (s *Rules) Replace(ctx context.Context, actor Actor, spec ReplaceRulesSpec)
 			if err := az.CreateRule(ctx, add.rule, add.caller.Principal, now, func() (string, error) { return newID("rli") }); err != nil {
 				return err
 			}
-			payload := rulePayload(add.rule)
-			payload["unheld"] = add.unheld
-			event, err := domainEvent(ctx, audit.EventRuleCreated, add.caller.Principal, audit.Object{Type: "rule", ID: id}, payload)
-			if err != nil {
+			if err := insertRuleCreated(ctx, r, add.proof, add.caller.Principal, add.rule, add.unheld, widened[i]); err != nil {
 				return err
 			}
-			if err := r.Audit().InsertTenant(ctx, add.proof, event); err != nil {
-				return err
-			}
-			out = append(out, RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: add.rule.Capability, Org: spec.Org, Where: add.rule.Where, CreatedBy: add.caller.Principal, CreatedAt: now})
+			out = append(out, RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: add.rule.Capability, Org: spec.Org, Where: add.rule.Where, Covers: add.covers, CreatedBy: add.caller.Principal, CreatedAt: now})
 		}
 		if len(adds) > 0 {
 			return invalidateGrantChange(ctx, az, spec.Target)

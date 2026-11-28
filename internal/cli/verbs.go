@@ -17,6 +17,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/clienttrust"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -61,6 +62,9 @@ type IO struct {
 	// --use-human-session` requires it (api-cli-surface ADR: "stderr-is-a-TTY
 	// (an additional refusal, never the control)"). Nil means false.
 	StderrIsTerminal func() bool
+	// HostOS overrides runtime.GOOS where the host's graphical session is
+	// judged (a chosen browser approval); tests inject it. Empty means the real one.
+	HostOS string
 	// OpenURL launches a browser without printing the opaque handoff state.
 	// Nil uses the platform browser opener.
 	OpenURL func(string) error
@@ -170,6 +174,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"whoami":              runWhoami,
 	"account":             runAccount,
 	"context":             runContext,
+	"config":              runConfig,
 	"org":                 runOrg,
 	"project":             runProject,
 	"env":                 runEnv,
@@ -200,6 +205,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"adapter":             runAdapter,
 	"dynamic-provider":    runDynamicProvider,
 	"lease":               runLease,
+	"rotation":            runCredentialRotation,
 	"ssh-ca":              runSSHCA,
 	"ssh-profile":         runSSHProfile,
 	"ssh-cert":            runSSHCert,
@@ -261,13 +267,22 @@ contexts:
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
+  hikyo config get <key> [--instance REF]
+  hikyo config set <key> <value> [--instance REF]
+      the one key is reauth.method: auto (default) asks for an authenticator code first and
+      opens the browser when a passkey is required or no code is possible; browser opens the
+      browser for every reauthentication window that has a browser handoff. A purpose with no
+      handoff is refused, and account-security proofs (for example access registration set|delete)
+      still ask for a code.
 
   New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
   Existing stored or provisioned trust does not require the flag.
+  Any command that reauthenticates accepts --approve-in-browser to use the browser approval for the
+  reauthentication windows of that one invocation.
 
 managed configuration:
   hikyo instance-config status [-o table|json]
-  hikyo instance-config adopt [--yes] [--confirm-restored-credentials]
+  hikyo instance-config adopt [--yes]
                                                  preview or adopt effective settings
   hikyo instance-config apply --revision N --expected-generation N
       [--idempotency-key KEY] [--confirm-restored-credentials]
@@ -414,7 +429,7 @@ revisions:                                         --env selects the environment
   hikyo rotate-dek --instance-scope --yes           new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
-  hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
+  hikyo rotate-root-key --prepare|--verify|--finalize --yes  crash-safe root rotation, one phase per run
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
     --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 
@@ -527,6 +542,46 @@ dynamic secrets:
   the minted credential is shown exactly once, through the print triad (a
   controlling terminal, --output-file, or --dangerously-print); the admin
   provider credential is read like an adapter credential, never on argv.
+
+scheduled credential rotation:
+  hikyo rotation create --provider <provider> --key <password-key> --username-key <key>
+      --interval <duration> --revocation-delay <duration> --env E
+  hikyo rotation list --env E [--include-disabled] [-o table|json]
+  hikyo rotation show <rotation> --env E [-o table|json]
+  hikyo rotation pause <rotation> --env E [--expected-generation N]
+  hikyo rotation resume <rotation> --env E [--expected-generation N]
+  hikyo rotation release-hold <rotation> --env E [--expected-generation N]
+  hikyo rotation delete <rotation> --env E [--expected-generation N] [--abandon]
+  hikyo rotation run-now <rotation> --env E --confirm-destructive
+      [--expected-generation N] [--skip-overlap]
+  hikyo rotation runs <rotation> --env E [--limit N] [--after RUN] [-o table|json]
+
+  a signed-in person holding edit, publish and reveal on both keys records the
+  schedule and is kept as its authority. create, resume and run-now run the
+  publish ceremony over both keys (an unattended publish can never run one
+  itself); a protected environment or one under an approval policy is refused.
+  run-now requests a run outside the schedule: the executor starts it with the
+  same checks and authority as a scheduled run and prints its id; runs lists a
+  rotation's runs, newest first, with phase and failure code only (no
+  password or provider detail). run-now always needs --confirm-destructive, and
+  --skip-overlap revokes the superseded credential right after the publish,
+  so a consumer still on it loses access; the revoke records how many adapter
+  (sync) targets had not converged to the new revision (NOT CONVERGED
+  TARGETS), not counting machines that read the keys directly. delete
+  refuses while a run is in flight; --abandon, for a signed-in person only,
+  closes the unsettled runs instead and revokes nothing. Durations take h,
+  m, s or d, e.g. 90d. Interval 1h to 90d and revocation delay 5m to 7d, the
+  delay shorter than the interval. pause and delete do not revoke the
+  credential already delivered; it stays valid
+  until the CREDENTIAL EXPIRES time they print. delete keeps the rotation as
+  history (list --include-disabled); no credential is stored. A restore holds
+  every rotation it brings back: a held rotation starts no run and cannot be
+  resumed or run now until release-hold (a person's act with resume's access
+  and publish ceremony), and show, list and runs say so, with the time the
+  delivered credential lapses. A held rotation also refuses delete and
+  delete --abandon: release it first. release-hold changes nothing else; it
+  never drops a superseded role, but it does let the executor drop lingering
+  unpublished candidate roles; check hikyo rotation runs first.
 
 ssh certificates:
   hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]
@@ -659,6 +714,8 @@ instance configuration:
   hikyo instance-config provider update <name> [--kind oidc|saml] [--display-name NAME]
       [--assurance-context URI]... | [--clear-assurance-policy]
       [--allow-email-nameid BOOL] [--force-sign-requests BOOL] [--enabled BOOL]
+      [--lifecycle-profile clerk|none] [--lifecycle-secret-file <path>] [--client-secret-file <path>]
+      (OIDC takes --display-name, --enabled and the lifecycle flags; secrets come from a file or a prompt)
   hikyo instance-config provider disable <name> [--kind oidc|saml]
   hikyo instance-config provider refresh-metadata <name> [--metadata-file <xml>]
       [--confirm-fingerprint FP]... [--confirm-endpoint URL]...
@@ -675,7 +732,7 @@ access:
   hikyo access grant remove --principal <id> --capability <atom>
   hikyo access grant template --principal <id> --template <name>
   hikyo access rule list [--org O] [--project P] [-o table|json]
-  hikyo access rule add --principal <id> --capability <atom> [--in-project P]...
+  hikyo access rule add --principal <id> --capability <atom> [--in-project P... | --all-projects]
       [--only-env E | --except-env E]... [--only-folder F | --only-key K]...
       [--except-folder F | --except-key K]...   (items: [PROJECT:]ID or [PROJECT:]PATH)
   hikyo access rule remove <rule>
@@ -698,7 +755,7 @@ access:
   hikyo access request list --env E [-o table|json]
   hikyo access request create --env E --capability C --duration 1h --reason R
   hikyo access request approve|reject|cancel|revoke <request> --env E
-  hikyo access request emergency --env E --capability C --reason R [--duration 30m]
+  hikyo access request emergency --env E --capability C --reason R [--duration D]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false
@@ -784,11 +841,15 @@ oidc federation:
   --claim /kubernetes.io/serviceaccount/uid=9f2c-… .
 
   every binding MUST pin the immutable identifiers its platform exposes:
-    github-actions  repository_id, repository_owner_id, event_name
+    github-actions  repository_id, repository_owner_id, event_name,
+                    ref_protected, runner_environment, job_workflow_ref
     kubernetes      /kubernetes.io/serviceaccount/uid
     Forgejo issuers are refused: Forgejo exposes no immutable repository id.
   pinning a name where an id exists lets a renamed-and-reused path inherit the
   binding, so there is no override.
+  these required pins are JSON strings, which is how GitHub and Kubernetes emit
+  them (repository_id is "74"): pin name=value, never name=#74 or name=?true,
+  or creation is refused. A real GitHub token shows the values to copy.
 
   Bindings are listed and revoked through "sa credential".
 scim provisioning (org scope; the identity provider's own wire is not a CLI surface):
@@ -1070,21 +1131,7 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 	if err := validateCredentialTransport(entry); err != nil {
 		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
 	}
-	identityLabel, identity := "certificate", shortPin(pin)
-	mode := effectiveTLSMode(entry)
-	if entry.TLSMode == TLSModeSPKI {
-		identity += " (leaf SPKI; no CA chain, certificate validity or hostname verification)"
-	}
-	if entry.TLSMode == TLSModeSystemCA {
-		identityLabel, identity = "verification", "system trusted CA chain, validity and hostname; certificate keys may rotate"
-	}
-	if socket != "" {
-		identityLabel, identity = "local socket", socket+" (same uid required)"
-		mode = "same-user local socket"
-	}
-	prompt := fmt.Sprintf(
-		"Establish trust for a new instance?\n\n    origin:       %s\n    trust mode:   %s\n    %-13s %s\n\nRecord it",
-		origin, mode, identityLabel+":", identity)
+	prompt := clienttrust.FirstContactPrompt(origin, entry.TLSMode, pin, socket)
 	ok, err := session.Confirm(prompt)
 	if err != nil {
 		return TrustEntry{}, failf(ExitRefused,
@@ -1443,7 +1490,7 @@ func runFactorEnrolTOTP(ctx context.Context, ios IO, args []string) (returnErr e
 	if !status.HasPassword {
 		return failf(ExitRefused, "`account factor enrol-totp` requires a password proof on the terminal; use Settings > Security: %s", accountSecurityURL(client))
 	}
-	password, err := ios.readPassword("Password (to authorize enrolment): ")
+	password, err := st.readProof(ios, "Password (to authorize enrolment): ")
 	if err != nil {
 		return err
 	}
@@ -1473,7 +1520,7 @@ func runFactorConfirmTOTP(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	code, err := ios.readPassword("Enter the code from your authenticator to confirm: ")
+	code, err := st.readProof(ios, "Enter the code from your authenticator to confirm: ")
 	if err != nil {
 		return err
 	}
@@ -1503,7 +1550,7 @@ func runFactorStepUp(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	code, err := ios.readPassword("Enter the code from your authenticator: ")
+	code, err := st.readProof(ios, "Enter the code from your authenticator: ")
 	if err != nil {
 		return err
 	}
@@ -1547,7 +1594,7 @@ func runRecoveryCodes(ctx context.Context, ios IO, args []string) (returnErr err
 	if err != nil {
 		return err
 	}
-	proof, err := ios.readPassword("Account-security proof (your TOTP code, or password if no factor): ")
+	proof, err := st.readProof(ios, "Account-security proof (your TOTP code, or password if no factor): ")
 	if err != nil {
 		return err
 	}
@@ -1771,6 +1818,11 @@ func runContext(_ context.Context, ios IO, args []string) error {
 			return err
 		}
 		if *instance != "" {
+			// Settings first: a damaged settings.json then refuses before any
+			// state changes, instead of leaving the entry gone and the file stale.
+			if err := st.ForgetInstanceSettings(*instance); err != nil {
+				return err
+			}
 			return st.Trust().Delete(*instance)
 		}
 		name := first(positional)
@@ -1951,6 +2003,9 @@ type commonFlags struct {
 	operation AuthOperation
 	kinds     AuthKinds
 	Auth      string
+	// ApproveInBrowser is --approve-in-browser: every reauthentication this
+	// invocation needs is carried out in the browser (see State.forceBrowser).
+	ApproveInBrowser bool
 	// TokenFile is the machine-credential channel (#61). There is
 	// deliberately no `--token` flag beside it: a secret in argv is visible
 	// in `ps`, in /proc/<pid>/cmdline and in shell history, and the property
@@ -2021,6 +2076,7 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 	fs.StringVar(&c.Env, "env", "", "environment")
 	fs.StringVar(&c.TokenFile, "token-file", "", "read a machine credential from this file (never --token: argv is public)")
 	fs.StringVar(&c.Auth, "auth", "", "select human or machine authentication when both are available")
+	fs.BoolVar(&c.ApproveInBrowser, "approve-in-browser", false, "carry out any reauthentication in the browser instead of with an authenticator code")
 	if extra != nil {
 		extra(fs)
 	}
@@ -2038,6 +2094,7 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 	if err != nil {
 		return nil, commonFlags{}, err
 	}
+	st.forceBrowser = c.ApproveInBrowser
 	return st, c, nil
 }
 
@@ -2076,27 +2133,9 @@ func authenticatedTarget(st *State, ios IO, flags commonFlags) (*Client, AuthArt
 // the caller already resolved and validated. It lets safety-sensitive verbs
 // reject malformed scope before trust or session state can change the answer.
 func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved Resolved) (*Client, AuthArtifact, Resolved, error) {
-	instance, err := resolved.Require(DimInstance)
+	instance, err := instanceName(st, resolved)
 	if err != nil {
-		// Exactly one established instance is not an ambiguity, so falling
-		// back to it is not a silent assumption — it is the only reading. Two
-		// or more IS an ambiguity, and ambiguity is a hard error naming what
-		// was missing, never a default.
-		//
-		// The fallback is the TRUST STORE rather than the session file, so
-		// that after a logout the answer is "you are not logged in" (exit 3)
-		// rather than "no instance" (exit 2). The distinction matters to a
-		// script deciding whether to re-authenticate.
-		entries, serr := st.Trust().Load()
-		if serr != nil {
-			return nil, nil, Resolved{}, serr
-		}
-		if len(entries) != 1 {
-			return nil, nil, Resolved{}, err
-		}
-		for k := range entries {
-			instance = k
-		}
+		return nil, nil, Resolved{}, err
 	}
 	entry, err := st.Trust().Lookup(instance)
 	if err != nil {
@@ -2146,6 +2185,34 @@ func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved 
 			echo, entry.Origin, humanSession.Principal)
 	}
 	return client, human, resolved, nil
+}
+
+// instanceName is the resolved instance reference.
+func instanceName(st *State, resolved Resolved) (string, error) {
+	instance, err := resolved.Require(DimInstance)
+	if err == nil {
+		return instance, nil
+	}
+	// Exactly one established instance is not an ambiguity, so falling
+	// back to it is not a silent assumption: it is the only reading. Two
+	// or more IS an ambiguity, and ambiguity is a hard error naming what
+	// was missing, never a default.
+	//
+	// The fallback is the TRUST STORE rather than the session file, so
+	// that after a logout the answer is "you are not logged in" (exit 3)
+	// rather than "no instance" (exit 2). The distinction matters to a
+	// script deciding whether to re-authenticate.
+	entries, serr := st.Trust().Load()
+	if serr != nil {
+		return "", serr
+	}
+	if len(entries) != 1 {
+		return "", err
+	}
+	for k := range entries {
+		instance = k
+	}
+	return instance, nil
 }
 
 func (ios IO) readPassword(prompt string) (string, error) {

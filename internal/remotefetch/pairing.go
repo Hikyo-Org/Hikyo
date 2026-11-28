@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/pairing"
 )
 
@@ -30,7 +33,7 @@ func EncodePairedCredential(token string, key ed25519.PrivateKey) (string, error
 	if token == "" || len(key) != ed25519.PrivateKeySize {
 		return "", pairing.ErrInvalidProof
 	}
-	raw, err := json.Marshal(pairedCredential{Version: 1, Token: token, PrivateKey: key})
+	raw, err := json.Marshal(pairedCredential{Version: 1, Token: token, PrivateKey: key}, jsonwire.Stable)
 	if err != nil {
 		return "", err
 	}
@@ -52,9 +55,7 @@ func applyDirectoryCredential(req *http.Request, credential string) error {
 	defer crypto.Zero(raw)
 	var stored pairedCredential
 	defer func() { crypto.Zero(stored.PrivateKey) }()
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&stored) != nil || decoder.Decode(new(any)) != io.EOF || stored.Version != 1 || stored.Token == "" || len(stored.PrivateKey) != ed25519.PrivateKeySize {
+	if json.Unmarshal(raw, &stored, json.RejectUnknownMembers(true)) != nil || stored.Version != 1 || stored.Token == "" || len(stored.PrivateKey) != ed25519.PrivateKeySize {
 		return pairing.ErrInvalidProof
 	}
 	proof, err := pairing.GenerateDPoP(ed25519.PrivateKey(stored.PrivateKey), pairing.DPoPClaims{Method: http.MethodGet, URL: req.URL.String(), AccessToken: stored.Token, IssuedAt: time.Now().UTC()})
@@ -86,7 +87,7 @@ func (c *Client) pairingExchange(ctx context.Context, origin, pin, path string, 
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(input)
+	raw, err := json.Marshal(input, jsonwire.Stable)
 	if err != nil {
 		return err
 	}
@@ -114,12 +115,11 @@ func (c *Client) pairingExchange(ctx context.Context, origin, pin, path string, 
 	if len(body) > 32768 {
 		return fmt.Errorf("remotefetch: pairing response exceeds cap")
 	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(out); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(body))
+	if err := json.UnmarshalDecode(dec, out, json.RejectUnknownMembers(true)); err != nil {
 		return fmt.Errorf("remotefetch: invalid pairing response")
 	}
-	if dec.Decode(new(any)) != io.EOF {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("remotefetch: trailing pairing response")
 	}
 	return nil

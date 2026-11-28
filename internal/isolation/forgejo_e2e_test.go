@@ -213,7 +213,7 @@ func runForgejoRealLifecycle(t *testing.T, db *store.DB, origin, token, owner, r
 	if len(teardown.Targets) != 1 || teardown.Targets[0].JobID == "" {
 		t.Fatalf("service teardown = %+v", teardown)
 	}
-	scrubJob := adapter.Job{}
+	var scrubJob adapter.Job
 	scrubJob, ok, err = runtime.ClaimDue(t.Context(), "external-worker", time.Now().UTC(), time.Now().UTC().Add(adapter.LeaseTime))
 	if err != nil || !ok {
 		t.Fatalf("claim adoption scrub: %+v %v %v", scrubJob, ok, err)

@@ -215,10 +215,10 @@ describe('MatrixKeyCreate', () => {
     const nameField = byLabel(view.container, 'matrix-create-name');
     await act(async () => set(nameField, 'log level'));
     expect(nameField.value).toBe('log level');
-    const preview = view.container.querySelector('#matrix-create-name-preview');
+    const preview = view.container.querySelector('#matrix-create-name-hint');
     expect(preview?.textContent).toBe('Will be declared as LOG_LEVEL in folder app/');
     expect(preview?.hasAttribute('role')).toBe(false);
-    expect(nameField.getAttribute('aria-describedby')).toBe('matrix-create-name-preview');
+    expect(nameField.getAttribute('aria-describedby')).toBe('matrix-create-name-hint');
     await view.unmount();
   });
 
@@ -239,6 +239,18 @@ describe('MatrixKeyCreate', () => {
     expect(view.container.textContent).toContain('Leading and trailing whitespace was removed.');
     await fillNameAndSubmit(view.container, 'LEVEL');
     expect(view.onCreate.mock.calls[0]![0].firstValue?.value).toBe('info');
+    await view.unmount();
+  });
+
+  it('refuses a whitespace-only first value instead of dropping it', async () => {
+    const view = await render();
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), ' \n\t '));
+    expect(view.container.textContent).toContain('This value is only whitespace, so trimming leaves it empty.');
+    await fillNameAndSubmit(view.container, 'LEVEL');
+    expect(view.onCreate).not.toHaveBeenCalled();
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Clear the first value to declare the key without one, or enter a value.',
+    );
     await view.unmount();
   });
 

@@ -1,7 +1,7 @@
 package ci_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type registry struct {
@@ -404,7 +406,7 @@ func repositoryRoot(t *testing.T) string {
 
 func cloneRegistry(t *testing.T, input registry) registry {
 	t.Helper()
-	data, err := json.Marshal(input)
+	data, err := json.Marshal(input, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

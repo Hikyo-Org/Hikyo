@@ -29,7 +29,7 @@ feedback_plan_build() {
 	local path package existing duplicate
 	local remaining_go=()
 	web=false client=false workflows=false docs=false all_go=false
-	release_admission=false audit_collector=false desktop=false
+	release_admission=false audit_collector=false docs_impact=false desktop=false
 	feedback_go_files=() feedback_go_packages=() shell_files=()
 	while IFS= read -r -d '' path; do
 		case "$path" in
@@ -46,12 +46,16 @@ feedback_plan_build() {
 			desktop/* | api/openapi.yaml | api/*.go | internal/audit/* | internal/clientauth/* | internal/clienterr/* | internal/clienttrust/* | internal/crypto/* | internal/delivery/* | internal/domain/* | internal/filedurability/* | internal/freetext/* | internal/jsonwire/* | internal/operation/* | internal/securefile/* | internal/tlspolicy/*) if [ -f desktop/go.mod ]; then desktop=true; fi ;;
 		esac
 		case "$path" in
+			internal/cli/testdata/help.txt | api/openapi.yaml | internal/config/variables.go) docs_impact=true ;;
+			desktop/main_darwin.go | desktop/internal/shell/shellroutes.go) docs_impact=true ;;
+		esac
+		case "$path" in
 			web/*) web=true ;;
 			clients/ts/* | api/openapi.yaml) client=true; web=true ;;
 			.nvmrc | package.json | pnpm-lock.yaml | pnpm-workspace.yaml) client=true; web=true ;;
 		esac
 		case "$path" in
-			SECURITY.md | SUPPORT.md | GOVERNANCE.md | TRADEMARK.md | CONTRIBUTING.md | LICENSE | docs/status/* | docs/release/* | docs/site/* | install/upgrade-nightly.sh | .nvmrc | package.json | pnpm-lock.yaml | pnpm-workspace.yaml) docs=true ;;
+			SECURITY.md | SUPPORT.md | GOVERNANCE.md | TRADEMARK.md | CONTRIBUTING.md | LICENSE | internal/cli/testdata/help.txt | docs/status/* | docs/release/* | docs/site/* | install/upgrade-nightly.sh | .nvmrc | package.json | pnpm-lock.yaml | pnpm-workspace.yaml) docs=true ;;
 		esac
 		case "$path" in
 			.github/workflows/*.yml | .github/workflows/*.yaml) workflows=true ;;
@@ -63,9 +67,14 @@ feedback_plan_build() {
 					*/*) package="./${path%/*}" ;;
 					*) package=./. ;;
 				esac
-				remaining_go=("$package"/*.go)
+				# Match go list ./...: naming a testdata, dot or underscore directory
+				# explicitly would compile fixtures whose files are all build-ignored.
+				case "/${package#./}/" in
+					*/testdata/* | */.[!/]* | */_*) remaining_go=() ;;
+					*) remaining_go=("$package"/*.go) ;;
+				esac
 				# `go test -c ./desktop/...` from the root is an error: nested module.
-				if [ -f "${remaining_go[0]}" ] && [[ "$package" != ./desktop && "$package" != ./desktop/* ]]; then
+				if [ "${#remaining_go[@]}" -gt 0 ] && [ -f "${remaining_go[0]}" ] && [[ "$package" != ./desktop && "$package" != ./desktop/* ]]; then
 					duplicate=false
 					for existing in ${feedback_go_packages[@]+"${feedback_go_packages[@]}"}; do
 						if [ "$existing" = "$package" ]; then duplicate=true; break; fi
@@ -99,6 +108,8 @@ feedback_plan_select() {
 			if [ "$all_go" = true ] && [ "$scope" != tooling ]; then feedback_checks+=(go-mod-verify); fi
 			if [ "${#go_packages[@]}" -gt 0 ]; then feedback_checks+=(go-compile); fi
 			if [ "$desktop" = true ] && [ "$scope" != tooling ]; then feedback_checks+=(desktop-compile); fi
+			# After the Go checks, so a compile error is reported before missing docs.
+			if [ "$scope" != tooling ] && [ "$docs_impact" = true ]; then feedback_checks+=(docs-impact); fi
 			if [ "$scope" != application ]; then
 				if [ "${#shell_files[@]}" -gt 0 ]; then feedback_checks+=(shellcheck); fi
 				if [ "$workflows" = true ]; then feedback_checks+=(actionlint); fi
@@ -122,6 +133,7 @@ feedback_plan_select() {
 feedback_check_prerequisites() {
 	case "$1" in
 		audit-collector) feedback_check_needs=(python) ;;
+		docs-impact) feedback_check_needs=() ;;
 		release-admission) feedback_check_needs=(python releaseDependencies) ;;
 		go-format | go-mod-verify | go-compile | desktop-compile) feedback_check_needs=(go) ;;
 		shellcheck) feedback_check_needs=(shellcheck) ;;

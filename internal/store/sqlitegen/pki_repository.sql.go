@@ -1005,6 +1005,52 @@ func (q *Queries) PKIListIssuers(ctx context.Context) ([]PKIListIssuersRow, erro
 	return items, nil
 }
 
+const pKIListLiveEnvironmentCertificateIDs = `-- name: PKIListLiveEnvironmentCertificateIDs :many
+SELECT id FROM pki_certificates WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>?4 ORDER BY id LIMIT ?5
+`
+
+type PKIListLiveEnvironmentCertificateIDsParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Now          string
+	RowLimit     int64
+}
+
+// Environment delete (#1420, owner decision B 2026-11-23): a certificate is live
+// on the same terms as PKICountLiveCertificates and refuses the delete by name;
+// terminal history (failed, expired, or past not_after) is purged with the
+// environment. The delete repeats the terminal predicate so a certificate
+// issued after the live check is never purged.
+func (q *Queries) PKIListLiveEnvironmentCertificateIDs(ctx context.Context, arg PKIListLiveEnvironmentCertificateIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, pKIListLiveEnvironmentCertificateIDs,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Now,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pKIListProfiles = `-- name: PKIListProfiles :many
 SELECT id,name,policy,row_version,created_by,created_at,updated_at FROM pki_profiles ORDER BY name
 `
@@ -1067,6 +1113,30 @@ func (q *Queries) PKIPublishCRL(ctx context.Context, arg PKIPublishCRLParams) (i
 		arg.NextUpdate,
 		arg.ID,
 		arg.PreviousNumber,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pKIPurgeTerminalEnvironmentCertificates = `-- name: PKIPurgeTerminalEnvironmentCertificates :execrows
+DELETE FROM pki_certificates WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND (state IN ('failed','expired') OR not_after<=?4)
+`
+
+type PKIPurgeTerminalEnvironmentCertificatesParams struct {
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Now          string
+}
+
+func (q *Queries) PKIPurgeTerminalEnvironmentCertificates(ctx context.Context, arg PKIPurgeTerminalEnvironmentCertificatesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pKIPurgeTerminalEnvironmentCertificates,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Now,
 	)
 	if err != nil {
 		return 0, err

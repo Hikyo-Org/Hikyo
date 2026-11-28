@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -205,6 +206,7 @@ type adapterDB interface {
 	adapterStoreQueries() adapterStoreQueries
 	sshQueries() sshRuntimeQueries
 	dynamicQueries() dynamicRuntimeQueries
+	rotationRuntimeQueries() rotationRuntimeQueries
 }
 
 type sqliteAdoptDB struct{ db sqlitegen.DBTX }
@@ -723,4 +725,38 @@ func revokeAdapterCredential(ctx context.Context, db adapterDB, chain domain.Sco
 		return AdapterCredentialResult{}, ErrConflict
 	}
 	return AdapterCredentialResult{PreviousAuthorityPrincipalID: authority, AuthorityPrincipalID: authority, TargetCount: targetCount}, nil
+}
+
+// ErrAdapterTargetsInEnvironment refuses an environment delete while it has an
+// adapter target or a configure fence: targets are only tombstoned, their
+// delivery ledger is retained, and a fence records a provider-side configure
+// that began (possibly succeeded) before its target row existed, so it is
+// evidence rather than purgeable debris. The environment cannot be deleted
+// until a retention decision lands (#1525).
+var ErrAdapterTargetsInEnvironment = fmt.Errorf("%w: the environment still has adapter targets or configure fences, which are retained", ErrConflict)
+
+func (r adapterQueries) GuardEnvironmentDelete(ctx context.Context, p authz.Proof) error {
+	chain, err := authz.Verify(p, authz.StoreAdaptersGuardEnvironmentDelete, r.tok)
+	if err != nil {
+		return err
+	}
+	if chain.Env == "" {
+		return ErrNotFound
+	}
+	q := r.db.adapterStoreQueries()
+	ids, err := q.environmentTargetIDs(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	fences, err := q.environmentFenceTargetIDs(ctx, chain, LiveRowsLimit+1)
+	if err != nil {
+		return err
+	}
+	ids = append(ids, fences...)
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	if len(ids) > 0 {
+		return newLiveRowsError(ErrAdapterTargetsInEnvironment, ids)
+	}
+	return nil
 }

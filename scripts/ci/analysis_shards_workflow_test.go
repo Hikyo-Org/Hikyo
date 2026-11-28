@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -115,7 +116,7 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 		wantSuccess      bool
 		wantCalls        int
 	}
-	runScenario := func(t *testing.T, scenario workflowScenario) map[string]json.RawMessage {
+	runScenario := func(t *testing.T, scenario workflowScenario) map[string]jsontext.Value {
 		t.Helper()
 		work := t.TempDir()
 		trusted := filepath.Join(work, "trusted.go")
@@ -172,13 +173,13 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := map[string]json.RawMessage{}
+		actual := map[string]jsontext.Value{}
 		for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
 			key, value, ok := strings.Cut(line, "=")
-			if !ok || actual[key] != nil || !json.Valid([]byte(value)) {
+			if !ok || actual[key] != nil || !jsontext.Value(value).IsValid() {
 				t.Fatal("invalid or duplicate workflow output")
 			}
-			actual[key] = json.RawMessage(value)
+			actual[key] = jsontext.Value(value)
 		}
 		if len(actual) != 5 {
 			t.Fatal("workflow lost complete matrix outputs")
@@ -226,7 +227,7 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 
 // raceTargetUnion lists every package and filtered target a race plan runs, one
 // entry per occurrence, so duplicates and omissions both change the result.
-func raceTargetUnion(t *testing.T, plan json.RawMessage) []string {
+func raceTargetUnion(t *testing.T, plan jsontext.Value) []string {
 	t.Helper()
 	var shards [][]string
 	if err := json.Unmarshal(plan, &shards); err != nil {

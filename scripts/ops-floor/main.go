@@ -4,7 +4,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 )
 
@@ -249,7 +251,7 @@ func run() error {
 		Scope           string    `json:"scope"`
 		HealthyCapacity bool      `json:"healthy_capacity"`
 	}{"hikyo.dev/ops-floor/v1", "pass", l, started, time.Since(started).Milliseconds(), peakBytes, checks, doctorStates, "local-development", "complete doctor checklist, independently measured real SQLite volume, storage refusal and selected admission bounds; degraded host capacity retains its actual verdict and is not healthy capacity acceptance; other registry fixtures remain ordinary CI evidence", healthyCapacity}
-	raw, err := json.MarshalIndent(result, "", "  ")
+	raw, err := json.Marshal(result, jsonwire.Stable, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

@@ -11,11 +11,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -76,7 +77,7 @@ func sign(key *ecdsa.PrivateKey, raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(releasetrust.LegacyBundle{Base64Signature: base64.StdEncoding.EncodeToString(sig)})
+	return json.Marshal(releasetrust.LegacyBundle{Base64Signature: base64.StdEncoding.EncodeToString(sig)}, jsonwire.Stable)
 }
 
 // documents constructs only the fixed synthetic declaration. No version,
@@ -96,7 +97,7 @@ func documents(recoveryRaw, primaryRaw []byte, signatures bool) (map[string][]by
 	}
 	files := map[string][]byte{"recovery.key": recoveryRaw, "primary.key": primaryRaw, "recovery.pub": recoveryPub, "bundle/keys/" + primaryID + ".pub": primaryPub}
 	put := func(name string, value any) error {
-		raw, err := json.Marshal(value)
+		raw, err := json.Marshal(value, jsonwire.Stable)
 		if err == nil {
 			files[name] = raw
 		}
@@ -107,7 +108,7 @@ func documents(recoveryRaw, primaryRaw []byte, signatures bool) (map[string][]by
 		return nil, err
 	}
 	candidate := releasetrust.Candidate{Version: buildcompat.DevelopmentVersion, Sequence: 1, Commit: buildcompat.DevelopmentCommit, KeyID: primaryID, PublicKey: primaryID + ".pub"}
-	candidateRaw, err := json.Marshal(candidate)
+	candidateRaw, err := json.Marshal(candidate, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +116,7 @@ func documents(recoveryRaw, primaryRaw []byte, signatures bool) (map[string][]by
 		{Name: "release-candidate.json", Kind: "release-candidate", SHA256: string(releaseidentity.Hash(candidateRaw))},
 		{Name: releasetrust.CompatibilityArtifact, Kind: "upgrade-compatibility", SHA256: string(releaseidentity.Hash(declaration))},
 	}}
-	manifestRaw, err := json.Marshal(manifest)
+	manifestRaw, err := json.Marshal(manifest, jsonwire.Stable)
 	if err != nil {
 		return nil, err
 	}

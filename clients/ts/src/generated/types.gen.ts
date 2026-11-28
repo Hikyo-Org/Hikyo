@@ -446,7 +446,7 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
  */
 export type AdapterProvider = string;
 
@@ -876,6 +876,191 @@ export type DynamicLeaseList = {
     items: Array<DynamicLease>;
 };
 
+/**
+ * `paused` is an operator or cascade pause (a deleted provider, a protected
+ * environment or an approval policy pauses the rotations it would break);
+ * `halted` is the executor's named stop (a failed authority or pre-publish
+ * gate, or an exhausted retry window); the rotation's `halt_reason` names
+ * which. Only a full resume authorization leaves either. `disabled` is the
+ * soft delete.
+ *
+ */
+export type CredentialRotationState = 'active' | 'paused' | 'halted' | 'disabled';
+
+/**
+ * Why a halted rotation stopped, as a fixed word, never free text and never
+ * provider detail. `retries_exhausted`: the cycle's retry window ran out
+ * before a run could publish or extend the credential, so the delivered
+ * credential is not extended. `authority_lost`: the recorded person no longer
+ * holds the access the rotation needs, or one of its keys or its environment
+ * is gone. `gate_failed`: a pre-publish gate refused, for example the
+ * environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+ * server writes (a legacy or restored value). OPEN enum: a later release may
+ * add a word, so a client keeps an unrecognised one and says only that the
+ * rotation is halted.
+ *
+ */
+export type RotationHaltReason = string;
+
+/**
+ * The newest run of a rotation, the top row of its runs list: metadata only.
+ * Neither a role handle nor any provider detail is carried.
+ *
+ */
+export type RotationLastRun = {
+    id: Id;
+    phase: RotationRunPhase;
+    /**
+     * The fixed-word code of the run's last failure, if any, exactly as the runs list carries it. Never provider detail.
+     */
+    error_code?: string | null;
+    phase_at: Timestamp;
+};
+
+export type CredentialRotation = {
+    id: Id;
+    environment_id: Id;
+    provider_id: Id;
+    key_id: Id;
+    username_key_id: Id;
+    interval_seconds: number;
+    revocation_delay_seconds: number;
+    authority_principal_id: Id;
+    created_by: Id;
+    state: CredentialRotationState;
+    /**
+     * Present only while the state is halted: why the server stopped the rotation, as a fixed word.
+     */
+    halt_reason?: RotationHaltReason;
+    /**
+     * The newest run, the top row of the runs list. Absent when the rotation has never run.
+     */
+    last_run?: RotationLastRun;
+    /**
+     * How many of the rotation's runs, over its whole history, need an operator's attention because they still owe a provider role a drop: those in phase revoke_refused (held on purpose, Hikyo does not drop the role) or quarantine (Hikyo may still retry the drop, but it needs a person to look), whatever their error code. It is the count `hikyo rotation runs` lists as ATTENTION, and the hikyo_rotation_runs_revoke_refused and hikyo_rotation_runs_quarantined gauges sum the same runs. Hikyo has no operator action that releases such a role; it lapses on its own unless dropped at the provider. Zero means no run needs an operator's attention for a role: a run still in flight (published, overlap or revoking) also owes a drop, which the executor carries out itself, and is not counted here. A deleted rotation keeps the count of the runs its delete closed.
+     */
+    owed_drop_runs: number;
+    /**
+     * The part of owed_drop_runs a restore refused (error_code `published_versions_changed`): the keys may be serving that role again, so it must not be dropped until they have moved off it. Whenever this is above zero, never tell an operator to drop; tell them to read the runs first.
+     */
+    owed_drop_runs_versions_changed: number;
+    /**
+     * True while a restore holds the rotation: it starts no run and takes no pre-publish step, whatever its state, until `release-hold`. The delivered credential keeps lapsing at credential_expires_at, so release the hold before then.
+     */
+    restore_hold: boolean;
+    /**
+     * Set only while the rotation is active.
+     */
+    next_run_at?: string | null;
+    /**
+     * When the credential currently delivered into the keys lapses (the delivered role's VALID UNTIL, from the latest published run). Null until a run has published, or when the role never expires. Pausing or deleting the rotation does not revoke it.
+     */
+    credential_expires_at?: string | null;
+    generation: number;
+    created_at: Timestamp;
+    updated_at: Timestamp;
+};
+
+export type CredentialRotationList = {
+    items: Array<CredentialRotation>;
+    /**
+     * Pass as `after` to read the next page. Absent on the last page.
+     */
+    next_after?: string;
+};
+
+export type CreateRotationRequest = {
+    provider_id: Id;
+    key_id: Id;
+    username_key_id: Id;
+    /**
+     * Seconds between rotations, from 1 hour to 90 days.
+     */
+    interval_seconds: number;
+    /**
+     * Seconds the superseded credential stays valid after the new one is published, from 5 minutes to 7 days. Must be shorter than the interval.
+     */
+    revocation_delay_seconds: number;
+};
+
+export type RotationStateRequest = {
+    /**
+     * The generation the caller last read. Omitted or null means the current generation.
+     */
+    expected_generation?: number | null;
+};
+
+export type RunRotationNowRequest = {
+    /**
+     * The run-now confirmation, required on every request. It must be true: the
+     * run publishes a new credential now, off the schedule, and with
+     * `skip_overlap` revokes the superseded one at once. A body without it,
+     * or with false, is refused by name; a request with no body at all is a
+     * plain bad request.
+     *
+     */
+    confirm_destructive: boolean;
+    /**
+     * The generation the caller last read. Omitted or null means the current generation.
+     */
+    expected_generation?: number | null;
+    /**
+     * Revoke the superseded credential right after this run publishes the new one (a revocation delay of zero for this run only).
+     */
+    skip_overlap?: boolean;
+};
+
+export type RotationRunRequested = {
+    rotation_id: Id;
+    run_id: Id;
+    skip_overlap: boolean;
+};
+
+/**
+ * The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+ */
+export type RotationRunPhase = 'minting' | 'minted' | 'staged' | 'published' | 'overlap' | 'revoking' | 'revoke_refused' | 'done' | 'quarantine' | 'failed';
+
+export type RotationRun = {
+    id: Id;
+    trigger: 'schedule' | 'manual';
+    phase: RotationRunPhase;
+    /**
+     * The catalogue revision this run published. Null until it publishes.
+     */
+    published_revision?: number | null;
+    /**
+     * The overlap this run snapshotted; zero for a run that skipped it.
+     */
+    revocation_delay_seconds: number;
+    started_at: Timestamp;
+    phase_at: Timestamp;
+    /**
+     * The fixed-word code of the last failure, if any. Never provider detail. `published_versions_changed` on a revoke_refused or quarantine run means a restore put an earlier value back, so the keys may be serving the role the run owes a drop again: that role must not be dropped until the keys have moved off it.
+     */
+    error_code?: string | null;
+    /**
+     * Adapter (sync) targets that mirror either rotation key and had not converged to the published revision when the run decided to revoke the superseded credential. Machine principals that read the keys directly are not counted. Null until then.
+     */
+    not_converged_adapter_targets?: number | null;
+    /**
+     * For a revoke_refused or quarantine run that published, when the superseded role it still owes a drop expires on its own (its candidate is the serving credential and is never named here); for a quarantine run that never published, when its candidate role does. Null for every other phase, or when no expiry was recorded. The role is owed a drop, not necessarily safe to drop: before dropping it, check that neither key serves it, because a revision restore can put it back (error_code `published_versions_changed` says one already did). A lower bound when credential_valid_until_lower_bound is true.
+     */
+    credential_valid_until?: string | null;
+    /**
+     * True when an extend of that role has an open or unknown outcome, so the role may stay valid past credential_valid_until: read the time as "at least until". Absent otherwise.
+     */
+    credential_valid_until_lower_bound?: boolean;
+};
+
+export type RotationRunList = {
+    items: Array<RotationRun>;
+    /**
+     * Pass as `after` to read the next page. Absent on the last page.
+     */
+    next_after?: string;
+};
+
 export type MintLeaseRequest = {
     provider_id: Id;
     /**
@@ -1299,7 +1484,10 @@ export type Meta = {
      * `login` needs before any session exists, and the machine protocols
      * an integration probes before using them, such as
      * `delivery-target-report/<vocabulary>` for each delivery-target
-     * report vocabulary this server accepts.
+     * report vocabulary this server accepts. `desktop-app/1` means the
+     * instance serves the embedded web application and that application
+     * implements the desktop shell handoff protocol; an instance built
+     * without it never advertises the token.
      *
      */
     protocol_capabilities: Array<ProtocolCapability>;
@@ -1712,11 +1900,11 @@ export type CliReauthStartRequest = ({
 }) & {
     developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config' | 'developer-credential';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'access' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'access.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environment_ids: Array<Id>;
     /**
-     * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
+     * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`, `mint` and `access`.
      */
     key_ids?: Array<Id>;
     pkce_challenge: string;
@@ -1765,11 +1953,11 @@ export type CliReauthTransaction = {
     developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
     state: string;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config' | 'developer-credential';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'mint' | 'access' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'identity.credential-mint' | 'access.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environments: Array<CliReauthEnvironmentPolicy>;
     /**
-     * The enumerated unit the ceremony binds; empty for `adapter`.
+     * The enumerated unit the ceremony binds; empty for `adapter`, `mint` and `access`.
      */
     key_ids: Array<Id>;
     redirect_uri: string;
@@ -3871,9 +4059,11 @@ export type UpdateFederationIssuerRequest = {
  * value. Exactly one of `string_value`, `number_value` or `bool_value` is
  * set, and that is what makes "a string is never folded to a number" true
  * at the wire boundary rather than only inside the validator:
- * `repository_id: 123` and `repository_id: "123"` are two different
- * requests that cannot be mistaken for one another, and a 64-bit repository
- * id survives without passing through a float.
+ * `run_attempt: 1` and `run_attempt: "1"` are two different requests that
+ * cannot be mistaken for one another, and a 64-bit integer survives without
+ * passing through a float. A platform's required pins are JSON strings,
+ * because the issuer emits them as strings (GitHub's `repository_id` is
+ * `"74"`); a required pin of another kind is refused at creation.
  *
  * A pin naming none or several values is refused rather than resolved by
  * precedence.
@@ -3910,11 +4100,15 @@ export type CreateBindingRequest = {
      */
     audience: string;
     /**
-     * Every pinned claim, all of which validation requires. A Forgejo or
-     * GitHub Actions binding MUST pin `event_name`: `pull_request_target`
-     * carries the ordinary ref-form subject — the default branch's subject,
-     * the one a production binding names — so the protection comes from the
-     * pinned event, never from the subject's shape.
+     * Every pinned claim, all of which validation requires. A GitHub
+     * Actions binding MUST pin `repository_id`, `repository_owner_id`,
+     * `event_name`, `ref_protected`, `runner_environment` and
+     * `job_workflow_ref`, each as a string; a Kubernetes binding MUST pin
+     * `/kubernetes.io/serviceaccount/uid` as a string. `event_name` matters
+     * because `pull_request_target` carries the ordinary ref-form subject —
+     * the default branch's subject, the one a production binding names — so
+     * the protection comes from the pinned event, never from the subject's
+     * shape.
      *
      */
     required_claims: Array<FederatedClaimPin>;
@@ -4461,13 +4655,45 @@ export type RuleCapability = 'read' | 'edit' | 'publish' | 'pin' | 'reveal' | 'r
 export type RuleAxisMode = 'all' | 'only';
 
 /**
+ * `only` reaches the listed `projects`. `all` reaches every project of
+ * the organisation, including projects created later; such a rule covers
+ * every environment and narrows keys by folder only. Omitted, a rule's
+ * project mode is `only`. The default is stated here rather than as a
+ * schema `default`, so generated clients never add the property to a
+ * request: a server before revision 21 refuses it.
+ *
+ */
+export type RuleProjectMode = 'all' | 'only';
+
+/**
  * Where a rule reaches: projects, then environments, then keys. Every
  * environment and key item names the project it belongs to, which must be
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * With `project_mode` `all` the rule reaches every project of the
+ * organisation, including projects created later. A response lists the
+ * organisation's current projects (a project listing: only that
+ * project), with the rule's folder items repeated under each, so
+ * `projects` is never empty; an organisation listing's or a create's
+ * `where` is a valid create request. A create lists exactly the organisation's current
+ * projects (otherwise 409), keeps the environment axis `all` without
+ * items, and repeats the same folder items, never single keys, under
+ * every project.
+ *
+ * The 500 bound counts the rule as it is listed: every current project
+ * plus its folder items repeated under each. A create that would list
+ * more is refused with 409 `limit_exceeded`. A project creation that
+ * would list an existing rule over all projects past it is refused with
+ * 409 `conflict`, whose detail names the blocking rules to a member
+ * manager. A listing is never truncated.
+ *
  */
 export type RuleWhere = {
+    /**
+     * The project axis's mode; omitted, `only`.
+     */
+    project_mode?: RuleProjectMode;
     projects: Array<Id>;
     environments: RuleEnvironmentAxis;
     keys: RuleKeyAxis;
@@ -4498,6 +4724,65 @@ export type RuleKeyItem = {
     project: Id;
     folder?: KeyFolderPath;
     key?: Id;
+};
+
+export type AccessResolution = {
+    permission: RuleCapability;
+    environment: Id;
+    key?: Id;
+    /**
+     * Principals that hold the permission here. For `reveal` and `reveal-history` they also hold See.
+     */
+    can: Array<AccessPrincipal>;
+    /**
+     * Principals a rule would reach, but an except of that rule leaves this place out.
+     */
+    excepted: Array<AccessPrincipal>;
+    /**
+     * Principals that hold `reveal` or `reveal-history` here but not `read`, so they cannot show a value.
+     */
+    needs_see: Array<AccessPrincipal>;
+    /**
+     * Members of the project (by a project grant or a rule the caller may manage) that no grant or rule of theirs reaches here.
+     */
+    none: Array<AccessPrincipal>;
+};
+
+export type AccessPrincipal = {
+    principal_id: Id;
+    /**
+     * Current display name or username of the person, or the service account's name; not an identifier.
+     */
+    principal_name?: string;
+    kind: PrincipalKind;
+    /**
+     * The scopes of the grants that give the permission here.
+     */
+    grants: Array<GrantScope>;
+    /**
+     * The ids of the rules that give the permission here.
+     */
+    rules: Array<Id>;
+    /**
+     * On `excepted`, each rule that would reach and what of it leaves this place out.
+     */
+    excepts: Array<AccessExcept>;
+};
+
+export type AccessExcept = {
+    rule: Id;
+    /**
+     * The excepted environments that leave this place out.
+     */
+    environments: Array<Id>;
+    /**
+     * The excepted folders or keys that leave the named key out.
+     */
+    keys: Array<RuleKeyItem>;
+    /**
+     * No key was named and the rule reaches only some keys of the environment.
+     */
+    key_limited: boolean;
 };
 
 export type Rule = {
@@ -4717,6 +5002,34 @@ export type RetentionHealth = {
      * Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
      */
     pki_issuers_on_hold?: number;
+    /**
+     * Scheduled-rotation runs closed as quarantine that still owe a drop (#148). Absent when not measured.
+     */
+    rotation_runs_quarantined?: number;
+    /**
+     * Scheduled-rotation runs not yet settled that recorded an effect of unknown outcome, so a possibly live credential exists (#148). Absent when not measured.
+     */
+    rotation_runs_unknown_outcome?: number;
+    /**
+     * Scheduled-rotation runs whose superseded role could not be dropped, because it owns objects or a restore put its value back (#148). Absent when not measured.
+     */
+    rotation_runs_revoke_refused?: number;
+    /**
+     * Scheduled rotations halted by a failed authority gate or an exhausted retry window (#148). Absent when not measured.
+     */
+    rotation_halted?: number;
+    /**
+     * Scheduled rotations a restore holds until an operator releases them, so none starts a run (#148). Absent when not measured.
+     */
+    rotation_restore_held?: number;
+    /**
+     * Active scheduled rotations due for over fifteen minutes with no run started (#148). Absent when not measured.
+     */
+    rotation_overdue?: number;
+    /**
+     * Scheduled rotations (not deleted) whose delivered credential expires within the next six hours; credentials already past expiry are not counted (#148). Absent when not measured.
+     */
+    rotation_credentials_expiring?: number;
 };
 
 /**
@@ -5396,12 +5709,28 @@ export type OidcProviderInput = {
      * JSON `{acr_values[], amr_sets[][]}`; absent means single-factor.
      */
     assurance_policy?: string | null;
+    lifecycle_profile?: OidcLifecycleProfile;
+    /**
+     * The directory's webhook signing secret (`whsec_...`), envelope-encrypted
+     * at rest under its own field binding and never returned. Required with a
+     * `lifecycle_profile` on create; on reconfigure, absent or empty keeps the
+     * stored secret. Setting, rotating or clearing it sweeps no sessions.
+     *
+     */
+    lifecycle_secret?: string;
     enabled: boolean;
     /**
      * Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
      */
     row_version?: number;
 };
+
+/**
+ * The directory lifecycle dialect, a closed set; null means the provider
+ * takes no lifecycle events.
+ *
+ */
+export type OidcLifecycleProfile = 'clerk' | null;
 
 export type Oauth2ProviderInput = {
     profile: 'github';
@@ -5424,6 +5753,15 @@ export type OidcProvider = {
     scopes: string;
     redirect_uri: string;
     assurance_policy?: string | null;
+    lifecycle_profile?: OidcLifecycleProfile;
+    /**
+     * Whether a lifecycle signing secret is stored. The secret itself never leaves the server.
+     */
+    lifecycle_secret_set: boolean;
+    /**
+     * The endpoint to register at the directory.
+     */
+    lifecycle_uri: string;
     enabled: boolean;
     row_version: number;
 };
@@ -6948,6 +7286,13 @@ export type AdapterTargetId = Id;
 export type DynamicProviderId = Id;
 
 export type LeaseId = Id;
+
+export type RotationId = Id;
+
+/**
+ * The generation the caller last read. A different current generation is a conflict.
+ */
+export type ExpectedGeneration = number;
 
 export type Sshcaid = Id;
 
@@ -13452,6 +13797,100 @@ export type ListProjectRulesResponses = {
 
 export type ListProjectRulesResponse = ListProjectRulesResponses[keyof ListProjectRulesResponses];
 
+export type ResolveAccessData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query: {
+        /**
+         * The permission to answer for.
+         */
+        permission: RuleCapability;
+        /**
+         * One key of the project, by id. Absent asks about every key of the environment.
+         */
+        key?: Id;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access';
+};
+
+export type ResolveAccessErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ResolveAccessError = ResolveAccessErrors[keyof ResolveAccessErrors];
+
+export type ResolveAccessResponses = {
+    /**
+     * The answer, in four groups.
+     */
+    200: AccessResolution;
+};
+
+export type ResolveAccessResponse = ResolveAccessResponses[keyof ResolveAccessResponses];
+
 export type ApplyProjectTemplateData = {
     body: ApplyTemplateRequest;
     path: {
@@ -17687,6 +18126,60 @@ export type OidcCallbackResponses = {
 };
 
 export type OidcCallbackResponse = OidcCallbackResponses[keyof OidcCallbackResponses];
+
+export type OidcLifecycleData = {
+    body: Blob | File;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        provider: string;
+    };
+    query?: never;
+    url: '/api/v1/auth/oidc/{provider}/lifecycle';
+};
+
+export type OidcLifecycleErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type OidcLifecycleError = OidcLifecycleErrors[keyof OidcLifecycleErrors];
+
+export type OidcLifecycleResponses = {
+    /**
+     * The event verified and was handled or ignored.
+     */
+    204: void;
+};
+
+export type OidcLifecycleResponse = OidcLifecycleResponses[keyof OidcLifecycleResponses];
 
 export type Oauth2StartData = {
     body: Oauth2StartRequest;
@@ -33515,6 +34008,710 @@ export type SettleLeaseResponses = {
 };
 
 export type SettleLeaseResponse = SettleLeaseResponses[keyof SettleLeaseResponses];
+
+export type ListRotationsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: {
+        /**
+         * List every deleted (disabled) rotation as well. Off by default, which still lists a deleted rotation that owns a run owing a provider role a drop.
+         */
+        include_disabled?: boolean;
+        /**
+         * Maximum rotations on this page, in id order.
+         */
+        limit?: number;
+        /**
+         * The `next_after` a previous page returned. Absent reads the first page.
+         */
+        after?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations';
+};
+
+export type ListRotationsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListRotationsError = ListRotationsErrors[keyof ListRotationsErrors];
+
+export type ListRotationsResponses = {
+    /**
+     * Rotation list.
+     */
+    200: CredentialRotationList;
+};
+
+export type ListRotationsResponse = ListRotationsResponses[keyof ListRotationsResponses];
+
+export type CreateRotationData = {
+    body: CreateRotationRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations';
+};
+
+export type CreateRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateRotationError = CreateRotationErrors[keyof CreateRotationErrors];
+
+export type CreateRotationResponses = {
+    /**
+     * Rotation configured.
+     */
+    201: CredentialRotation;
+};
+
+export type CreateRotationResponse = CreateRotationResponses[keyof CreateRotationResponses];
+
+export type DeleteRotationData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: {
+        /**
+         * The generation the caller last read. A different current generation is a conflict.
+         */
+        expected_generation?: number;
+        /**
+         * Close the rotation's unsettled runs instead of refusing the delete. Off by default.
+         */
+        abandon?: boolean;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}';
+};
+
+export type DeleteRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteRotationError = DeleteRotationErrors[keyof DeleteRotationErrors];
+
+export type DeleteRotationResponses = {
+    /**
+     * Rotation after it was disabled.
+     */
+    200: CredentialRotation;
+};
+
+export type DeleteRotationResponse = DeleteRotationResponses[keyof DeleteRotationResponses];
+
+export type ShowRotationData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}';
+};
+
+export type ShowRotationErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowRotationError = ShowRotationErrors[keyof ShowRotationErrors];
+
+export type ShowRotationResponses = {
+    /**
+     * Rotation.
+     */
+    200: CredentialRotation;
+};
+
+export type ShowRotationResponse = ShowRotationResponses[keyof ShowRotationResponses];
+
+export type PauseRotationData = {
+    body?: RotationStateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/pause';
+};
+
+export type PauseRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PauseRotationError = PauseRotationErrors[keyof PauseRotationErrors];
+
+export type PauseRotationResponses = {
+    /**
+     * Rotation after the change.
+     */
+    200: CredentialRotation;
+};
+
+export type PauseRotationResponse = PauseRotationResponses[keyof PauseRotationResponses];
+
+export type ResumeRotationData = {
+    body?: RotationStateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/resume';
+};
+
+export type ResumeRotationErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ResumeRotationError = ResumeRotationErrors[keyof ResumeRotationErrors];
+
+export type ResumeRotationResponses = {
+    /**
+     * Rotation after the change.
+     */
+    200: CredentialRotation;
+};
+
+export type ResumeRotationResponse = ResumeRotationResponses[keyof ResumeRotationResponses];
+
+export type ReleaseRotationHoldData = {
+    body?: RotationStateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/release-hold';
+};
+
+export type ReleaseRotationHoldErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReleaseRotationHoldError = ReleaseRotationHoldErrors[keyof ReleaseRotationHoldErrors];
+
+export type ReleaseRotationHoldResponses = {
+    /**
+     * Rotation after the release.
+     */
+    200: CredentialRotation;
+};
+
+export type ReleaseRotationHoldResponse = ReleaseRotationHoldResponses[keyof ReleaseRotationHoldResponses];
+
+export type RunRotationNowData = {
+    body: RunRotationNowRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/run-now';
+};
+
+export type RunRotationNowErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RunRotationNowError = RunRotationNowErrors[keyof RunRotationNowErrors];
+
+export type RunRotationNowResponses = {
+    /**
+     * Run requested.
+     */
+    202: RotationRunRequested;
+};
+
+export type RunRotationNowResponse = RunRotationNowResponses[keyof RunRotationNowResponses];
+
+export type ListRotationRunsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        rotation: Id;
+    };
+    query?: {
+        /**
+         * Maximum runs on this page, newest first.
+         */
+        limit?: number;
+        /**
+         * The `next_after` a previous page returned. Absent reads the first page.
+         */
+        after?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/rotations/{rotation}/runs';
+};
+
+export type ListRotationRunsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListRotationRunsError = ListRotationRunsErrors[keyof ListRotationRunsErrors];
+
+export type ListRotationRunsResponses = {
+    /**
+     * Run list.
+     */
+    200: RotationRunList;
+};
+
+export type ListRotationRunsResponse = ListRotationRunsResponses[keyof ListRotationRunsResponses];
 
 export type ListSshCasData = {
     body?: never;

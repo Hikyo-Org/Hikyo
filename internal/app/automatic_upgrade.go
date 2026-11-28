@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
@@ -610,6 +611,10 @@ func automaticRetainedReleases(previous *automaticJournal, sourceGuard *nativeSe
 	return keep
 }
 
+// errUnlockedByNeitherSecret names both causes of an ErrUnlock: the vault cannot
+// tell a passphrase vault from one wrapped under a retired root key.
+var errUnlockedByNeitherSecret = fmt.Errorf("%w: upgrade custody did not open under the root key in use; either it still uses a passphrase (run sudo hikyo upgrade once from a terminal to migrate it to root-key wrapping) or the root key was rotated after it was sealed (a host vault is root-only and is not re-sealed by rotate-root-key)", upgradecustody.ErrUnlock)
+
 // openAutomaticCustody unlocks the operator vault with a secret derived from
 // the installation's root key, so an upgrade needs no human at a terminal.
 // A vault created under the earlier passphrase design is migrated once: the
@@ -641,7 +646,7 @@ func openAutomaticCustody(c hostupgrade.Config, instance string, readPassword fu
 		return nil, err
 	}
 	if readPassword == nil {
-		return nil, errors.New("upgrade custody still uses a passphrase; run sudo hikyo upgrade once from a terminal to migrate it to root-key wrapping")
+		return nil, errUnlockedByNeitherSecret
 	}
 	password, err := readPassword("Enter the upgrade recovery passphrase once more to migrate the keys to root-key wrapping: ")
 	if err != nil {
@@ -650,6 +655,9 @@ func openAutomaticCustody(c hostupgrade.Config, instance string, readPassword fu
 	previous := []byte(password)
 	defer clear(previous)
 	if err := upgradecustody.Rewrap(c.CustodyDirectory, previous, secret, instance); err != nil {
+		if errors.Is(err, upgradecustody.ErrUnlock) {
+			return nil, fmt.Errorf("%w: the passphrase did not open it either", errUnlockedByNeitherSecret)
+		}
 		return nil, err
 	}
 	return upgradecustody.Open(c.CustodyDirectory, secret, instance)
@@ -742,7 +750,7 @@ func cleanupAutomaticUnpublishedBundle(journalPath, bundlePath string) error {
 }
 
 func writeAutomaticJournal(path string, journal *automaticJournal) error {
-	raw, err := json.Marshal(journal)
+	raw, err := json.Marshal(journal, jsonwire.Stable)
 	if err != nil {
 		return err
 	}

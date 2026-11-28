@@ -98,3 +98,43 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Docs tables keep their header row stuck below the top bars while the table
+   is in view. Any scrolling ancestor would capture position: sticky, so from
+   lg up the wrapper does not scroll: the table clips (keeping its rounded
+   corners) and long tokens wrap to fit. Below lg, columns cannot fit, so the
+   table keeps horizontal scroll and a static header. */
+.docs-table {
+  margin-block: 1.5rem;
+  overflow-x: auto;
+}
+
+.docs-table > table {
+  margin-block: 0;
+}
+
+@media (min-width: 64rem) {
+  /* Five 7rem columns fit the narrowest lg content column. A wider table would
+     be clipped by the layout instead, so it keeps scrolling with a static
+     header. */
+  .docs-table:not(:has(tr > :nth-child(6))) {
+    overflow-x: visible;
+
+    & > table {
+      overflow: clip;
+    }
+
+    /* `anywhere` lets long hashes and identifiers wrap; the floor keeps short
+       columns from collapsing to a letter per line. */
+    & :is(th, td) {
+      overflow-wrap: anywhere;
+      min-width: 7rem;
+    }
+
+    & thead th {
+      position: sticky;
+      top: var(--fd-docs-row-3);
+      z-index: 1;
+    }
+  }
+}

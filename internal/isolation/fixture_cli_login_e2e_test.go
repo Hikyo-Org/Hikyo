@@ -2,12 +2,13 @@ package isolation
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http/httptest"
 	"os/exec"
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -39,7 +40,7 @@ func TestFixturePythonEnrolledLoginAgainstCurrentServer(t *testing.T) {
 		srv := httptest.NewServer(server.New(&server.API{Auth: admin.auth}, nil))
 		defer srv.Close()
 		admin.auth.ExternalOrigin = srv.URL
-		input, err := json.Marshal(map[string]string{"origin": srv.URL, "username": "fixture-admin", "password": admin.password, "code": totpCode(t, uri, clock)})
+		input, err := json.Marshal(map[string]string{"origin": srv.URL, "username": "fixture-admin", "password": admin.password, "code": totpCode(t, uri, clock)}, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

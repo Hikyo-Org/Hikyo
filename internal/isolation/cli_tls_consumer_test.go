@@ -9,7 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -29,6 +29,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -131,7 +132,7 @@ func TestCLISystemCARealAuthorizationConsumer(t *testing.T) {
 	bundleFile := filepath.Join(t.TempDir(), "bundle.json")
 	writeBundle := func(entry cli.TrustBundle) {
 		t.Helper()
-		raw, err := json.Marshal(entry)
+		raw, err := json.Marshal(entry, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,7 +203,7 @@ func TestCLISystemCARealAuthorizationConsumer(t *testing.T) {
 				t.Fatal("consumer helper requires an absolute helper path and external CLI")
 			}
 			helperDir := t.TempDir()
-			bundle, err := json.Marshal(entry)
+			bundle, err := json.Marshal(entry, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

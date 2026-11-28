@@ -18,6 +18,20 @@ import {
 import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 import { registerAwsAdapterFlows } from './aws-adapters.flows.ts';
+import { dynamicProvider } from '../../src/testkit/machineAccess.ts';
+import {
+  HALTED_ROTATION,
+  HELD_ROTATION,
+  deletedOwedRotation,
+  haltedRotation,
+  LONG_PASSWORD_NAME,
+  longKeyNameRotation,
+  owedRuns,
+  rotationKeys,
+  rotationList,
+  rotationRequestBody,
+  ROTATION,
+} from '../../src/testkit/rotations.ts';
 
 const COLOR_SCHEMES: readonly ['dark', 'light'] = ['dark', 'light'];
 
@@ -79,6 +93,35 @@ async function revokeMinted(page: Page) {
   await expect(panel.locator('.cred')).toHaveCount(0);
 }
 
+/**
+ * The key names of the Rotations table that do not fit: a name that breaks inside a word
+ * (anything but after an underscore) or whose right edge is past its own cell's.
+ */
+async function keyNameProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    for (const name of document.querySelectorAll('.rotations__table .kv bdi')) {
+      const label = name.textContent ?? '';
+      for (const node of name.childNodes) {
+        if (node.nodeType !== Node.TEXT_NODE) continue;
+        const text = node.textContent ?? '';
+        const range = document.createRange();
+        for (let i = 1; i < text.length; i += 1) {
+          range.setStart(node, i - 1);
+          range.setEnd(node, i);
+          const before = range.getBoundingClientRect().top;
+          range.setStart(node, i);
+          range.setEnd(node, i + 1);
+          if (range.getBoundingClientRect().top > before + 1 && text[i - 1] !== '_') problems.push(`${label} breaks inside a word`);
+        }
+      }
+      const cell = name.closest('th, td');
+      if (cell === null || name.getBoundingClientRect().right > cell.getBoundingClientRect().right + 0.5) problems.push(`${label} runs past its cell`);
+    }
+    return problems;
+  });
+}
+
 test.describe('machine access', () => {
   test.describe.configure({ mode: 'serial' });
   test.use({ permissions: ['clipboard-read', 'clipboard-write'], sharedSession: true });
@@ -91,9 +134,9 @@ test.describe('machine access', () => {
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
 
-  test('the inventory has seven tabs, and every one of them says what it holds', async () => {
+  test('the inventory has eight tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(7);
+    await expect(tabs).toHaveCount(8);
     // The count is a `.tab__count` badge beside the label; the comma only
     // exists in the ACCESSIBLE NAME (a visually-hidden ", "), so the visible
     // text concatenates as "Service accounts3" while the name reads
@@ -106,6 +149,8 @@ test.describe('machine access', () => {
     // SSH objects are per environment, so the tab carries no project count.
     await expect(tabs.nth(5)).toHaveText('SSH certificates');
     await expect(tabs.nth(6)).toHaveAccessibleName(/Certificates, 0/);
+    // Rotations are per environment too: no project count either.
+    await expect(tabs.nth(7)).toHaveText('Rotations');
     await expect(tabs.nth(0).locator('.tab__count')).toHaveText('3');
 
     // The policy strip: the per-project opt-in is stated, not offered as a
@@ -164,6 +209,267 @@ test.describe('machine access', () => {
     await expect(
       page.getByText('Configure a provider with a credential first', { exact: false }),
     ).toBeVisible();
+  });
+
+  test('the Rotations tab reads the real server: an environment with no rotation says so, in words', async () => {
+    await page.getByRole('tab', { name: 'Rotations' }).click();
+    await expect(page.getByRole('heading', { name: 'Rotations', level: 2 })).toBeVisible();
+    await expect(page.getByLabel('Environment')).toBeVisible();
+    const empty = page.getByRole('status').filter({ hasText: 'No rotations in this environment yet' });
+    await expect(empty).toContainText('hikyo rotation create');
+    await expectStatusIsTextAndAria(page, empty);
+    // With no rotation there is nothing to act on: only creating one is offered.
+    await expect(page.getByRole('button', { name: 'Create rotation' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /release|pause|resume|delete|run now/i })).toHaveCount(0);
+  });
+
+  test('the Rotations tab says what the API answered to a caller who may not read the environment', async () => {
+    await page.route('**/environments/*/rotations*', (route) =>
+      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) }),
+    );
+    try {
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+      const refusal = page.getByRole('alert').filter({ hasText: 'Listing them needs read on this environment.' });
+      await expectStatusIsTextAndAria(page, refusal);
+      await expect(page.getByRole('table')).toHaveCount(0);
+    } finally {
+      await page.unroute('**/environments/*/rotations*');
+    }
+  });
+
+  // No PostgreSQL provider or dynamic-secrets fake runs in the dev instance, so
+  // the states that need a real rotation are answered at the network boundary
+  // with bodies built from the generated response schemas (testkit/rotations.ts).
+  // What is asserted is the page's reading of them: the wording, the roles and
+  // the absence of any act, never the server's rotation behaviour (the Go tests own that).
+  test('the Rotations tab shows a restore hold loudly and the run timeline carries the ATTENTION wording', async () => {
+    const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    const keysPattern = '**/projects/*/keys*';
+    await page.route(keysPattern, (route) => route.fulfill(json(rotationKeys)));
+    await page.route('**/environments/*/rotations?*', (route) =>
+      route.fulfill(json({ items: [...rotationList().items, haltedRotation(), deletedOwedRotation()] })),
+    );
+    await page.route('**/environments/*/rotations', (route) =>
+      route.fulfill(json({ items: [...rotationList().items, haltedRotation(), deletedOwedRotation()] })),
+    );
+    await page.route('**/rotations/*/runs*', (route) =>
+      route.fulfill(json(route.request().url().includes(ROTATION) ? owedRuns : { items: [] })),
+    );
+    try {
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+
+      const table = page.getByRole('table', { name: /credential rotations/ });
+      await expect(table.getByRole('row')).toHaveCount(5);
+      await expect(table.getByRole('row').filter({ hasText: 'REPORTING_PASSWORD' })).toContainText('Restore hold');
+      await expect(table.getByRole('row').filter({ hasText: 'halted' })).toBeVisible();
+      // S4: the halted row says why in words, and the owed-drop row is flagged in words that
+      // never say to drop when a restore refused one.
+      await expect(table.getByRole('row').filter({ hasText: 'ANALYTICS_PASSWORD' })).toContainText('retries_exhausted: the retry window ran out');
+      const owingRow = table.getByRole('row').filter({ hasText: 'DATABASE_PASSWORD' });
+      await expect(owingRow).toContainText('Do not drop: restore');
+      await expect(owingRow).toContainText('do NOT drop it at the provider until the keys have moved off it');
+      await expect(owingRow).not.toContainText('Owes a drop');
+
+      // A deleted rotation that still owes a drop stays in the default list, marked deleted.
+      const goneRow = table.getByRole('row').filter({ hasText: 'BILLING_PASSWORD' });
+      await expect(goneRow).toContainText('deleted');
+      await expect(goneRow).toContainText('(deleted) has 1 run(s) that owe a provider role a drop');
+      await expect(goneRow).toContainText('check that neither key serves that role');
+
+      // The hold is a role="alert" that names the command; the held row offers release
+      // and none of the acts a hold refuses.
+      const hold = page.getByRole('alert').filter({ hasText: 'RESTORE HOLD' });
+      await expect(hold).toContainText(`hikyo rotation release-hold ${HELD_ROTATION}`);
+      await expectStatusIsTextAndAria(page, hold);
+      await expect(page.getByRole('button', { name: /release/i })).toHaveCount(1);
+      const heldRow = table.getByRole('row').filter({ hasText: 'REPORTING_PASSWORD' });
+      await expect(heldRow.getByRole('button', { name: /resume|run now|delete/i })).toHaveCount(0);
+
+      // The run timeline: three runs owe a drop, each in the CLI's words.
+      const toggle = page.getByRole('button', { name: 'Show runs of DATABASE_PASSWORD' });
+      await toggle.click();
+      await expect(page.getByRole('button', { name: 'Hide runs of DATABASE_PASSWORD' })).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByRole('heading', { name: 'Runs of DATABASE_PASSWORD', level: 3 })).toBeFocused();
+      const attention = page.getByRole('alert').filter({ hasText: 'ATTENTION: run ' });
+      await expect(attention).toHaveCount(3);
+      await expect(attention.first()).toContainText('(published_versions_changed)');
+      await expect(attention.first()).toContainText('do NOT drop it at the provider until the keys have moved off it');
+      await expect(attention.nth(1)).toContainText('stays valid at least until 2026-10-29T12:30:45Z, and possibly longer');
+      await expect(attention.nth(2)).toContainText('no recorded expiry');
+      await expectStatusIsTextAndAria(page, attention.first());
+      const runs = page.getByRole('table', { name: /Runs of this rotation/ });
+      // A refused or quarantined drop says it owes one; the restore-held run says the opposite.
+      await expect(runs.getByText('Owes a drop', { exact: true })).toHaveCount(2);
+      await expect(runs.getByText('Do not drop: restore', { exact: true })).toHaveCount(1);
+
+      // Every field of every row is on the page at this width (a card per row on a
+      // phone, columns on a desktop): none is hidden, and none needs a sideways scroll.
+      const fields = ['Rotation', 'Password key', 'Role name key', 'Provider', 'Next run', 'Delivered credential expires', 'Authority principal', 'Created by', 'Generation', 'Updated', 'Held after a restore: no run starts'];
+      for (const field of fields) await expect(table.getByText(field).first()).toBeVisible();
+      await expect(table.getByText(ROTATION, { exact: true })).toBeVisible();
+      for (const field of ['Started', 'Last change', 'Published revision', 'Overlap', 'Adapter targets not converged', 'Owed role valid until']) {
+        await expect(runs.getByText(field).first()).toBeVisible();
+      }
+      await expect(runs.getByText(/^At least /)).toBeVisible();
+      const scrollers = page.locator('.table-scroll');
+      expect(await scrollers.count()).toBeGreaterThanOrEqual(2);
+      for (const scroller of await scrollers.all()) {
+        expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      // A key name breaks only after an underscore and stays inside its own cell.
+      expect(await keyNameProblems(page)).toEqual([]);
+      // The restore hold badge is inside the page's width, not pushed off an edge by a sideways scroll.
+      const badge = await table.getByText('Restore hold', { exact: true }).boundingBox();
+      const width = await page.evaluate(() => document.documentElement.clientWidth);
+      expect(badge !== null && badge.x >= 0 && badge.x + badge.width <= width).toBe(true);
+    } finally {
+      await page.unroute('**/rotations/*/runs*');
+      await page.unroute('**/environments/*/rotations');
+      await page.unroute('**/environments/*/rotations?*');
+      await page.unroute(keysPattern);
+    }
+  });
+
+  // #1440: the acts. The rotation routes are answered at the network boundary as
+  // above (no provider can mint here), but the publish ceremony is the real one:
+  // the real reveal-window read, the real passkey assertion against the virtual
+  // authenticator, so the act is only sent once the server has opened the window.
+  test('the Rotations tab takes each act, the publish ones only behind the ceremony over both keys', async () => {
+    const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    const keysPattern = '**/projects/*/keys*';
+    const rotationsPattern = '**/environments/*/rotations**';
+    const [active, held] = rotationList().items;
+    const halted = haltedRotation();
+    const sent: { method: string; path: string; body: unknown }[] = [];
+    await page.route(keysPattern, (route) => route.fulfill(json(rotationKeys)));
+    await page.route(rotationsPattern, (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET') {
+        if (url.pathname.endsWith('/runs')) return route.fulfill(json({ items: [] }));
+        return route.fulfill(json({ items: [active, held, halted] }));
+      }
+      const text = request.postData();
+      sent.push({ method: request.method(), path: `${url.pathname.replace(/^.*\/rotations/, '')}${url.search}`, body: rotationRequestBody(request.method(), url.pathname, text) });
+      if (url.pathname.endsWith('/resume')) return route.fulfill(json({ ...halted, state: 'active', generation: 2 }));
+      if (url.pathname.endsWith('/release-hold')) return route.fulfill(json({ ...held, restore_hold: false, generation: 1 }));
+      if (url.pathname.endsWith('/pause')) return route.fulfill(json({ ...active, state: 'paused', generation: 2 }));
+      if (request.method() === 'DELETE') {
+        return route.fulfill(json({ error: { code: 'conflict', message: 'Conflict', detail: 'the rotation has a run in flight; let it finish first' } }, 409));
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/rotations')) return route.fulfill(json({ ...active, generation: 1 }, 201));
+      return route.fulfill(json({ error: { code: 'not_found', message: 'Not found' } }, 404));
+    });
+    // Create offers only a provider that can mint; a fresh project has none, so one is
+    // answered here too, and the page is reloaded so the tab reads it.
+    const providersPattern = '**/projects/*/dynamic-providers';
+    await page.route(providersPattern, (route) => route.fulfill(json({ items: [dynamicProvider] })));
+    try {
+      await page.reload();
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+      const table = page.getByRole('table', { name: /credential rotations/ });
+      await expect(table.getByRole('row')).toHaveCount(4);
+
+      // Resume: the dialog names the halt, then the purpose-bound ceremony lists both keys.
+      await page.getByRole('button', { name: 'Resume ANALYTICS_PASSWORD' }).click();
+      const resume = page.getByRole('dialog', { name: 'Resume rotation · ANALYTICS_PASSWORD' });
+      await expect(resume).toContainText('halted (retries_exhausted)');
+      await resume.getByRole('button', { name: 'Resume' }).click();
+      const ceremony = page.getByRole('dialog', { name: /^hand scheduled publishing to a rotation in · / });
+      await expect(ceremony).toBeVisible();
+      await expect(ceremony).toContainText('standing publish authority over these keys for a scheduled rotation');
+      await expect(ceremony.getByRole('list', { name: 'Keys this decision covers' })).toContainText('ANALYTICS_PASSWORD');
+      await expect(ceremony.getByRole('list', { name: 'Keys this decision covers' })).toContainText('ANALYTICS_USER');
+      expect(sent).toEqual([]);
+      await ceremony.getByRole('button', { name: 'Use a passkey' }).click();
+      await expect(ceremony).toBeHidden();
+      await expect(page.locator('.rotations__done')).toContainText(`Rotation ${HALTED_ROTATION} resumed`);
+      expect(sent).toEqual([{ method: 'POST', path: `/${HALTED_ROTATION}/resume`, body: { expected_generation: 1n } }]);
+
+      // Release hold: the reconcile instruction comes first and gates the button. The
+      // real reveal-window now reads live, so the client skips a second prompt; that
+      // the server accepts that window is the Go service tests' to prove, not this stub's.
+      await page.getByRole('button', { name: 'Release hold REPORTING_PASSWORD' }).click();
+      const release = page.getByRole('dialog', { name: 'Release hold rotation · REPORTING_PASSWORD' });
+      await expect(release).toContainText("reconcile the rotation's grants and its provider credential, and read its runs");
+      await expect(release.getByRole('button', { name: 'Release hold' })).toBeDisabled();
+      await release.getByRole('checkbox').check();
+      await release.getByRole('button', { name: 'Release hold' }).click();
+      await expect(page.locator('.rotations__done')).toContainText('its schedule publishes again');
+      expect(sent.at(-1)).toEqual({ method: 'POST', path: `/${HELD_ROTATION}/release-hold`, body: { expected_generation: 1n } });
+
+      // Pause needs no ceremony and says the delivered credential stays valid.
+      await page.getByRole('button', { name: 'Pause DATABASE_PASSWORD' }).click();
+      const pause = page.getByRole('dialog', { name: 'Pause rotation · DATABASE_PASSWORD' });
+      await expect(pause).toContainText('stays valid until 2099-01-31T00:00:00Z; this revokes nothing');
+      await pause.getByRole('button', { name: 'Pause' }).click();
+      await expect(page.locator('.rotations__done')).toContainText(`Rotation ${ROTATION} paused.`);
+      expect(sent.at(-1)).toEqual({ method: 'POST', path: `/${ROTATION}/pause`, body: { expected_generation: 1n } });
+
+      // Delete: a run in flight is refused by name, with the server's named reason, and the dialog stays.
+      await page.getByRole('button', { name: 'Delete DATABASE_PASSWORD' }).click();
+      const remove = page.getByRole('dialog', { name: 'Delete rotation · DATABASE_PASSWORD' });
+      await remove.getByRole('button', { name: 'Delete' }).click();
+      await expect(remove.getByRole('alert')).toContainText('the rotation has a run in flight; let it finish first');
+      expect(sent.at(-1)).toEqual({ method: 'DELETE', path: `/${ROTATION}?expected_generation=1&abandon=false`, body: undefined });
+      await remove.getByRole('button', { name: 'Cancel' }).click();
+      await expect(remove).toBeHidden();
+
+      // Create: both keys, the schedule in seconds; no credential is sent or shown.
+      await page.getByRole('button', { name: 'Create rotation' }).click();
+      const create = page.getByRole('dialog', { name: /^Create rotation · / });
+      // BILLING_* belong to no live rotation in this list; the server allows one live rotation per key.
+      await create.getByLabel('Password key').selectOption({ label: 'BILLING_PASSWORD' });
+      await create.getByLabel('Role name key').selectOption({ label: 'BILLING_USER' });
+      await create.getByRole('button', { name: 'Create rotation' }).click();
+      await expect(page.locator('.rotations__done')).toContainText('you are its recorded authority principal');
+      expect(sent.at(-1)).toEqual({
+        method: 'POST',
+        path: '',
+        body: {
+          provider_id: dynamicProvider.id,
+          key_id: rotationKeys.items[6]!.id,
+          username_key_id: rotationKeys.items[7]!.id,
+          interval_seconds: 86_400n,
+          revocation_delay_seconds: 3_600n,
+        },
+      });
+    } finally {
+      await page.unroute(providersPattern);
+      await page.unroute(rotationsPattern);
+      await page.unroute(keysPattern);
+    }
+  });
+
+  test('a rotation with a 45 character key name wraps it after an underscore, inside its cell, at 860 and 1280', async () => {
+    const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    const keysPattern = '**/projects/*/keys*';
+    const body = { items: [...rotationList().items, haltedRotation(), longKeyNameRotation()] };
+    await page.route(keysPattern, (route) => route.fulfill(json(rotationKeys)));
+    await page.route('**/environments/*/rotations?*', (route) => route.fulfill(json(body)));
+    await page.route('**/environments/*/rotations', (route) => route.fulfill(json(body)));
+    const original = page.viewportSize();
+    try {
+      await page.getByRole('tab', { name: 'Rotations' }).click();
+      const table = page.getByRole('table', { name: /credential rotations/ });
+      await expect(table.getByRole('row').filter({ hasText: LONG_PASSWORD_NAME })).toBeVisible();
+      for (const width of [1280, 860, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        expect(await keyNameProblems(page)).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        for (const scroller of await page.locator('.table-scroll').all()) {
+          expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        }
+        // The whole name is there to read, whatever way it wrapped.
+        await expect(table.getByText(LONG_PASSWORD_NAME, { exact: true })).toBeVisible();
+      }
+    } finally {
+      if (original) await page.setViewportSize(original);
+      await page.unroute('**/environments/*/rotations');
+      await page.unroute('**/environments/*/rotations?*');
+      await page.unroute(keysPattern);
+    }
   });
 
   test('runs an SSH CA end to end: create, profile, display-once issue, revoke, teardown', async ({}, testInfo) => {
@@ -356,6 +662,15 @@ test.describe('machine access', () => {
     await expect(dialog.getByRole('alert')).toContainText('there is no second look');
     await expect(token).toBeVisible();
 
+    // Escape is no way out either, even repeated: Chromium makes a repeated
+    // Escape's cancel non-cancelable and closes the dialog unless it reopens.
+    for (let press = 0; press < 3; press += 1) {
+      await page.keyboard.press('Escape');
+    }
+    await expect(dialog).toBeVisible();
+    await expect(token).toBeVisible();
+    await expect.poll(() => dialog.evaluate((element) => element.matches(':modal'))).toBe(true);
+
     await dialog.getByRole('checkbox').check();
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden();
@@ -531,9 +846,12 @@ test.describe('machine access', () => {
     // `push` is not a refusal.
     await expect(dialog.getByRole('alert')).toHaveCount(0);
 
-    // A numeric pin is refused BEFORE the request when it is not a whole number
-    // the issuer could have minted: an empty field would bind repository 0, and
-    // anything past 2^53 rounds to a neighbouring repository id.
+    // GitHub's subject is copied from a real token, so the preset leaves it empty.
+    await expect(dialog.getByLabel('Subject, matched byte-for-byte')).toHaveValue('');
+    await dialog.getByLabel('Subject, matched byte-for-byte').fill('repo:acme/gateway:ref:refs/heads/main');
+
+    // An id is refused BEFORE the request when it is not digits: GitHub emits
+    // it as a decimal string, and a typo would bind somebody else's repository.
     await dialog.getByLabel(/Repository id \(repository_id\)/).fill('4242.7');
     await dialog.getByLabel(/Repository owner id/).fill('99');
     await dialog.getByLabel('Audience').fill(seed.machine.audience);

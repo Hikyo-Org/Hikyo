@@ -9,7 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"strings"
 	"testing"

@@ -192,6 +192,15 @@
         "postgres": "7ed3956a6c8fc12fc771e746104f099229017a1cb25204022f981c22d90c45a4"
       }
     },
+    "BoundAuthRefusalTransaction": {
+      "authority": "refusal accounting bounds each lock wait, each statement and the whole transaction server-side so an abandoned or idle attempt cannot keep waiting on or holding the singleton row past the caller's deadline",
+      "sql_hash": {
+        "postgres": "599198454e0e834f65ba079795d0fde7f79be7b492f1ac38dfe41430d5f469fd"
+      },
+      "api_hash": {
+        "postgres": "159fb67a1b8d89acf98dbef2376aca84dbadafa80074d337ca15bd65665fec5f"
+      }
+    },
     "CoordinationCountForeignNodes": {
       "authority": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert.",
       "sql_hash": {
@@ -826,11 +835,68 @@
       "flow_tests": [
         "internal/isolation/scim_retirement_generated_scope_test.go:TestSCIMRetirementUsesProofScopedBindingPrincipal"
       ]
+    },
+    "RotationCredentialExpiries": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs whose rotation names a requested key id as its password key only; one derived table ranks each key's published runs by published revision and id and the outer predicate keeps rank one, so a key reads its newest delivered credential expiry and never the run history. Reads ids, a revision and an expiry only.",
+      "sql_hash": {
+        "postgres": "e52e2b17ad454c13dcc70a3faeb0f72a6a9f723f305070b00e20cbabad9a283b",
+        "sqlite": "55d6ec92957bd0ae083c09255907e8cb23f20d03ed338bc23ffd518164d2025c"
+      },
+      "api_hash": {
+        "postgres": "1665c67a106c91afd985ec8538875b34bbf8066e5143f053a7acc0aeba966230",
+        "sqlite": "5e8034ac00dc0f133e2873b32822caed0908c2fdc427cb35682986f5d9f7d65a"
+      },
+      "tests": [
+        "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryOverLongHistory"
+      ]
+    },
+    "RotationCredentialExpiriesByUsernameKey": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs whose rotation names a requested key id as its username key only; one derived table ranks each key's published runs by published revision and id and the outer predicate keeps rank one. The store merges it with the password-role query by revision, so a key reads its newest delivered credential expiry whichever role it played. Reads ids, a revision and an expiry only.",
+      "sql_hash": {
+        "postgres": "a41f8999deb6f76c939d4e8367aaedf27a84c35708a80e5d4ba4c7823a232d3c",
+        "sqlite": "fe31a105ec5a3455f426c1ebb53c62f77910f1beff4dfdbad4926ba7b2edd63d"
+      },
+      "api_hash": {
+        "postgres": "1665c67a106c91afd985ec8538875b34bbf8066e5143f053a7acc0aeba966230",
+        "sqlite": "5e8034ac00dc0f133e2873b32822caed0908c2fdc427cb35682986f5d9f7d65a"
+      },
+      "tests": [
+        "internal/isolation/rotation_cascade_e2e_test.go:TestRotationCredentialExpiryMatchesEitherKeyRole"
+      ]
+    },
+    "RotationLastRuns": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both joined tables. Runs of the requested rotation ids only; a correlated subquery picks each rotation's newest run by start time and id, one index probe per requested rotation, so a page reads one run per rotation and the output carries no run history. The read is bounded by the number of requested rotations, not by their histories. Reads an id, a phase, a fixed-word error code and a time only.",
+      "sql_hash": {
+        "postgres": "918eb1891c7735cbe4717b54b1e0a35bcc8a1685dc078ee771b27d22726fcc88",
+        "sqlite": "fbdebfeacb501244c923ec288ba23105d19e4523a14d8533c55e9bfc9c965cd3"
+      },
+      "api_hash": {
+        "postgres": "f040b8f1e7a0f3c602f03870996f63891300e7829696503411bbaf3b32d7e3d5",
+        "sqlite": "70628b41ff84234e901706df4ced218b06d432376373f9ffad8a036ccca7b641"
+      },
+      "tests": [
+        "internal/isolation/rotation_summary_test.go:TestRotationLastRunsQueryIsBounded",
+        "internal/isolation/rotation_summary_test.go:TestRotationSummaryCountsOwedDropsAndLastRun"
+      ]
+    },
+    "RotationListOrOwed": {
+      "authority": "Verified rotation-list project chain binds org, project and environment on both tables. The outer predicate keeps live rotations; a deleted rotation passes only when an EXISTS over its own runs, bound to the same org, project and environment, finds one in phase revoke_refused or quarantine, so the warning that run owes is not lost with the delete. Reads rotation metadata only, in id order, one page.",
+      "sql_hash": {
+        "postgres": "4866e66dc3d16040af9998631d0848deb231de578d48956e28cea19f5643751f",
+        "sqlite": "4866e66dc3d16040af9998631d0848deb231de578d48956e28cea19f5643751f"
+      },
+      "api_hash": {
+        "postgres": "76358bcd534f7a8712798dfb4a0bc4947c59438d725703d64162d8a035b1950e",
+        "sqlite": "194887e61424d183342f027d6fd0ae9bb01802724e7102ab60d4aef178e02737"
+      },
+      "tests": [
+        "internal/isolation/rotation_summary_review_test.go:TestRotationDefaultListKeepsDeletedRotationsThatOweADrop"
+      ]
     }
   },
   "protocols": {
     "internal/dynamic/postgres/postgres.go:Provider.CreateRole": {
-      "hash": "74e6046307f79fbad05496a167126ba198fd8f595897fc92a19ba47e3d5bd9b1",
+      "hash": "3899f64ff5086098508f64780686d945daa073a22d2ccd9cb92db2ec441323a3",
       "reason": "External PostgreSQL role-DDL protocol; validates generated role/password, sanitizes role identifiers and sets engine-enforced login expiry under policy-approved verify-full connection. No Hikyo application table is queried.",
       "dependencies": [
         "internal/dynamic/dynamic.go:ValidPassword",
@@ -838,6 +904,7 @@
         "internal/dynamic/dynamic.go:inAlphabet",
         "internal/dynamic/dynamic.go:inRoleAlphabet",
         "internal/dynamic/postgres/postgres.go:Provider.connect",
+        "internal/dynamic/postgres/postgres.go:boundedStatement",
         "internal/dynamic/postgres/postgres.go:classifyExec",
         "internal/dynamic/postgres/postgres.go:createRoleSQL",
         "internal/dynamic/postgres/postgres.go:quoteLiteral"
@@ -992,6 +1059,15 @@
       "hash": "f5ec9c16a1d8252354e2deb4832e4dd0849ff3d33932abde80ca0eff063642a3",
       "reason": "Historical authenticated-archive catalog probe accepts pre-migration-00064 archives without pki_issuers; existing issuer data update remains a generated query."
     },
+    "internal/store/authn/restore.go:Resolver.HoldRestoredRotations": {
+      "hash": "ecd72505f0f4696de3a1bbfc314b15ad6eca7c203e1e509f5833cb2a8b5ec362",
+      "reason": "Restore probes the fixed rotations table and restore_hold column in the archive's own catalog before generated hold queries; archives from pre-release builds (migrations 00091 to 00093) lack the column and are paused instead. PostgreSQL must not discover absence through a transaction-aborting write. No tenant rows or request-selected schema identifiers are read.",
+      "dependencies": [
+        "internal/store/authn/human.go:canon",
+        "internal/store/authn/human.go:encodeTime",
+        "internal/store/authn/human.go:pgTimestamp"
+      ]
+    },
     "internal/store/authn/restore.go:Resolver.InvalidateRestoredAdapterCredentials": {
       "hash": "b9276860f72c010e8a5578f30a57d0765edb9b57ee200ce349a567e6ce7ea48a",
       "reason": "Restore probes the fixed adapter_route_moves catalog entry before generated credential destruction and move retirement. The table is absent in older authenticated archives; PostgreSQL must not discover absence through a transaction-aborting write. No tenant rows or request-selected schema identifiers are read.",
@@ -1048,7 +1124,7 @@
       ]
     },
     "internal/store/backup.go:exportPostgres": {
-      "hash": "34118449c64cc2b6fa30abfcb852661ad931591e7abdad1f49dac769777fcef6",
+      "hash": "755486922b244c74e92948fcc3e40b780534dd08f948909fe03693921d8a3232",
       "reason": "Authenticated backup snapshot uses READ ONLY transaction protocol and COPY TO STDOUT over structurally discovered archive tables, which can differ from the current runtime schema.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
@@ -1069,8 +1145,12 @@
         "internal/releaseidentity/identity.go:Source.IsRelease",
         "internal/releaseidentity/identity.go:Source.Validate",
         "internal/releaseidentity/identity.go:ValidateTarget",
+        "internal/store/backup.go:IsPostgresSerializationFailure",
+        "internal/store/backup.go:beginPostgresExportSnapshot",
+        "internal/store/backup.go:copyFileMember",
         "internal/store/backup.go:isMissingGooseTable",
         "internal/store/backup.go:pgIdent",
+        "internal/store/backup.go:retryPostgresSerialization",
         "internal/store/backup.go:schemaVersionResult",
         "internal/store/backup.go:writeFileMember",
         "internal/store/backup.go:writeManifest",
@@ -1088,21 +1168,25 @@
       ],
       "build_dependencies": {
         "darwin": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ],
         "default": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ],
         "ui": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ],
         "windows": [
-          "internal/pathutil/contain.go:Within"
+          "internal/pathutil/contain.go:Within",
+          "internal/store/backup.go:createStaged"
         ]
       }
     },
     "internal/store/backup.go:exportSQLite": {
-      "hash": "3a0882821bf8ca6d01caecaea2512cffd0530288078f0c07f14aba93e2bd1593",
+      "hash": "ed94b635d6473c5fe39ccf33fa52716e0f4146daefc2225ff80823e85b849218",
       "reason": "SQLite VACUUM INTO is the engine snapshot protocol used to publish a consistent owned backup file; no ordinary runtime table query.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
@@ -1123,6 +1207,7 @@
         "internal/releaseidentity/identity.go:Source.IsRelease",
         "internal/releaseidentity/identity.go:Source.Validate",
         "internal/releaseidentity/identity.go:ValidateTarget",
+        "internal/store/backup.go:copyFileMember",
         "internal/store/backup.go:isMissingGooseTable",
         "internal/store/backup.go:schemaVersionResult",
         "internal/store/backup.go:writeFileMember",
@@ -1145,15 +1230,19 @@
       ],
       "build_dependencies": {
         "darwin": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_unix.go:requireSingleLink"
         ],
         "default": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_unix.go:requireSingleLink"
         ],
         "ui": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_unix.go:requireSingleLink"
         ],
         "windows": [
+          "internal/store/backup.go:createStaged",
           "internal/store/upgrade/identity_windows.go:requireSingleLink"
         ]
       }
@@ -1638,7 +1727,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.MigrateConfiguration": {
-      "hash": "1cd247977a256cf9b46b27dd6a5fd2b5adf0d698e6be9cccb6282ba22e267f01",
+      "hash": "e82a909fed88daf687012f84136aff0ace127e0cd0ab888654fcb2dc183e2c22",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/audit/audit.go:NewEventID",
@@ -2038,8 +2127,11 @@
       "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions."
     },
     "internal/store/upgrade/lock.go:SetPostgresSessionTimeouts": {
-      "hash": "9bac4740ed23105dec2790695dd89da8047186adca6e02eeb7c4dd0d704f1e2a",
-      "reason": "Session keepalive protocol sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads and writes no data."
+      "hash": "d67068d61635247564bd36fd2a8116bc1ad47288cf278e29874129e8ab37afce",
+      "reason": "Session setup protocol first reads server_version_num and refuses a server below PostgreSQL 18, then sets only this session's tcp_user_timeout and TCP keepalive settings through set_config after connecting, so the server drops the session soon after its client dies and a rollback is not held off by it; it reads no Hikyo data and writes none.",
+      "dependencies": [
+        "internal/store/upgrade/lock.go:CheckPostgresVersion"
+      ]
     },
     "internal/store/upgrade/lock.go:WithLock": {
       "hash": "c26d7dd4d4d3d7902ea061bdfec33038d5f9def003c5baed9e018ed59cdf39a6",
@@ -2646,7 +2738,7 @@
       ]
     },
     "internal/store/upgrade/storage.go:Session.persist": {
-      "hash": "013e59c52775db7658d64906ae1896937d00773d2a4376b5a337af21b2802a2f",
+      "hash": "dd4aaadddebc48518cf9945e57a6e8cd1628e7e5f68655d8f4c352b4dd583ad1",
       "reason": "Durable upgrade control CAS/transaction protocol operates on the exact exclusion-owning database/sql connection, using control/pending tables independent of runtime migration lineage and retaining SQLite IMMEDIATE/PostgreSQL control row locks.",
       "dependencies": [
         "internal/releaseidentity/floor.go:SnapshotFloor.Validate",
@@ -2759,14 +2851,14 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "9272c094d4adf13ee5da3e43936c5a7b9c3f8d2f0b67f1ca9bba05d600107e31"
+        "scripts/acceptance/mcp-fixture/main.go:run": "301ef3296c5003f6cc8ca91f78bd78770a056840aa0f97b47701f548a8742878"
       },
       "dependencies": [
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
       ]
     },
     "scripts/acceptance/mcp-fixture/public.go:observeReadOnly": {
-      "hash": "0e9b1865bd3c0e50d34039ab5715fa59ac30b1c67d01fbf91ffa1f184857b312",
+      "hash": "28dc2d7f84b95b1e3fd0cbe743a56f9fc26e7177bc8ca7f86168d6f3c21be3e0",
       "reason": "Exact MCP fixture read-only cancellation observation, after the unchanged dedicated datastore guard. Counts committed in-flight claims and blocked catalogue queries on the two named fixture processes, without tenant rows or admission writes. Only the reviewed command dispatcher may invoke it.",
       "build_contexts": [
         "default",
@@ -2774,9 +2866,10 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "9272c094d4adf13ee5da3e43936c5a7b9c3f8d2f0b67f1ca9bba05d600107e31"
+        "scripts/acceptance/mcp-fixture/main.go:run": "301ef3296c5003f6cc8ca91f78bd78770a056840aa0f97b47701f548a8742878"
       },
       "dependencies": [
+        "internal/jsonwire/jsonwire.go:Encode",
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
       ]
     },
@@ -2898,25 +2991,27 @@
     "internal/crypto/keyring.go:tier3AAD": "981222f16e0cbfc00c5379372dc874ca70277187b716234d813e1b16fb2c7bff",
     "internal/crypto/keyring.go:versionSet.activeHandle": "6684969f5986052a44109a8e5ced15ec5ab1f7a41f95efb2de9742863ed0b037",
     "internal/crypto/keyring.go:versionSet.at": "d1d1c26ace18fda7b903bd74a6c315c6dd555cf2e8abdce8da748254eb7c9a04",
-    "internal/definitions/jsonstrict.go:DecodeStrict": "28a12bed14649fb7f3d4486c14c7c7bc3fc75baa1cbae6452b6ce08f97599722",
+    "internal/definitions/jsonstrict.go:DecodeStrict": "12177b9ce4f1065c1db43656a82641951a6eb4dedb428600603afb701e9c0c21",
     "internal/definitions/jsonstrict.go:foldJSONMember": "7390d54f3ff88455f1ac66c6c0a447d894f4bdc01d1854a0c15f9bafa3a2d98f",
     "internal/definitions/jsonstrict.go:jsonMemberType": "e908e7c4ea8d95b2774909e02dba6dfee80fdd5e65cd7673503da890cf288447",
-    "internal/definitions/jsonstrict.go:rejectDuplicateMembers": "bc667ebf010a25625a3fe712aaa341323aec9cc3115b1cead96103c152974ac9",
-    "internal/definitions/jsonstrict.go:unknownField": "98d4ad83684dfbf2291291ac823422a519709ec098832ebd486c68fd6db5e23d",
-    "internal/definitions/jsonstrict.go:walkJSONValue": "19c27dc814c829bccfb6262f39b12a5c0804196ebc762533b9d62ce072ead7b7",
+    "internal/definitions/jsonstrict.go:rejectDuplicateMembers": "35813d53a92a6b80482cd6af6141bc680cabee2181ecb5b710bc9448c68a3d54",
+    "internal/definitions/jsonstrict.go:unknownField": "acac37e3ffb1153125e44fcdbeb63029173aad0aa6179f8c37f334df88c85183",
+    "internal/definitions/jsonstrict.go:walkJSONValue": "2be3408ffdac1276679bda8dd5ab6e401fcded258acee08122a92189a6b0e082",
     "internal/domain/domain.go:Scope.Level": "14193bca88168f4528fcd55c5621d3264a696ee88d95326dfa036a913944078c",
     "internal/dynamic/dynamic.go:ValidPassword": "caad23287733d1854f8bdb04688f3c081ac46e1427e0c491a2ef60e5cb3e9c93",
     "internal/dynamic/dynamic.go:ValidRoleName": "b3f6b1df5288df43a6578a3bbd80eb7af091fc77c129e95b27a47de33b0e356e",
     "internal/dynamic/dynamic.go:inAlphabet": "1de2dc30f219b6ce33ca59905216f0723e8e9dbc9d2ba9acf9933f9668b03cd2",
     "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
     "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
-    "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61",
+    "internal/dynamic/postgres/postgres.go:boundedStatement": "b1cc94caf82d408d53e0721758a3f2c8d40a0638a62a66d7dca4dacabc756464",
+    "internal/dynamic/postgres/postgres.go:classifyExec": "c589450d289c1727081f68389bd739ae7ad0b67ef428d32a039eec09b1e426b7",
     "internal/dynamic/postgres/postgres.go:createRoleSQL": "708c40acb8c646cf4d968032edec98c943fd61d883a971328419e7bfc113916e",
     "internal/dynamic/postgres/postgres.go:dropRoleSQL": "b88fc8c188d8fce4c1c30c3a20ae8864837bdb37c77205de277b9c5e3d4c4ce1",
     "internal/dynamic/postgres/postgres.go:extendRoleSQL": "49bbdc39f38fc8dc2e18362b983d3a6dc06b616000ad301fde561df6e5e1ea94",
     "internal/dynamic/postgres/postgres.go:quoteLiteral": "ec67b02af82349faed72c0df3aa275378a2bb33ffc4ca41eec2072e7aa5593a7",
     "internal/freetext/sanitize.go:RedactTokens": "37b500c450d366e200f05e0a5e9cd6237a68944200c6977907873524aff4b61f",
     "internal/freetext/sanitize.go:SanitizeFreeText": "90852a3f5bb27bad809bc80a020013398bd261d821f1ec719786e022543abfca",
+    "internal/jsonwire/jsonwire.go:Encode": "e6d55d6c72c284d96b68e2926842cfcfaea04a95d07bc771da7c11f83e23391e",
     "internal/pathutil/contain.go:Within": "be35236d6adb2c5a5694c34f76021b8c8052a85a4c173fe9aa7a164136eb7eeb",
     "internal/releaseidentity/floor.go:SnapshotFloor.Advance": "6ec49ef4659b7e734ed896d5ae5e862a2e1a38c0e56a4744ceece2b2bcb3d940",
     "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
@@ -2925,7 +3020,7 @@
     "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
     "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
     "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
-    "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+    "internal/releaseidentity/identity.go:MigrationManifest.Digest": "51ac184d9f34d8dd478acac71e9f66475f154a9de0bbee001a217877620c0abd",
     "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
     "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
     "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
@@ -2933,21 +3028,21 @@
     "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
     "internal/releasetrust/release.go:VerifiedRelease.Identity": "19cbd759e2711523af924639524842ab67c2b2e0157c2e0e44ff25efe9c3ac4f",
     "internal/releasetrust/release.go:VerifiedRelease.Valid": "a8d77d22c174df82b168e113855acb99ace2110eecb8ecc7be9cf3947ead4c66",
-    "internal/runtimeconfig/catalogue.go:Catalogue": "5d06d181e02ec3b8a82c6c6d6506926a0f330063e0c891ee08b4f6bc105f3979",
+    "internal/runtimeconfig/catalogue.go:Catalogue": "67ff3292c5dc96932afac74713d2a2a6d4faa559cfbcee09c5e27cef86597e74",
     "internal/runtimeconfig/migrations.go:Migrations": "44ceade46c82864efa5237336ea18e6b4cdee7a1cc61227e607b2ecc62a6e78f",
     "internal/schema/classification.go:checkDeclarationClassification": "b8b13609049eb9aa5d5405af74cc68bdad1cba7433d15c7d7988f08441668be0",
     "internal/schema/classification.go:valueLiteralKeyword": "f56c5cd43145ac755965fc51625be15877f7afb31db54d05f020af6e67138e9b",
     "internal/schema/declare.go:CompileClassified": "57dfbfeec95d5e83910b312aae3f90c9e94a9ada8e454068c3fb74260ccb0aa4",
-    "internal/schema/declare.go:Compiled.Canonical": "919a61697ae2e6e5e2beec68d9c4ae3d888efb5d9cef8714dd39cc88d5373787",
+    "internal/schema/declare.go:Compiled.Canonical": "8064b958847ec96914dc9397e91f8ee47c492d6f340d5513f3425293b71d6702",
     "internal/schema/declare.go:checkEnumMembers": "cdf37c795766b36024bac557d2b22979250f437845366725306c187d28426323",
-    "internal/schema/declare.go:checkNoDuplicateKeys": "14eb72b2658f11cf155df27300ecefc786eaf4ae033edf75b2443cd01b89a747",
+    "internal/schema/declare.go:checkNoDuplicateKeys": "a6a9f1f49f3aa3c7ce8617e30821d3f191422445b3442be7fa27ce4cf58d456a",
     "internal/schema/declare.go:checkSchemes": "634d60b9fcdaef27dd53c8ed78e92bbd8d02e1d7e1b1f17db6c77b6f8d49271c",
     "internal/schema/declare.go:compileNormalized": "0911109e5b124121bf2c0964e2f4cfc59e72715747f1005a39b885dd2d307219",
     "internal/schema/declare.go:compilePattern": "80a2e7a52a74d944ac9038f79fd1dbe21b62eb539f08b314b4de2d98a94b4ef0",
     "internal/schema/declare.go:compileRule": "bb0e297cd66f7e136ce1bbc8cda85a5876a3eefc5494fff926166e0bfca93f86",
     "internal/schema/declare.go:normalizeForCompilation": "9a34d9898d161fad9068c104e232c5f8b50567fbbd331339e614082275edf93a",
     "internal/schema/declare.go:normalizeForCompile": "b3633c9d75b8da5fb5e82ea5ca8a0407336968723f1e4305fe9d22dc0be8ef15",
-    "internal/schema/declare.go:strictJSON": "9c6e73f9bb2170a21ff8b03c5cd521808d39446314195911e520691098c52f3a",
+    "internal/schema/declare.go:strictJSON": "7f665c80b049ac697e16c315ed503d8f6c7d4e37850a9faed6e1895dac818c8c",
     "internal/schema/jsonschema.go:checkProfile": "9a5dda5c0b561d343f47a63bf71bce5505191f0fe4773297be7a267dec628aa8",
     "internal/schema/jsonschema.go:compileJSONSchema": "1371f5a4feea5f71e1b11ee65015033d77f03698648d7c2efad00f11a40f1b86",
     "internal/schema/jsonschema.go:escapePointer": "791fe23391c2a9ec60a34a89833b3735ce5478bfdb1952a4ae4a075fca8ab246",
@@ -2963,14 +3058,14 @@
     "internal/schema/schema.go:clonePointer": "b6c529f2648156043a809db53c8ba83e824d2474046e88ea0b930013046d889d",
     "internal/schema/schema.go:cloneRule": "472c44479043740aca09c3fc24815a9d00d2700a55590d90c3b48e6c0ac39894",
     "internal/schema/schema.go:declErr": "8bbf2dc59cd9b30d8c2fdf0370f3549b9388cbccdc7273787ccac20eb7ae57ec",
-    "internal/schema/schema.go:normalize": "13b88b8820348ec5f544624fe0c7fd4e5eb972e44d7e8a64afca85d9b9f5cf8a",
+    "internal/schema/schema.go:normalize": "bd284a0b9e400301a2f02a71529eea22c2d4939e75d32090d62e98e749129a64",
     "internal/schema/validate.go:Compiled.Validate": "275f37840a36896804b8123e6d74a0b24308c89298d5a35cbc883dbe360ffad9",
     "internal/schema/validate.go:Normalize": "071a36dad1cb8c12544f3d8b9fe3421de47b2b2f72c45a379e0f51053d2cf0fc",
     "internal/schema/validate.go:Verdict.fail": "79a88ab528a22d647f6c0d14e13a1cd4ae43ff2c31b6900e136cc9919b4c0362",
     "internal/schema/validate.go:canonicalInteger": "fb88e71edf8651239fe02f860fe8783fda35f26dd25a3bebd8f90ca66522c70c",
     "internal/schema/validate.go:capFailures": "848aa782f5fc8042f5f6b98d8dc641c5e2a2dd2a2a52d2dcc55c5e78e74c2b57",
     "internal/schema/validate.go:compiledRule.validate": "82a44db12e1f8b17f873eacdc62d709365016d2b68c6f50c85838ff0a31740f4",
-    "internal/schema/validate.go:encodedSize": "4724b71784feb325507928dbfb1fab220c43fed84b8f65de6c5f66dcb5dcb554",
+    "internal/schema/validate.go:encodedSize": "bd9239ac76a44e64495f39585b5dfba9944b8a8c8a1f0c1fadd70a9e03b3dea7",
     "internal/schema/validate.go:flattenValidationError": "96ef31699585ad463f7508e74bd7a32a93f2178b663b631a5c6627c032fcbf0b",
     "internal/schema/validate.go:instancePointer": "03b9e767074717bec0b02c9eef70f1c01c6473f7560208e9860e87d122196ace",
     "internal/schema/validate.go:jsonSchemaFailures": "1c517424bd627955e00049b53f64413ead69b4a108893b87c3a62edda3e24353",
@@ -3000,20 +3095,25 @@
     "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "e42f1f0336abd0454755e02234745bcfcf887b0880a299e3dd6d78b8f36643d9",
     "internal/store/authn/restore.go:Resolver.retireRestoredPendingHumanProofs": "e800fdaa927c583afcb18837dce8295bf047b1924245fd89fbb8107ae826ce47",
     "internal/store/authn/restore.go:nextEpoch": "79b068b0a5ca75782267913fe318b89d2eae303c07bd8a26205760ce848e28aa",
+    "internal/store/backup.go:IsPostgresSerializationFailure": "29d39bef31a39fa01c9d6b7edda189cba3316fffb02e778fc116158a4e34fc5c",
+    "internal/store/backup.go:beginPostgresExportSnapshot": "b5bccd5fcdd39f3f72e187507c6bb866069285f9d9ea7a3d46ad79b40ea41a67",
+    "internal/store/backup.go:copyFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
+    "internal/store/backup.go:createStaged": "f5a5b03e5df0f3ace822210df418818f658883ee1214f7ab1ac422bf1a6a7f2d",
     "internal/store/backup.go:isMissingGooseTable": "1281c742cb5d6fe8f7b608f0ff0ff450b5188394bd4e1e7043f991d55d74fd04",
     "internal/store/backup.go:openArchive": "6ac827716511836815ebf834947eaa935229cf24f667766beb92d7679393524f",
     "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef",
+    "internal/store/backup.go:retryPostgresSerialization": "01694051267b7a63e5fa68125c255f33f64f67f62ab7b0d6a60b9a1ecf44527a",
     "internal/store/backup.go:schemaVersionResult": "9f167bfcf31686969db027a9b8edf202a5505778ac941338d8132d49fefa0755",
     "internal/store/backup.go:topoSort": "d705562d3a08af977ee82a0f055f653959956650ad4d26dfb6098ea0f5c96bd7",
     "internal/store/backup.go:validRestoredSequencePosition": "cd037cc970df599ed2245dd94f08a10558528d8be7bd8c8d84407569f3fe11fa",
-    "internal/store/backup.go:writeFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
-    "internal/store/backup.go:writeManifest": "68dc0c48e2ef8d96bcae5efb8bab7e62edef4e21a46afa0b029ee192857fb245",
+    "internal/store/backup.go:writeFileMember": "3bf9b1f4e5252e6f4378c55547ac77aca3258cc3902067280fb63beb7c89dbc9",
+    "internal/store/backup.go:writeManifest": "d49030fa5164b997bf402f6320e270e10b9e21595651f8e2c9b85dee41068ac6",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bind": "7ccd3c6770a31f070a24cdf4b3d94805dd1ece9d23195104974bb8115ae6fa11",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bindPostgres": "7fb1400ca76c108232a43b012d5e607f05f32556837e9abe7a18a9622664c54d",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bindSQLite": "d34e6f251c6c47cb1e7a6ef0726410bfb6351750b192b4ff548734d8210e9e68",
     "internal/store/backup_upgrade_restore.go:matchRestoredUpgradeSnapshot": "16e2035cd4726f22ba1fef62a6e7e2009af6a7090e882bbd162cd7acec9d7600",
     "internal/store/backup_upgrade_restore.go:matchUpgradePlan": "8088976d6e852ff94c31e03a7fdfff307b484cf42d4f1b8c882f5b557ce62926",
-    "internal/store/migrate/migrate.go:withProvider": "36eef91b430bcd394ca77794628027a2090b731650cd12da29a638960c6f3fd5",
+    "internal/store/migrate/migrate.go:withProvider": "2dc4688534cece20da242e2e7d476aef9ccf99e8f8360b5ce54eacc23d15648a",
     "internal/store/preparation.go:upgradeConfig": "5839d281290ead85c6b9dda89de1b38c052469b17333c1627f56b5385188eb8e",
     "internal/store/recovery.go:RecoveryDB.Engine": "3ce2266b37a91e0c33fab6bcf52e6ec1ccb042f138d575c6c9ebf41c44bc5c81",
     "internal/store/sqlitegen/snapshot_statements.go:SnapshotInsertSlot": "cc921f9eff01a60fedb875f0a219b9ce511f5d8a4ad706a3723e7fb4649a582c",
@@ -3028,7 +3128,7 @@
     "internal/store/store.go:rollbackPostgresSourceProof": "b205da554b3350237751826e7871f89f4cd21199737916e052ad03814b6641f6",
     "internal/store/store.go:sqliteReadDSN": "acc83922e07014cade2291fa1400ce7e2a5ef32321de9e82f15e0c65546f3acc",
     "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
-    "internal/store/upgrade/acceptance.go:encodeFloor": "dd9bfb5086f15540900ccbeb9c1727ea7805872a9b8a86ef712b7099966dc5ce",
+    "internal/store/upgrade/acceptance.go:encodeFloor": "795f0ea95297623527f6704e4baa78e8b4af226a865a7e02bd2e25a438d77c39",
     "internal/store/upgrade/admission.go:Admission.CheckTarget": "44cf9f112831d34ab6a76149f7a02031df842785b935f834a9d8df4fc838fa5f",
     "internal/store/upgrade/admission.go:Admission.LockSQLite": "1ade230167630084b38e202e998653bfa96e3f9809ef20c9371146b09c8cf99b",
     "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d",
@@ -3041,7 +3141,7 @@
     "internal/store/upgrade/configuration_migrate.go:configurationOneRow": "deab83c007cbea3468ddd4ce45d31ce18e8119e01d1966db7404afcdee096e50",
     "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrations": "04042a7e2c360acbaae2197943e3b9aef61de5fe5c4c8143be624a00bc3e79ff",
     "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "58f2772839f99bf7835f7117f2d3902ccadc8bf8a5aa1a358766f51462fee5f5",
-    "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+    "internal/store/upgrade/control_schema.go:splitControl": "cda61ccb97ece2fa7bdb746232d907682d561e486e07430a135bd5435edef8c7",
     "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
     "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
     "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
@@ -3052,6 +3152,7 @@
     "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
     "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
     "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+    "internal/store/upgrade/lock.go:CheckPostgresVersion": "8319a12cf7776a6fa7ca3d0ad2a13d8eb8e1c836efe96040e7f633e131cc6c30",
     "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
     "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
     "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
@@ -3063,10 +3164,10 @@
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.CheckOwner": "551cd7795d57e4588548a5fee2dcb2239ca4b73e018a80d31cc5a3f737c55262",
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Valid": "46be22a6320dad35f082fbe0a9704f6003e7d251c151f12ec6f2ab0da23cbc19",
     "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.checkRows": "633c45be26d761b381f78da585c185c9cc091c4b80d0297cf4695f2a3f8aa7d3",
-    "internal/store/upgrade/restore.go:reconcileRestore": "f2b1b7269251540b7955077a30159f90356e8ba93cc3a3b157d0597490b792ef",
-    "internal/store/upgrade/rollback.go:outsideDependents": "1fc188ad4124f193b56c443af62958cd2eada7f6d3fea57e0a4fafcfd8904779",
+    "internal/store/upgrade/restore.go:reconcileRestore": "780d845d1cb21b8f3dd02438f4292e180d3e4ff5b1df0315893e39593f1e32cc",
     "internal/store/upgrade/restore_schema.go:prepareRestoreSchema": "ef32c202ae0f3d7689fcd0e014569b031a12f6553bb42736649c1ce9726a6816",
-    "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+    "internal/store/upgrade/rollback.go:outsideDependents": "1fc188ad4124f193b56c443af62958cd2eada7f6d3fea57e0a4fafcfd8904779",
+    "internal/store/upgrade/schema.go:Catalog.Digest": "61e520eb122e505c425ea090b81bc95cc54971a0128d7110867c257c457a8df9",
     "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
     "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
     "internal/store/upgrade/schema.go:inspectCatalog": "62a6e91deb14e167d265ba2a7fafb21571b151d749a0d10b3811f06e97b42825",
@@ -3082,8 +3183,8 @@
     "internal/store/upgrade/state.go:nextGeneration": "b5ef1f231c7227a1f96317f3a209c2f75cead461ce9899c58265271230150eda",
     "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
     "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
-    "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
-    "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+    "internal/store/upgrade/storage.go:decode": "40d38e92bdedca8504251b37660fbf2ff1e2c1ac3df320cd189157d426614368",
+    "internal/store/upgrade/storage.go:equalRecord": "ee913c0159e1166b3e31de7eb4c202af8d666c4c11d389ed36bf451f88d4047a",
     "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92",
     "internal/upgradecompat/declaration.go:Declaration.Manifest": "a9c5b8dbd1ff196382e7f64d948fc7ce2218fd834101137e6a0513ccc672e863",
     "internal/upgradecompat/declaration.go:VerifiedNode.Identity": "ae9725e2167239a5faf2dd48414e20bbd6b9b93d87a7c89366e7811b94216326",
@@ -3102,18 +3203,19 @@
     "scripts/acceptance/mcp-fixture/main.go:privatePath": "20d33614496344b681c2bfde779d356a01a63addcd4c7c79a9a02fff728e8093",
     "scripts/acceptance/mcp-fixture/main.go:privatePathModes": "47d5feaa828b5c5d143652bb1faab10e9512647758e3567c8735f19e50258d8b",
     "scripts/acceptance/mcp-fixture/probe.go:probe.args": "5119760188523cbeac2e64fb3d92de443cada693773ff9ce4171b54dbe7b7a60",
-    "scripts/acceptance/mcp-fixture/probe.go:probe.call": "a37a8e7613f8557a3ac5a235e091a1c4dd6a9a90ea86cdd70862c5caa8f2b054",
+    "scripts/acceptance/mcp-fixture/probe.go:probe.call": "e362ee16e3c8b5c0e0069da51238681afa58cf25df6d285074cfa42eb67ace93",
     "scripts/acceptance/mcp-fixture/probe.go:receipt.event": "afe3080b651d5a47fbae99c9562fb3dc2f0131fa0a92d3b268f4d963d335ff8e",
     "scripts/acceptance/mcp-fixture/probe.go:successful": "4ab2839bfb99d4335b837132f24a33f34e1281cfec660a031cbb747bce9c90ce",
     "scripts/acceptance/mcp-fixture/seed.go:validateDSN": "55a5c235e56dfe749a921a85a86d55667d4ae55c7b26d8a56ff228b0c6a578c1",
     "scripts/security/alert-route/collector_snapshot.go:binding": "e8c470ea6ae9fec13c93943c24a82a41ef30dbfbe59f809e751c1e3995aeba85",
-    "scripts/security/alert-route/config.go:decode": "161a475815090c9065b475eac7d4fb6b26ab9715772b54c2dce938aa94108085",
+    "scripts/security/alert-route/config.go:decode": "1e19c1d48b64ea36755a5954ba5d9a5ed8f10de1353405629a5b9b9a40d83f06",
     "scripts/security/alert-route/config.go:digest": "8e03bd89d9b32020248066e07ea5eda2acfe5ea18b12ebc6e1e5380a1566239b",
-    "scripts/security/alert-route/main.go:mustJSON": "807d9e740b73076b4fcba80bcbb060f6d3e90b04757f9b741e7bd2efd7727267",
+    "scripts/security/alert-route/main.go:mustJSON": "1b4149c52b3ac48a80c3fd1a574bb386092f222cf3c2d922b511f7da80b5f831",
     "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier": "fd1bdf16828e043a8b228f131983e0ed407c4c4a4ce0c5188d506f1b5064f028"
   },
   "build_helpers": {
     "darwin": {
+      "internal/store/backup.go:createStaged": "db6884bb94c71b08de02474ff514fbb2b58ca14a7cce4ee33d45c20cdd062555",
       "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting": "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b"
     },
     "windows": {

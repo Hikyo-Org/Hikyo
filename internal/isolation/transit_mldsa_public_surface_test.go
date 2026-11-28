@@ -5,7 +5,8 @@ import (
 	"crypto/mldsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -297,7 +299,7 @@ func TestTransitMLDSA65APILifecycle(t *testing.T) {
 		admin := bootstrapAdmin(t, db, adminOpts{username: "factor-admin", displayName: "A", password: "correct horse battery staple transit api"})
 		operator := service.LocalPrincipal(root)
 		keyring := probeKeyring(t, db)
-		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "api-org", true, json.RawMessage(`{}`))
+		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "api-org", true, jsontext.Value(`{}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -344,7 +346,7 @@ func TestTransitMLDSA65APILifecycle(t *testing.T) {
 			t.Helper()
 			var reader io.Reader
 			if body != nil {
-				raw, err := json.Marshal(body)
+				raw, err := json.Marshal(body, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

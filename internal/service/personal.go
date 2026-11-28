@@ -765,8 +765,16 @@ func (s *PersonalValues) sweepRetentionBatch(ctx context.Context, cursor string)
 
 // personalOwnerPredicate is the retention predicate: read and reveal on the
 // environment, and a standing possession factor. An owner with no account is
-// not qualified.
+// not qualified. A contained owner still holds (incident-containment ADR, O8):
+// containment suspends the owner's grants without removing them, so the sweep
+// clears any running clock and starts none, and a release restarts it rather
+// than expiring values retroactively. Only this sweep reads the predicate;
+// delivery evaluates access and qualification itself and stays denied.
 func personalOwnerPredicate(ctx context.Context, az *authz.TxAuthorizer, owner domain.PrincipalID, scope domain.Scope) (bool, error) {
+	paused, err := az.PrincipalPausedByContainment(ctx, owner)
+	if err != nil || paused {
+		return paused, err
+	}
 	ok, err := az.PersonalOwnerHasAccess(ctx, owner, scope)
 	if err != nil || !ok {
 		return false, err

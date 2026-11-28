@@ -201,6 +201,13 @@ func (s *Approvals) CreatePolicy(ctx context.Context, actor Actor, scope domain.
 		if err := recordPolicyChange(ctx, r, p, caller.Principal, id, "created", input); err != nil {
 			return err
 		}
+		if input.Enabled {
+			// An unattended rotation publish would become an approval request
+			// every cycle; pause the covered environment's rotations with the policy.
+			if err := pauseRotationsForEnvironment(ctx, r, p, caller.Principal, input.EnvironmentID, rotationPauseApprovalPolicy, now); err != nil {
+				return err
+			}
+		}
 		view, err = loadPolicyView(ctx, r, p, id)
 		return err
 	})
@@ -265,6 +272,11 @@ func (s *Approvals) UpdatePolicy(ctx context.Context, actor Actor, scope domain.
 		}
 		if err := recordPolicyChange(ctx, r, p, caller.Principal, id, "updated", input); err != nil {
 			return err
+		}
+		if input.Enabled {
+			if err := pauseRotationsForEnvironment(ctx, r, p, caller.Principal, current.EnvironmentID, rotationPauseApprovalPolicy, now); err != nil {
+				return err
+			}
 		}
 		view, err = loadPolicyView(ctx, r, p, id)
 		return err

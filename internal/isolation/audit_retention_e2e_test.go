@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,14 +110,28 @@ func TestAuditRetentionReceiptFailureRollsBack(t *testing.T) {
 	})
 }
 
+// The store boundary refuses a genuine proof that belongs to a finished
+// transaction. A nil proof is refused by the same authz.Verify call; that case
+// lives in internal/authz (TestVerifyRejectsNilProof), the only package allowed
+// to spell a nil Proof.
 func TestAuditRetentionRejectsUnprovedDelete(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
-		err := tx.Write(t.Context(), db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			_, err := r.Retention().PruneAudit(ctx, nil, time.Now(), time.Now())
+		var stale authz.Proof
+		// The proof is captured out of its transaction on purpose: it is the
+		// stale proof under test.
+		err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) (err error) {
+			stale, err = authz.SystemAuthority(authz.SiteScheduler, az.Token())
 			return err
 		})
-		if err == nil {
-			t.Fatal("proof-free pruning allowed")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = tx.Write(t.Context(), db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			_, err := r.Retention().PruneAudit(ctx, stale, time.Now(), time.Now())
+			return err
+		})
+		if err == nil || !strings.Contains(err.Error(), "outside its transaction") {
+			t.Fatalf("pruning with a proof from another transaction = %v, want the outside-its-transaction refusal", err)
 		}
 	})
 }

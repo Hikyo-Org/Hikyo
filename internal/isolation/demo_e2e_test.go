@@ -3,7 +3,7 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -218,14 +219,17 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 		t.Fatalf("whoami exited %d", code)
 	}
 	var whoami struct {
-		Principal struct{ Id, Kind string }
-		Session   struct {
-			Artifact  string
+		Principal struct {
+			Id   string `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"principal"`
+		Session struct {
+			Artifact  string `json:"artifact"`
 			Assurance struct {
-				Method  string
-				Factors []string
-			}
-		}
+				Method  string   `json:"method"`
+				Factors []string `json:"factors"`
+			} `json:"assurance"`
+		} `json:"session"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &whoami); err != nil {
 		t.Fatalf("whoami output: %v\n%s", err, stdout.String())
@@ -289,8 +293,10 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 	}
 	var elevated struct {
 		Session struct {
-			Assurance struct{ Factors []string }
-		}
+			Assurance struct {
+				Factors []string `json:"factors"`
+			} `json:"assurance"`
+		} `json:"session"`
 	}
 	if err := json.Unmarshal([]byte(stepUp.String()), &elevated); err != nil {
 		t.Fatalf("whoami output: %v\n%s", err, stepUp.String())
@@ -384,7 +390,7 @@ func completeDemoBrowserLogin(t *testing.T, srv *httptest.Server, target, passwo
 	var cookies []*http.Cookie
 	post := func(path string, input, output any, status int, csrf string) {
 		t.Helper()
-		raw, err := json.Marshal(input)
+		raw, err := json.Marshal(input, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -410,7 +416,7 @@ func completeDemoBrowserLogin(t *testing.T, srv *httptest.Server, target, passwo
 		if fresh := resp.Cookies(); len(fresh) != 0 {
 			cookies = fresh
 		}
-		if err := json.NewDecoder(resp.Body).Decode(output); err != nil {
+		if err := json.UnmarshalRead(resp.Body, output); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -557,14 +563,14 @@ func runHierarchyDemo(t *testing.T, db *store.DB, ios func() cli.IO, takeRequest
 		}
 	}
 	type row struct {
-		Id           string
-		Name         string
-		Path         string
-		DisplayOrder int `json:"display_order"`
+		Id           string `json:"id"`
+		Name         string `json:"name"`
+		Path         string `json:"path"`
+		DisplayOrder int    `json:"display_order"`
 	}
 	type list struct {
-		Items []row
-		Count int
+		Items []row `json:"items"`
+		Count int   `json:"count"`
 	}
 
 	var org row
@@ -581,13 +587,15 @@ func runHierarchyDemo(t *testing.T, db *store.DB, ios func() cli.IO, takeRequest
 	relogin()
 	takeRequests()
 	var me struct {
-		Principal struct{ Id string }
+		Principal struct {
+			Id string `json:"id"`
+		} `json:"principal"`
 	}
 	decode(run("whoami", "-o", "json"), &me)
 	var seeded struct {
 		Items []struct {
 			PrincipalId string `json:"principal_id"`
-		}
+		} `json:"items"`
 	}
 	decode(run("access", "grant", "list", "--org", org.Id, "-o", "json"), &seeded)
 	creatorGrants := 0
@@ -630,7 +638,9 @@ func runHierarchyDemo(t *testing.T, db *store.DB, ios func() cli.IO, takeRequest
 	settingsFlags := []string{"--org", org.Id, "--project", project.Id, "--env", envs[0].Id}
 	run(append([]string{"project-settings", "set"}, append(settingsFlags, "--protected", "true")...)...)
 	run(append([]string{"project-settings", "set"}, append(settingsFlags, "--reauth-window-seconds", "0")...)...)
-	var settings struct{ Protected bool }
+	var settings struct {
+		Protected bool `json:"protected"`
+	}
 	decode(run(append([]string{"project-settings", "get", "-o", "json"}, settingsFlags...)...), &settings)
 	if !settings.Protected {
 		t.Fatal("a window-only `project-settings set` cleared the protected flag")
@@ -844,10 +854,10 @@ func runAccessDemo(t *testing.T, db *store.DB, ios func() cli.IO, orgID string, 
 	// 1. Grant a template role.
 	var applied struct {
 		Items []struct {
-			Capability string
-			Created    bool
-		}
-		Count int
+			Capability string `json:"capability"`
+			Created    bool   `json:"created"`
+		} `json:"items"`
+		Count int `json:"count"`
 	}
 	decode(mustRun("access", "grant", "template", "--org", orgID,
 		"--principal", grantee, "--template", "publisher", "-o", "json"), &applied)
@@ -860,13 +870,13 @@ func runAccessDemo(t *testing.T, db *store.DB, ios func() cli.IO, orgID string, 
 	var members struct {
 		Items []struct {
 			PrincipalId string `json:"principal_id"`
-			Capability  string
+			Capability  string `json:"capability"`
 			Origins     []struct {
-				Kind    string
-				Subject string
-			}
-		}
-		Count int
+				Kind    string `json:"kind"`
+				Subject string `json:"subject"`
+			} `json:"origins"`
+		} `json:"items"`
+		Count int `json:"count"`
 	}
 	decode(mustRun("access", "grant", "list", "--org", orgID, "-o", "json"), &members)
 	seen := map[string]int{}
@@ -906,7 +916,9 @@ func runAccessDemo(t *testing.T, db *store.DB, ios func() cli.IO, orgID string, 
 	//    commit with the grant change, so the very next request over the same
 	//    session is refused — exit 3, authentication, not 5.
 	var whoami struct {
-		Principal struct{ Id string }
+		Principal struct {
+			Id string `json:"id"`
+		} `json:"principal"`
 	}
 	decode(mustRun("whoami", "-o", "json"), &whoami)
 	if whoami.Principal.Id == "" {

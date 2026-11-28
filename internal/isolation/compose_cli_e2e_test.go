@@ -1,7 +1,7 @@
 package isolation
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/compose"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -568,7 +569,7 @@ func writeTrustStore(t *testing.T, stateDir, origin, socket string) {
 		t.Fatal(err)
 	}
 	entry := map[string]map[string]string{"local": {"name": "local", "origin": origin, "cli_socket": socket}}
-	data, err := json.Marshal(entry)
+	data, err := json.Marshal(entry, jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

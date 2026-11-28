@@ -27,13 +27,13 @@ type SourceProof struct {
 	Alias        string `json:"alias"`
 	SourceDigest string `json:"source_digest"`
 	ProofDigest  string `json:"proof_digest"`
-	RootEpoch    int64  `json:"root_epoch,omitempty"`
+	RootEpoch    int64  `json:"root_epoch,omitzero"`
 }
 
 type BootstrapChanges struct {
-	Database *SourceProof `json:"database,omitempty"`
-	Root     *SourceProof `json:"root,omitempty"`
-	Upgrade  *SourceProof `json:"upgrade,omitempty"`
+	Database *SourceProof `json:"database,omitzero"`
+	Root     *SourceProof `json:"root,omitzero"`
+	Upgrade  *SourceProof `json:"upgrade,omitzero"`
 }
 
 type rootSourceDelta struct {
@@ -49,7 +49,7 @@ const rootAliasAnnotation = "hikyo.dev/configuration-root-source"
 
 type sourceAliasDelta struct {
 	Name   string  `json:"name"`
-	Before *string `json:"before,omitempty"`
+	Before *string `json:"before,omitzero"`
 	After  string  `json:"after"`
 }
 

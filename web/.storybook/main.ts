@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 /**
  * Resolve a Storybook package to its directory from THIS config file.
  *
- * pnpm 11's global virtual store (`virtualStoreType: global` in
+ * pnpm's global virtual store (`virtualStoreType: global` in
  * pnpm-workspace.yaml) links `storybook` from a store outside the project, so
  * a bare `import('@storybook/react-vite')` issued from inside storybook's own
  * chunks has nothing to resolve against. `pnpm exec` hides that by injecting

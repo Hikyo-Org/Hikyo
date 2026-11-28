@@ -2,7 +2,8 @@ package checksuites
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 func source(suites int, holder int64, queries *[]string) Source {
 	return Source{
 		Owner: "o", Name: "n", RepoID: 1,
-		Diagnose: func([]json.RawMessage) error { return errors.New("diagnosed") },
+		Diagnose: func([]jsontext.Value) error { return errors.New("diagnosed") },
 		Read: func(_ context.Context, query string, out any) error {
 			*queries = append(*queries, query)
 			object := map[string]any{"oid": "abc", "checkSuites": map[string]any{"totalCount": suites}}
@@ -168,7 +169,7 @@ func TestDefaultDiagnoseQuotesBoundsAndRedacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var errs []json.RawMessage
+	var errs []jsontext.Value
 	if err := json.Unmarshal(raw, &errs); err != nil {
 		t.Fatal(err)
 	}

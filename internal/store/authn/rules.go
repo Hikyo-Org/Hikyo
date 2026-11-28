@@ -3,7 +3,7 @@ package authn
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -20,7 +20,7 @@ import (
 // The member access rule surface (member-access-rules ADR). It lives on the
 // enumerated resolution surface for the same reason grants do: authorize()
 // reads rules to mint a proof. Every mutating method takes the principal-row
-// lock (lint.CheckGrantLock) and is named in lint.ResolutionSurfaceWriters.
+// lock (the lint grantlock analyzer) and is named in lint.ResolutionSurfaceWriters.
 //
 // Every read parses and validates: a row set that does not form a valid rule
 // is dropped, so the worst a corrupt row can do is deny.
@@ -52,9 +52,12 @@ type StoredRule struct {
 
 // ruleRow is one engine-neutral row of a rule read.
 type ruleRow struct {
-	id, principal, capability, org, envMode, keyMode string
-	item                                             StoredRuleItem
+	id, principal, capability, org, projectMode, envMode, keyMode string
+	item                                                          StoredRuleItem
 }
+
+// ruleProjectAll is the stored all-projects project mode (#1446).
+const ruleProjectAll = "all"
 
 // foldRules groups rows by rule id (rows arrive ordered by rule id) and keeps
 // only the rules that validate. A row set with an unknown axis is dropped.
@@ -75,7 +78,8 @@ func foldRules(rows []ruleRow) []StoredRule {
 				ID: row.id, Principal: domain.PrincipalID(row.principal),
 				Capability: domain.Capability(row.capability), Org: domain.OrgID(row.org),
 				Where: domain.Where{
-					EnvMode: domain.AxisMode(row.envMode), KeyMode: domain.AxisMode(row.keyMode),
+					AllProjects: row.projectMode == ruleProjectAll,
+					EnvMode:     domain.AxisMode(row.envMode), KeyMode: domain.AxisMode(row.keyMode),
 					Envs: map[domain.ProjectID][]domain.EnvID{}, Keys: map[domain.ProjectID][]domain.RuleKeyItem{},
 				},
 			}}
@@ -83,6 +87,10 @@ func foldRules(rows []ruleRow) []StoredRule {
 		it := row.item
 		w := &cur.Rule.Where
 		switch it.Axis {
+		case "":
+			// An item-less rule (an all-projects rule without key items) reads
+			// one LEFT JOIN row with no item.
+			continue
 		case ruleAxisProject:
 			w.Projects = append(w.Projects, it.Project)
 		case ruleAxisEnv:
@@ -112,32 +120,120 @@ func rulesOf(stored []StoredRule) []domain.Rule {
 // same gates as Grants (active, reconciled) plus human kind. A recovery
 // resolver bound to a schema older than the rule tables answers none.
 func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
+	return r.principalRules(ctx, p, false)
+}
+
+// MachineRules returns a machine principal's rules under the same gates as
+// Rules. The caller applies domain.CheckMachineRule to every rule it uses.
+func (r *Resolver) MachineRules(ctx context.Context, p domain.PrincipalID) ([]domain.Rule, error) {
+	return r.principalRules(ctx, p, true)
+}
+
+func (r *Resolver) principalRules(ctx context.Context, p domain.PrincipalID, machine bool) ([]domain.Rule, error) {
 	if r.historicalRecoveryBeforeRules {
 		return nil, nil
 	}
 	var rows []ruleRow
 	if r.sq != nil {
-		got, err := r.sq.ListRulesForPrincipal(ctx, string(p))
+		var got []sqlitegen.ListRulesForPrincipalRow
+		var err error
+		switch {
+		case r.historicalRecoveryBeforeContainment:
+			// Source schemas 66 through 88 have no containment column.
+			var old []sqlitegen.RecoveryListRulesBeforeContainmentRow
+			old, err = r.sq.RecoveryListRulesBeforeContainment(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsSQLite(g))
+			}
+		case r.historicalRecoveryBeforeAllProjects && machine:
+			// Source schemas 89 through 98 have no rules.project_mode.
+			var old []sqlitegen.RecoveryListMachineRulesBeforeAllProjectsRow
+			old, err = r.sq.RecoveryListMachineRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsSQLite(sqlitegen.RecoveryListRulesBeforeContainmentRow(g)))
+			}
+		case r.historicalRecoveryBeforeAllProjects:
+			var old []sqlitegen.RecoveryListRulesBeforeAllProjectsRow
+			old, err = r.sq.RecoveryListRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsSQLite(sqlitegen.RecoveryListRulesBeforeContainmentRow(g)))
+			}
+		case machine:
+			var machineRows []sqlitegen.ListMachineRulesForPrincipalRow
+			machineRows, err = r.sq.ListMachineRulesForPrincipal(ctx, string(p))
+			for _, g := range machineRows {
+				got = append(got, sqlitegen.ListRulesForPrincipalRow(g))
+			}
+		default:
+			got, err = r.sq.ListRulesForPrincipal(ctx, string(p))
+		}
 		if err != nil {
 			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: string(p), capability: g.Capability, org: g.OrgID,
-				envMode: g.EnvMode, keyMode: g.KeyMode,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
-		got, err := r.pg.ListRulesForPrincipal(ctx, string(p))
+		var got []pggen.ListRulesForPrincipalRow
+		var err error
+		switch {
+		case r.historicalRecoveryBeforeContainment:
+			// Source schemas 66 through 88 have no containment column.
+			var old []pggen.RecoveryListRulesBeforeContainmentRow
+			old, err = r.pg.RecoveryListRulesBeforeContainment(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsPG(g))
+			}
+		case r.historicalRecoveryBeforeAllProjects && machine:
+			// Source schemas 89 through 98 have no rules.project_mode.
+			var old []pggen.RecoveryListMachineRulesBeforeAllProjectsRow
+			old, err = r.pg.RecoveryListMachineRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsPG(pggen.RecoveryListRulesBeforeContainmentRow(g)))
+			}
+		case r.historicalRecoveryBeforeAllProjects:
+			var old []pggen.RecoveryListRulesBeforeAllProjectsRow
+			old, err = r.pg.RecoveryListRulesBeforeAllProjects(ctx, string(p))
+			for _, g := range old {
+				got = append(got, ruleRowBeforeAllProjectsPG(pggen.RecoveryListRulesBeforeContainmentRow(g)))
+			}
+		case machine:
+			var machineRows []pggen.ListMachineRulesForPrincipalRow
+			machineRows, err = r.pg.ListMachineRulesForPrincipal(ctx, string(p))
+			for _, g := range machineRows {
+				got = append(got, pggen.ListRulesForPrincipalRow(g))
+			}
+		default:
+			got, err = r.pg.ListRulesForPrincipal(ctx, string(p))
+		}
 		if err != nil {
 			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: string(p), capability: g.Capability, org: g.OrgID,
-				envMode: g.EnvMode, keyMode: g.KeyMode,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	}
 	return rulesOf(foldRules(rows)), nil
+}
+
+// ruleRowBeforeAllProjectsSQLite maps a historical rule row (a source schema
+// before 99, which has no rules.project_mode) to the current row shape: every
+// rule there names its projects, so each reads as 'only'.
+func ruleRowBeforeAllProjectsSQLite(g sqlitegen.RecoveryListRulesBeforeContainmentRow) sqlitegen.ListRulesForPrincipalRow {
+	return sqlitegen.ListRulesForPrincipalRow{ID: g.ID, Capability: g.Capability, OrgID: g.OrgID,
+		ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+		EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath}
+}
+
+// ruleRowBeforeAllProjectsPG is the postgres twin of ruleRowBeforeAllProjectsSQLite.
+func ruleRowBeforeAllProjectsPG(g pggen.RecoveryListRulesBeforeContainmentRow) pggen.ListRulesForPrincipalRow {
+	return pggen.ListRulesForPrincipalRow{ID: g.ID, Capability: g.Capability, OrgID: g.OrgID,
+		ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+		EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath}
 }
 
 // RulesForProject returns every valid rule of a human principal naming one
@@ -150,23 +246,48 @@ func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]
 	}
 	var rows []ruleRow
 	if r.sq != nil {
-		got, err := r.sq.ListRulesForProject(ctx, sqlitegen.ListRulesForProjectParams{OrgID: org, ProjectID: project})
+		var got []sqlitegen.ListRulesForProjectRow
+		var err error
+		if r.historicalRecoveryBeforeAllProjects {
+			// Source schemas before 99 have no rules.project_mode: every rule is project-bound.
+			var old []sqlitegen.RecoveryListRulesForProjectBeforeAllProjectsRow
+			old, err = r.sq.RecoveryListRulesForProjectBeforeAllProjects(ctx, sqlitegen.RecoveryListRulesForProjectBeforeAllProjectsParams{OrgID: org, ProjectID: nullString(project)})
+			for _, g := range old {
+				got = append(got, sqlitegen.ListRulesForProjectRow{ID: g.ID, PrincipalID: g.PrincipalID, Capability: g.Capability, OrgID: g.OrgID,
+					ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+					EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath})
+			}
+		} else {
+			got, err = r.sq.ListRulesForProject(ctx, sqlitegen.ListRulesForProjectParams{OrgID: org, ProjectID: nullString(project)})
+		}
 		if err != nil {
 			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability, org: g.OrgID,
-				envMode: g.EnvMode, keyMode: g.KeyMode,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
-		got, err := r.pg.ListRulesForProject(ctx, pggen.ListRulesForProjectParams{OrgID: org, ProjectID: project})
+		var got []pggen.ListRulesForProjectRow
+		var err error
+		if r.historicalRecoveryBeforeAllProjects {
+			var old []pggen.RecoveryListRulesForProjectBeforeAllProjectsRow
+			old, err = r.pg.RecoveryListRulesForProjectBeforeAllProjects(ctx, pggen.RecoveryListRulesForProjectBeforeAllProjectsParams{OrgID: org, ProjectID: pgText(project)})
+			for _, g := range old {
+				got = append(got, pggen.ListRulesForProjectRow{ID: g.ID, PrincipalID: g.PrincipalID, Capability: g.Capability, OrgID: g.OrgID,
+					ProjectMode: "only", EnvMode: g.EnvMode, KeyMode: g.KeyMode, Axis: g.Axis, ProjectID: g.ProjectID,
+					EnvID: g.EnvID, KeyID: g.KeyID, FolderPath: g.FolderPath})
+			}
+		} else {
+			got, err = r.pg.ListRulesForProject(ctx, pggen.ListRulesForProjectParams{OrgID: org, ProjectID: pgText(project)})
+		}
 		if err != nil {
 			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability, org: g.OrgID,
-				envMode: g.EnvMode, keyMode: g.KeyMode,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	}
@@ -185,7 +306,7 @@ func (r *Resolver) GetRule(ctx context.Context, id string) (StoredRule, bool, er
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability, org: g.OrgID,
-				envMode: g.EnvMode, keyMode: g.KeyMode,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{ID: g.ItemID, Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
@@ -195,7 +316,7 @@ func (r *Resolver) GetRule(ctx context.Context, id string) (StoredRule, bool, er
 		}
 		for _, g := range got {
 			rows = append(rows, ruleRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability, org: g.OrgID,
-				envMode: g.EnvMode, keyMode: g.KeyMode,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{ID: g.ItemID, Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	}
@@ -210,34 +331,104 @@ func (r *Resolver) GetRule(ctx context.Context, id string) (StoredRule, bool, er
 	// delete it, never a Where anything could evaluate.
 	items := make([]StoredRuleItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, row.item)
+		if row.item.Axis != "" {
+			items = append(items, row.item)
+		}
 	}
 	first := rows[0]
 	return StoredRule{Rule: domain.Rule{ID: first.id, Principal: domain.PrincipalID(first.principal),
-		Capability: domain.Capability(first.capability), Org: domain.OrgID(first.org)}, Items: items}, false, nil
+		Capability: domain.Capability(first.capability), Org: domain.OrgID(first.org),
+		Where: domain.Where{AllProjects: first.projectMode == ruleProjectAll}}, Items: items}, false, nil
 }
 
 // RuleIDsForEnvironment, RuleIDsForKey, RuleIDsForProject and RuleIDsForOrg
 // are the deletion paths' censuses.
 func (r *Resolver) RuleIDsForEnvironment(ctx context.Context, org, project, env string) ([]string, error) {
 	if r.sq != nil {
-		return r.sq.ListRuleIDsForEnvironment(ctx, sqlitegen.ListRuleIDsForEnvironmentParams{OrgID: org, ProjectID: project, EnvID: nullString(env)})
+		return r.sq.ListRuleIDsForEnvironment(ctx, sqlitegen.ListRuleIDsForEnvironmentParams{OrgID: org, ProjectID: nullString(project), EnvID: nullString(env)})
 	}
-	return r.pg.ListRuleIDsForEnvironment(ctx, pggen.ListRuleIDsForEnvironmentParams{OrgID: org, ProjectID: project, EnvID: pgText(env)})
+	return r.pg.ListRuleIDsForEnvironment(ctx, pggen.ListRuleIDsForEnvironmentParams{OrgID: org, ProjectID: pgText(project), EnvID: pgText(env)})
 }
 
 func (r *Resolver) RuleIDsForKey(ctx context.Context, org, project, key string) ([]string, error) {
 	if r.sq != nil {
-		return r.sq.ListRuleIDsForKey(ctx, sqlitegen.ListRuleIDsForKeyParams{OrgID: org, ProjectID: project, KeyID: nullString(key)})
+		return r.sq.ListRuleIDsForKey(ctx, sqlitegen.ListRuleIDsForKeyParams{OrgID: org, ProjectID: nullString(project), KeyID: nullString(key)})
 	}
-	return r.pg.ListRuleIDsForKey(ctx, pggen.ListRuleIDsForKeyParams{OrgID: org, ProjectID: project, KeyID: pgText(key)})
+	return r.pg.ListRuleIDsForKey(ctx, pggen.ListRuleIDsForKeyParams{OrgID: org, ProjectID: pgText(project), KeyID: pgText(key)})
 }
 
 func (r *Resolver) RuleIDsForProject(ctx context.Context, org, project string) ([]string, error) {
 	if r.sq != nil {
-		return r.sq.ListRuleIDsForProject(ctx, sqlitegen.ListRuleIDsForProjectParams{OrgID: org, ProjectID: project})
+		return r.sq.ListRuleIDsForProject(ctx, sqlitegen.ListRuleIDsForProjectParams{OrgID: org, ProjectID: nullString(project)})
 	}
-	return r.pg.ListRuleIDsForProject(ctx, pggen.ListRuleIDsForProjectParams{OrgID: org, ProjectID: project})
+	return r.pg.ListRuleIDsForProject(ctx, pggen.ListRuleIDsForProjectParams{OrgID: org, ProjectID: pgText(project)})
+}
+
+// RuleOrgProjects lists the org's current project ids. lock takes them
+// FOR SHARE on postgres for an all-projects rule write, so a concurrent
+// deletion of the org's last project serializes with it.
+func (r *Resolver) RuleOrgProjects(ctx context.Context, org string, lock bool) ([]domain.ProjectID, error) {
+	var ids []string
+	var err error
+	switch {
+	case r.sq != nil && lock:
+		ids, err = r.sq.LockRuleOrgProjectIDs(ctx, org)
+	case r.sq != nil:
+		ids, err = r.sq.ListRuleOrgProjectIDs(ctx, org)
+	case lock:
+		ids, err = r.pg.LockRuleOrgProjectIDs(ctx, org)
+	default:
+		ids, err = r.pg.ListRuleOrgProjectIDs(ctx, org)
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.ProjectID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.ProjectID(id))
+	}
+	return out, nil
+}
+
+// LockOrgProjectsForDelete lists the org's project ids for a project
+// deletion or creation, FOR UPDATE on postgres, so concurrent deletions of the
+// org's last projects, creations at an all-projects rule's expansion bound and
+// an all-projects rule create serialize with it.
+func (r *Resolver) LockOrgProjectsForDelete(ctx context.Context, org string) ([]domain.ProjectID, error) {
+	var ids []string
+	var err error
+	if r.sq != nil {
+		ids, err = r.sq.LockOrgProjectIDsForDelete(ctx, org)
+	} else {
+		ids, err = r.pg.LockOrgProjectIDsForDelete(ctx, org)
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.ProjectID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.ProjectID(id))
+	}
+	return out, nil
+}
+
+// AllProjectsRulesInOrg lists the org's all-projects rules with their stored
+// item counts: an org's last project cannot be deleted while one exists, and
+// a project cannot be created that would list one past the v1 bounds.
+func (r *Resolver) AllProjectsRulesInOrg(ctx context.Context, org string) ([]domain.RuleItemCount, error) {
+	var out []domain.RuleItemCount
+	if r.sq != nil {
+		rows, err := r.sq.ListAllProjectsRuleItemCountsInOrg(ctx, org)
+		for _, row := range rows {
+			out = append(out, domain.RuleItemCount{ID: row.ID, Items: int(row.Items)})
+		}
+		return out, err
+	}
+	rows, err := r.pg.ListAllProjectsRuleItemCountsInOrg(ctx, org)
+	for _, row := range rows {
+		out = append(out, domain.RuleItemCount{ID: row.ID, Items: int(row.Items)})
+	}
+	return out, err
 }
 
 func (r *Resolver) RuleIDsForOrg(ctx context.Context, org string) ([]string, error) {
@@ -262,13 +453,13 @@ func (r *Resolver) CreateRule(ctx context.Context, rule domain.Rule, createdBy d
 	if r.sq != nil {
 		if err := r.sq.InsertRule(ctx, sqlitegen.InsertRuleParams{
 			ID: rule.ID, PrincipalID: string(rule.Principal), Capability: string(rule.Capability), OrgID: string(rule.Org),
-			EnvMode: string(rule.Where.EnvMode), KeyMode: string(rule.Where.KeyMode), CreatedBy: string(createdBy), CreatedAt: encodeTime(at),
+			ProjectMode: projectModeOf(rule.Where), EnvMode: string(rule.Where.EnvMode), KeyMode: string(rule.Where.KeyMode), CreatedBy: string(createdBy), CreatedAt: encodeTime(at),
 		}); err != nil {
 			return err
 		}
 	} else if err := r.pg.InsertRule(ctx, pggen.InsertRuleParams{
 		ID: rule.ID, PrincipalID: string(rule.Principal), Capability: string(rule.Capability), OrgID: string(rule.Org),
-		EnvMode: string(rule.Where.EnvMode), KeyMode: string(rule.Where.KeyMode), CreatedBy: string(createdBy), CreatedAt: pgTimestamp(at),
+		ProjectMode: projectModeOf(rule.Where), EnvMode: string(rule.Where.EnvMode), KeyMode: string(rule.Where.KeyMode), CreatedBy: string(createdBy), CreatedAt: pgTimestamp(at),
 	}); err != nil {
 		return err
 	}
@@ -279,13 +470,13 @@ func (r *Resolver) CreateRule(ctx context.Context, rule domain.Rule, createdBy d
 		}
 		if r.sq != nil {
 			err = r.sq.InsertRuleItem(ctx, sqlitegen.InsertRuleItemParams{
-				ID: id, RuleID: rule.ID, OrgID: string(rule.Org), Axis: it.Axis, ProjectID: string(it.Project),
+				ID: id, RuleID: rule.ID, OrgID: string(rule.Org), Axis: it.Axis, ProjectID: nullString(string(it.Project)),
 				EnvID: nullString(string(it.Env)), KeyID: nullString(it.KeyID),
 				FolderPath: sql.NullString{String: it.Folder, Valid: it.Axis == ruleAxisFolder},
 			})
 		} else {
 			err = r.pg.InsertRuleItem(ctx, pggen.InsertRuleItemParams{
-				ID: id, RuleID: rule.ID, OrgID: string(rule.Org), Axis: it.Axis, ProjectID: string(it.Project),
+				ID: id, RuleID: rule.ID, OrgID: string(rule.Org), Axis: it.Axis, ProjectID: pgText(string(it.Project)),
 				EnvID: pgText(string(it.Env)), KeyID: pgText(it.KeyID),
 				FolderPath: pgtype.Text{String: it.Folder, Valid: it.Axis == ruleAxisFolder},
 			})
@@ -297,9 +488,24 @@ func (r *Resolver) CreateRule(ctx context.Context, rule domain.Rule, createdBy d
 	return nil
 }
 
-// itemsOf flattens a Where into stored items, projects first.
+// projectModeOf is the stored project mode of a Where.
+func projectModeOf(w domain.Where) string {
+	if w.AllProjects {
+		return ruleProjectAll
+	}
+	return "only"
+}
+
+// itemsOf flattens a Where into stored items, projects first. An
+// all-projects Where stores only its folder items, with no project.
 func itemsOf(w domain.Where) []StoredRuleItem {
 	var out []StoredRuleItem
+	if w.AllProjects {
+		for _, k := range w.Keys[domain.AnyProject] {
+			out = append(out, StoredRuleItem{Axis: ruleAxisFolder, Folder: k.Folder})
+		}
+		return out
+	}
 	for _, p := range w.Projects {
 		out = append(out, StoredRuleItem{Axis: ruleAxisProject, Project: p})
 	}
@@ -394,6 +600,7 @@ type RuleLine struct {
 	ID            string
 	Principal     domain.PrincipalID
 	Capability    domain.Capability
+	AllProjects   bool
 	EnvMode       domain.AxisMode
 	KeyMode       domain.AxisMode
 	CreatedBy     domain.PrincipalID
@@ -403,10 +610,10 @@ type RuleLine struct {
 }
 
 type ruleLineRow struct {
-	id, principal, capability, envMode, keyMode, createdBy string
-	at                                                     time.Time
-	other                                                  bool
-	item                                                   StoredRuleItem
+	id, principal, capability, projectMode, envMode, keyMode, createdBy string
+	at                                                                  time.Time
+	other                                                               bool
+	item                                                                StoredRuleItem
 }
 
 // foldRuleLines groups rows (ordered by rule id) into lines.
@@ -416,12 +623,14 @@ func foldRuleLines(rows []ruleLineRow) []RuleLine {
 		if len(out) == 0 || out[len(out)-1].ID != row.id {
 			out = append(out, RuleLine{
 				ID: row.id, Principal: domain.PrincipalID(row.principal), Capability: domain.Capability(row.capability),
-				EnvMode: domain.AxisMode(row.envMode), KeyMode: domain.AxisMode(row.keyMode),
+				AllProjects: row.projectMode == ruleProjectAll, EnvMode: domain.AxisMode(row.envMode), KeyMode: domain.AxisMode(row.keyMode),
 				CreatedBy: domain.PrincipalID(row.createdBy), CreatedAt: row.at, OtherProjects: row.other,
 			})
 		}
 		last := &out[len(out)-1]
-		last.Items = append(last.Items, row.item)
+		if row.item.Axis != "" {
+			last.Items = append(last.Items, row.item)
+		}
 	}
 	return out
 }
@@ -440,7 +649,7 @@ func (r *Resolver) RuleLinesInOrg(ctx context.Context, org string) ([]RuleLine, 
 				return nil, err
 			}
 			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
-				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: at,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: at,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
@@ -450,7 +659,7 @@ func (r *Resolver) RuleLinesInOrg(ctx context.Context, org string) ([]RuleLine, 
 		}
 		for _, g := range got {
 			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
-				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: g.CreatedAt.Time,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: g.CreatedAt.Time,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	}
@@ -462,7 +671,7 @@ func (r *Resolver) RuleLinesInOrg(ctx context.Context, org string) ([]RuleLine, 
 func (r *Resolver) RuleLinesInProject(ctx context.Context, org, project string) ([]RuleLine, error) {
 	var rows []ruleLineRow
 	if r.sq != nil {
-		got, err := r.sq.ListRuleLinesInProject(ctx, sqlitegen.ListRuleLinesInProjectParams{OrgID: org, ProjectID: project})
+		got, err := r.sq.ListRuleLinesInProject(ctx, sqlitegen.ListRuleLinesInProjectParams{OrgID: org, ProjectID: nullString(project)})
 		if err != nil {
 			return nil, err
 		}
@@ -472,17 +681,17 @@ func (r *Resolver) RuleLinesInProject(ctx context.Context, org, project string) 
 				return nil, err
 			}
 			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
-				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: at, other: g.OtherItems > 0,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: at, other: g.OtherItems > 0,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	} else {
-		got, err := r.pg.ListRuleLinesInProject(ctx, pggen.ListRuleLinesInProjectParams{OrgID: org, ProjectID: project})
+		got, err := r.pg.ListRuleLinesInProject(ctx, pggen.ListRuleLinesInProjectParams{OrgID: org, ProjectID: pgText(project)})
 		if err != nil {
 			return nil, err
 		}
 		for _, g := range got {
 			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
-				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: g.CreatedAt.Time, other: g.OtherItems > 0,
+				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: g.CreatedAt.Time, other: g.OtherItems > 0,
 				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
 		}
 	}

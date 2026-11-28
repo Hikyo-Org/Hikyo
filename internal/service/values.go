@@ -450,7 +450,7 @@ func writeCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
 	}
-	sealed, err := sealer.SealValue(valueAAD(entry), []byte(normalizeStoredValue(p, key, value)))
+	sealed, err := sealer.SealValue(valueAAD(entry), []byte(schema.Normalize(value)))
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -550,123 +550,7 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		if err != nil {
 			return stageWriteResult{}, err
 		}
-		p, err := az.AuthorizeKey(ctx, caller, op, scope, keyTarget)
-		if err != nil {
-			return stageWriteResult{}, err
-		}
-		// One serialization domain per project: the draft records the published
-		// entry it was staged against, and a concurrent publish must not slip
-		// between reading that entry and writing the row that pins it.
-		if err := r.Projects().Lock(ctx, p); err != nil {
-			return stageWriteResult{}, err
-		}
-		// Recheck initial-cell metadata after serializing with publishers and
-		// other draft writers. The preflight cannot authorize a later overwrite.
-		if op == authz.OpValueInitialize {
-			p, err = az.AuthorizeKey(ctx, caller, op, scope, keyTarget)
-			if err != nil {
-				return stageWriteResult{}, err
-			}
-		}
-		key, err := findKey(ctx, r.Catalogue(), p, keyName)
-		if err != nil {
-			return stageWriteResult{}, err
-		}
-		if err := requireBoundKey(p, key.ID); err != nil {
-			return stageWriteResult{}, err
-		}
-		// The per-project pending cap (ops-spec § 8: ≤ 100 pending versions per
-		// project, loud). Counted under the project lock, excluding this cell —
-		// staging is delete-then-insert, so re-staging an existing draft never
-		// grows the count, and only a genuinely new cell can breach the cap.
-		pending, err := r.Pending().CountForProjectExcludingCell(ctx, p, key.ID, string(caller.Principal))
-		if err != nil {
-			return stageWriteResult{}, err
-		}
-		if pending >= MaxPendingPerProject {
-			return stageWriteResult{}, fmt.Errorf("%w: a project holds at most %d pending changes",
-				domain.ErrLimitExceeded, MaxPendingPerProject)
-		}
-		revision, err := currentRevision(ctx, r, p)
-		if err != nil {
-			return stageWriteResult{}, err
-		}
-		baseline := ""
-		switch entry, err := r.Values().Get(ctx, p, key.ID); {
-		case errors.Is(err, domain.ErrNotFound):
-			// `absent` at staging time. The empty string is the baseline, and it
-			// is a real value here rather than a missing one: a cell that gains
-			// a published value after this point makes the draft stale.
-		case err != nil:
-			return stageWriteResult{}, err
-		default:
-			baseline = entry.ID
-		}
-		versionID, err := newID("pcv")
-		if err != nil {
-			return stageWriteResult{}, err
-		}
-		var sealed []byte
-		if operation == store.PendingSet {
-			if sealed, err = sealer.SealField(
-				pendingAAD(string(scope.Org), string(scope.Project), string(scope.Env), key.ID, versionID),
-				[]byte(normalizeStoredValue(p, key, value))); err != nil {
-				return stageWriteResult{}, err
-			}
-			// Writer fence: refuse if the sealer's DEK version was retired by a
-			// rotate-dek since it was built (invariant 7).
-			if err := fenceProject(ctx, r, p, sealer, scope); err != nil {
-				return stageWriteResult{}, err
-			}
-		}
-		now := store.CanonTime(time.Now())
-		if err := r.Pending().Stage(ctx, p, store.NewPendingChange{
-			ID: versionID, KeyID: key.ID, OwnerID: string(caller.Principal),
-			Operation: operation, Ciphertext: sealed,
-			StagedFromRevision: revision, StagedFromEntry: baseline, CreatedAt: now,
-			Source:         store.PendingSourceValues,
-			Secret:         key.Classification == string(schema.Secret),
-			MaterialSecret: key.Classification == string(schema.Secret),
-		}); err != nil {
-			return stageWriteResult{}, err
-		}
-		ev, err := domainEvent(ctx, audit.EventValueStaged, caller.Principal,
-			audit.Object{Type: "key", ID: key.ID}, audit.Payload{
-				"key_id":         key.ID,
-				"name":           audit.SanitizeFreeText(key.Name),
-				"classification": key.Classification,
-				"operation":      string(operation),
-				"version_id":     versionID,
-			})
-		if err != nil {
-			return stageWriteResult{}, err
-		}
-		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
-			return stageWriteResult{}, err
-		}
-		// Surface-1 warn (#74). Only a Set of a config-classified key scans; the
-		// dismissal store ops this path authorizes make stage the sole dismissal-
-		// capable ingress, so keep-as-config is honoured here. The warn events
-		// commit in this transaction with the staged write (ADR §7).
-		var findings []Finding
-		if operation == store.PendingSet {
-			total := 0
-			findings, err = scanConfigValue(ctx, r, p, s.Keyring, s.Scan, scope, key.ID,
-				key.Classification, []byte(schema.Normalize(value)), surfaceValueWrite,
-				caller.Principal, newAckSet(acks), true, &total)
-			if err != nil {
-				return stageWriteResult{}, err
-			}
-		}
-		return stageWriteResult{
-			change: StagedChange{
-				VersionID: versionID, KeyID: key.ID, Name: key.Name,
-				Classification: key.Classification, Operation: string(operation),
-				StagedFromRevision: revision, CreatedAt: now,
-				Findings: findings,
-			},
-			keyID: key.ID, keyName: key.Name, owner: caller.Principal,
-		}, nil
+		return s.stageWithin(ctx, r, az, caller, scope, keyName, operation, value, acks, op, sealer)
 	})
 	if err != nil {
 		return StagedChange{}, err
@@ -676,6 +560,133 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 	// whose transaction rolled back.
 	s.Advisory.staged(scope, result.keyID, result.keyName, result.owner)
 	return result.change, nil
+}
+
+// stageWithin is the body of one stage inside a caller's open transaction: it
+// authorizes the key under op, takes the project lock, and writes the draft with
+// its audit event. stage runs it as its own transaction; the rotation executor
+// runs it inside a publish transaction, so a candidate credential is staged,
+// published and recorded atomically and is never a durable draft.
+func (s *Values) stageWithin(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, keyName string,
+	operation store.PendingOperation, value string, acks []string, op authz.Operation, sealer *crypto.ProjectSealer) (stageWriteResult, error) {
+	keyTarget := authz.KeyByName(keyName)
+	p, err := az.AuthorizeKey(ctx, caller, op, scope, keyTarget)
+	if err != nil {
+		return stageWriteResult{}, err
+	}
+	// One serialization domain per project: the draft records the published
+	// entry it was staged against, and a concurrent publish must not slip
+	// between reading that entry and writing the row that pins it.
+	if err := r.Projects().Lock(ctx, p); err != nil {
+		return stageWriteResult{}, err
+	}
+	// Recheck initial-cell metadata after serializing with publishers and
+	// other draft writers. The preflight cannot authorize a later overwrite.
+	if op == authz.OpValueInitialize {
+		p, err = az.AuthorizeKey(ctx, caller, op, scope, keyTarget)
+		if err != nil {
+			return stageWriteResult{}, err
+		}
+	}
+	key, err := findKey(ctx, r.Catalogue(), p, keyName)
+	if err != nil {
+		return stageWriteResult{}, err
+	}
+	if err := requireBoundKey(p, key.ID); err != nil {
+		return stageWriteResult{}, err
+	}
+	// The per-project pending cap (ops-spec § 8: ≤ 100 pending versions per
+	// project, loud). Counted under the project lock, excluding this cell:
+	// staging is delete-then-insert, so re-staging an existing draft never
+	// grows the count, and only a genuinely new cell can breach the cap.
+	pending, err := r.Pending().CountForProjectExcludingCell(ctx, p, key.ID, string(caller.Principal))
+	if err != nil {
+		return stageWriteResult{}, err
+	}
+	if pending >= MaxPendingPerProject {
+		return stageWriteResult{}, fmt.Errorf("%w: a project holds at most %d pending changes",
+			domain.ErrLimitExceeded, MaxPendingPerProject)
+	}
+	revision, err := currentRevision(ctx, r, p)
+	if err != nil {
+		return stageWriteResult{}, err
+	}
+	baseline := ""
+	switch entry, err := r.Values().Get(ctx, p, key.ID); {
+	case errors.Is(err, domain.ErrNotFound):
+	// `absent` at staging time. The empty string is the baseline, and it
+	// is a real value here rather than a missing one: a cell that gains
+	// a published value after this point makes the draft stale.
+	case err != nil:
+		return stageWriteResult{}, err
+	default:
+		baseline = entry.ID
+	}
+	versionID, err := newID("pcv")
+	if err != nil {
+		return stageWriteResult{}, err
+	}
+	var sealed []byte
+	if operation == store.PendingSet {
+		if sealed, err = sealer.SealField(
+			pendingAAD(string(scope.Org), string(scope.Project), string(scope.Env), key.ID, versionID),
+			[]byte(schema.Normalize(value))); err != nil {
+			return stageWriteResult{}, err
+		}
+		// Writer fence: refuse if the sealer's DEK version was retired by a
+		// rotate-dek since it was built (invariant 7).
+		if err := fenceProject(ctx, r, p, sealer, scope); err != nil {
+			return stageWriteResult{}, err
+		}
+	}
+	now := store.CanonTime(time.Now())
+	if err := r.Pending().Stage(ctx, p, store.NewPendingChange{
+		ID: versionID, KeyID: key.ID, OwnerID: string(caller.Principal),
+		Operation: operation, Ciphertext: sealed,
+		StagedFromRevision: revision, StagedFromEntry: baseline, CreatedAt: now,
+		Source:         store.PendingSourceValues,
+		Secret:         key.Classification == string(schema.Secret),
+		MaterialSecret: key.Classification == string(schema.Secret),
+	}); err != nil {
+		return stageWriteResult{}, err
+	}
+	ev, err := domainEvent(ctx, audit.EventValueStaged, caller.Principal,
+		audit.Object{Type: "key", ID: key.ID}, audit.Payload{
+			"key_id":         key.ID,
+			"name":           audit.SanitizeFreeText(key.Name),
+			"classification": key.Classification,
+			"operation":      string(operation),
+			"version_id":     versionID,
+		})
+	if err != nil {
+		return stageWriteResult{}, err
+	}
+	if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+		return stageWriteResult{}, err
+	}
+	// Surface-1 warn (#74). Only a Set of a config-classified key scans; the
+	// dismissal store ops this path authorizes make stage the sole dismissal-
+	// capable ingress, so keep-as-config is honoured here. The warn events
+	// commit in this transaction with the staged write (ADR §7).
+	var findings []Finding
+	if operation == store.PendingSet {
+		total := 0
+		findings, err = scanConfigValue(ctx, r, p, s.Keyring, s.Scan, scope, key.ID,
+			key.Classification, []byte(schema.Normalize(value)), surfaceValueWrite,
+			caller.Principal, newAckSet(acks), true, &total)
+		if err != nil {
+			return stageWriteResult{}, err
+		}
+	}
+	return stageWriteResult{
+		change: StagedChange{
+			VersionID: versionID, KeyID: key.ID, Name: key.Name,
+			Classification: key.Classification, Operation: string(operation),
+			StagedFromRevision: revision, CreatedAt: now,
+			Findings: findings,
+		},
+		keyID: key.ID, keyName: key.Name, owner: caller.Principal,
+	}, nil
 }
 
 // Declare is declare-into-environments: ONE supplied plaintext into several

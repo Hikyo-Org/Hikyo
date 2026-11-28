@@ -2,7 +2,7 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
 	"math"
@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // These tests are local fixture guards. They do not contact AWS and do not
@@ -68,7 +69,7 @@ func TestAWSRealFixtureScope(t *testing.T) {
 			}
 		})
 	}
-	raw, err := json.Marshal(realAWSManifestFixture(now))
+	raw, err := json.Marshal(realAWSManifestFixture(now), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +274,7 @@ func TestAWSRealFixtureBudgetBound(t *testing.T) {
 			}
 		})
 	}
-	raw, err := json.Marshal(realAWSManifestFixture(now))
+	raw, err := json.Marshal(realAWSManifestFixture(now), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}

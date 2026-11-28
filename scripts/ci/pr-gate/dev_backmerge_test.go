@@ -103,11 +103,11 @@ func TestDevPublisherBackmergeRequiresSameRepository(t *testing.T) {
 	}
 }
 
-// What the sizing pins for a pass that takes the exception: one read more than the 41 of
-// TestDevAdmissionReadsThePullRequestTwice, and one request more than the 87 of the attempt-3 bypass.
+// What the sizing pins for a pass that takes the exception: one read more than the 45 of
+// TestDevAdmissionReadsThePullRequestTwice on dev, and one request more than the 95 of the attempt-3 bypass.
 const (
-	backmergePassReads            = 42
-	attempt3BackmergePassRequests = 88
+	backmergePassReads            = 46
+	attempt3BackmergePassRequests = 96
 )
 
 func backmergeAdmission(t *testing.T) *queueFixture {

@@ -98,7 +98,7 @@ func checkNightlyDesktop(workflow yamlMap) error {
 	}
 	shim := asMap(jobs["shim"])
 	if shim == nil || shim["if"] != "github.ref == 'refs/heads/main'" || shim["continue-on-error"] != nil || shim["permissions"] != nil ||
-		!reflect.DeepEqual(needsOf(shim), []string{"heads"}) || asMap(shim["outputs"])["state"] != "${{ steps.check.outputs.state }}" {
+		!reflect.DeepEqual(yamlNeedsOf(shim), []string{"heads"}) || asMap(shim["outputs"])["state"] != "${{ steps.check.outputs.state }}" {
 		return fmt.Errorf("shim must run only on main after heads, fail closed, stay read-only and expose its state")
 	}
 	if err := onlyKeys(shim, "needs", "if", "runs-on", "timeout-minutes", "outputs", "steps"); err != nil {
@@ -115,7 +115,7 @@ func checkNightlyDesktop(workflow yamlMap) error {
 		if job["runs-on"] != "${{ needs.heads.outputs."+branch+"_runner }}" || job["continue-on-error"] != nil || job["permissions"] != nil || job["if"] != nil {
 			return fmt.Errorf("%s must take the resolved runner, fail closed, always run and inherit read-only permissions", leg)
 		}
-		if !reflect.DeepEqual(needsOf(job), []string{"heads"}) {
+		if !reflect.DeepEqual(yamlNeedsOf(job), []string{"heads"}) {
 			return fmt.Errorf("%s must depend only on the head resolver", leg)
 		}
 		if err := onlyKeys(job, "needs", "runs-on", "timeout-minutes", "env", "steps"); err != nil {
@@ -199,7 +199,7 @@ func checkNightlyDesktop(workflow yamlMap) error {
 	if !reflect.DeepEqual(report["permissions"], yamlMap{"actions": "read", "issues": "write"}) {
 		return fmt.Errorf("report job permissions must be exactly actions: read and issues: write")
 	}
-	if !reflect.DeepEqual(needsOf(report), []string{"heads", "desktop-dev", "desktop-main", "shim"}) || report["if"] != reportCondition {
+	if !reflect.DeepEqual(yamlNeedsOf(report), []string{"heads", "desktop-dev", "desktop-main", "shim"}) || report["if"] != reportCondition {
 		return fmt.Errorf("report must wait for both legs, run after any result, and only on main")
 	}
 	if err := onlyKeys(report, "needs", "if", "runs-on", "timeout-minutes", "permissions", "steps"); err != nil {

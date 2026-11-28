@@ -23,7 +23,8 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -202,7 +203,7 @@ type Claims struct {
 	Audience []string
 	IssuedAt time.Time
 	Expiry   time.Time
-	Raw      map[string]json.RawMessage
+	Raw      map[string]jsontext.Value
 }
 
 // Binding is the cache's projection of one federated binding — the policy half
@@ -478,7 +479,7 @@ func (c *Cache) Verify(ctx context.Context, iss Issuer, presented string, now ti
 		return Claims{}, state, fmt.Errorf("%w: token carries no sub", ErrTokenInvalid)
 	}
 
-	raw := map[string]json.RawMessage{}
+	raw := map[string]jsontext.Value{}
 	if err := tok.Claims(&raw); err != nil {
 		return Claims{}, state, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
 	}
@@ -644,7 +645,7 @@ var RefusedEvents = []string{"pull_request", "pull_request_target"}
 // token whose event is one of the two — which, because the pin matched, cannot
 // happen; the check is here so that a future relaxation of the pin comparison
 // cannot silently reopen the hole.
-func checkEventName(pinned map[string]json.RawMessage, raw map[string]json.RawMessage) error {
+func checkEventName(pinned map[string]jsontext.Value, raw map[string]jsontext.Value) error {
 	want, ok := pinned[EventNameClaim]
 	if !ok {
 		// Refused at creation for a CI issuer; refused again here rather than
@@ -677,16 +678,17 @@ func checkEventName(pinned map[string]json.RawMessage, raw map[string]json.RawMe
 // "byte-exact" a question about JSON key order and whitespace rather than about
 // the value. A pinned NAME may be either a top-level claim name or a JSON
 // Pointer (RFC 6901) into a nested object; see resolveClaim.
-func ParseRequiredClaims(raw string) (map[string]json.RawMessage, error) {
+func ParseRequiredClaims(raw string) (map[string]jsontext.Value, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("%w: binding pins no claims", ErrClaim)
 	}
-	out := map[string]json.RawMessage{}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	if err := dec.Decode(&out); err != nil {
-		return nil, fmt.Errorf("%w: pinned claims are not a JSON object: %v", ErrClaim, err)
+	out := map[string]jsontext.Value{}
+	dec := jsontext.NewDecoder(strings.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, &out); err != nil {
+		// Our own text: the library's error wording is not part of the contract.
+		return nil, fmt.Errorf("%w: pinned claims are not a JSON object of unique claim names", ErrClaim)
 	}
-	if dec.More() {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: pinned claims carry trailing content", ErrClaim)
 	}
 	for name, v := range out {
@@ -728,7 +730,7 @@ func ParseRequiredClaims(raw string) (map[string]json.RawMessage, error) {
 //
 // The leaf must be a SCALAR: a pointer landing on an object or an array answers
 // "not found", so a pin can never be satisfied by a structural match.
-func resolveClaim(claims map[string]json.RawMessage, name string) (json.RawMessage, bool) {
+func resolveClaim(claims map[string]jsontext.Value, name string) (jsontext.Value, bool) {
 	if !strings.HasPrefix(name, "/") {
 		v, ok := claims[name]
 		return v, ok
@@ -766,13 +768,13 @@ func resolveClaim(claims map[string]json.RawMessage, name string) (json.RawMessa
 // by digits — so `01` is not an index and `/a/01` addresses the object member
 // "01". Getting that backwards would make two different pointers resolve to the
 // same place.
-func descend(node json.RawMessage, segment string) (json.RawMessage, bool) {
+func descend(node jsontext.Value, segment string) (jsontext.Value, bool) {
 	trimmed := strings.TrimSpace(string(node))
 	if strings.HasPrefix(trimmed, "[") {
 		if !isPointerIndex(segment) {
 			return nil, false
 		}
-		var elements []json.RawMessage
+		var elements []jsontext.Value
 		if err := json.Unmarshal(node, &elements); err != nil {
 			return nil, false
 		}
@@ -782,7 +784,7 @@ func descend(node json.RawMessage, segment string) (json.RawMessage, bool) {
 		}
 		return elements[i], true
 	}
-	nested := map[string]json.RawMessage{}
+	nested := map[string]jsontext.Value{}
 	if err := json.Unmarshal(node, &nested); err != nil {
 		return nil, false
 	}
@@ -873,8 +875,13 @@ func ValidatePointer(name string) error {
 // There is deliberately NO override flag. An override is the thing an operator
 // sets once during a migration and never removes, and the ADR does not offer one.
 //
-//   - github-actions exposes both numeric ids, so both are required, plus
-//     `event_name` for the pull-request rule.
+//   - github-actions exposes both immutable ids (as decimal strings), so both
+//     are required, plus `event_name` for the pull-request rule, plus
+//     `ref_protected`, `runner_environment` and `job_workflow_ref`, which narrow
+//     which runs are given the credential (see the ADR's 2026-11-17 amendment).
+//     Presence is required, not a value: "false" or "self-hosted" is a
+//     deliberate pin. `job_workflow_sha` is not required because it changes on
+//     every commit for a same-repository workflow.
 //   - kubernetes exposes the ServiceAccount UID, nested — required through its
 //     JSON Pointer. A recreated ServiceAccount with the same name has a
 //     different UID, which is precisely what this closes.
@@ -884,8 +891,11 @@ func ValidatePointer(name string) error {
 // inherit an existing machine principal, so creation and validation refuse the
 // issuer until it exposes an immutable identifier.
 var RequiredPins = map[domain.IssuerType][]string{
-	domain.IssuerGitHubActions: {"repository_id", "repository_owner_id", EventNameClaim},
-	domain.IssuerKubernetes:    {KubernetesServiceAccountUID},
+	domain.IssuerGitHubActions: {
+		"repository_id", "repository_owner_id", EventNameClaim,
+		"ref_protected", "runner_environment", "job_workflow_ref",
+	},
+	domain.IssuerKubernetes: {KubernetesServiceAccountUID},
 }
 
 // KubernetesServiceAccountUID is where a projected ServiceAccount token carries
@@ -894,7 +904,7 @@ const KubernetesServiceAccountUID = "/kubernetes.io/serviceaccount/uid"
 
 // MissingRequiredPins returns the claims this issuer type demands and the binding
 // does not pin, sorted. Empty means the binding satisfies the rule.
-func MissingRequiredPins(t domain.IssuerType, pinned map[string]json.RawMessage) []string {
+func MissingRequiredPins(t domain.IssuerType, pinned map[string]jsontext.Value) []string {
 	var missing []string
 	for _, name := range RequiredPins[t] {
 		if _, ok := pinned[name]; !ok {
@@ -905,10 +915,28 @@ func MissingRequiredPins(t domain.IssuerType, pinned map[string]json.RawMessage)
 	return missing
 }
 
+// NonStringRequiredPins returns the required pins of this issuer type that the
+// binding pins as something other than a JSON string, sorted. Every required
+// pin is a string on the wire: GitHub emits `repository_id`, `repository_owner_id`
+// and `ref_protected` as JSON strings ("74", "false"), and the Kubernetes UID is
+// a string. Pinning a number or boolean would never match a real token, and
+// sameJSONScalar never folds kinds, so such a binding would be dead on arrival.
+// Creation-time only; stored bindings are not re-checked.
+func NonStringRequiredPins(t domain.IssuerType, pinned map[string]jsontext.Value) []string {
+	var wrong []string
+	for _, name := range RequiredPins[t] {
+		if raw, ok := pinned[name]; ok && !strings.HasPrefix(strings.TrimSpace(string(raw)), `"`) {
+			wrong = append(wrong, name)
+		}
+	}
+	slices.Sort(wrong)
+	return wrong
+}
+
 // isJSONScalar reports whether a raw value is a string, number, boolean or
 // null. Objects and arrays are refused: comparing them byte-exactly would make
 // key order and whitespace security-relevant.
-func isJSONScalar(v json.RawMessage) bool {
+func isJSONScalar(v jsontext.Value) bool {
 	trimmed := strings.TrimSpace(string(v))
 	if trimmed == "" {
 		return false
@@ -925,13 +953,14 @@ func isJSONScalar(v json.RawMessage) bool {
 // trimming and nothing else.
 //
 // A string is never folded to a number and a number is never folded to a
-// string: the GitHub Actions claim `repository_id` is the numeric `123` and the
-// value `"123"` is a different claim value, so treating them as equal would let
-// a binding written one way be satisfied by a token the other. It also means
+// string: the number `123` and the string `"123"` are different claim values,
+// so treating them as equal would let a binding written one way be satisfied by
+// a token the other. GitHub emits `repository_id` as the string "74", so a
+// numeric pin never matches it. It also means
 // `1` and `1.0` do not match — accepted, because every issuer in the closed set
 // emits integers, and normalising numerics would reintroduce the folding this
 // rule exists to forbid.
-func sameJSONScalar(want, got json.RawMessage) bool {
+func sameJSONScalar(want, got jsontext.Value) bool {
 	return strings.TrimSpace(string(want)) == strings.TrimSpace(string(got))
 }
 

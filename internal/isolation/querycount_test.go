@@ -172,10 +172,26 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			{Org: orgB, Project: prjB1, Env: envB1},
 			{Org: "org_missing", Project: prjB1, Env: envB1},
 		} {
-			n, err := countedAuthorize(t, db, mchA1, scope, domain.ClassWorkload)
-			if !errors.Is(err, domain.ErrNotFound) || n != 2 {
-				t.Fatalf("machine refusal issued %d queries, error=%v; want chain + grants", n, err)
+			n, err := countedAuthorize(t, db, mchA1, scope, domain.ClassAutomation)
+			if !errors.Is(err, domain.ErrNotFound) || n != 3 {
+				t.Fatalf("machine refusal issued %d queries, error=%v; want chain + grants + machine rules", n, err)
 			}
+		}
+	})
+	t.Run("machine_key_aware_missing_and_foreign_parity", func(t *testing.T) {
+		counts := map[int]bool{}
+		for _, scope := range []domain.Scope{
+			{Org: orgB, Project: prjB1, Env: envB1},
+			{Org: "org_missing", Project: prjB1, Env: envB1},
+		} {
+			n, err := countedAuthorizeKey(t, db, mchA1, scope, authz.KeyByName("SHARED_KEY"), domain.ClassAutomation)
+			if !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("machine key-aware refusal = %v, want ErrNotFound", err)
+			}
+			counts[n] = true
+		}
+		if len(counts) != 1 {
+			t.Fatalf("machine key-aware refusals cost different query counts %v; a foreign org and a missing one must match", counts)
 		}
 	})
 	t.Run("personal_owner_fallback_parity", func(t *testing.T) {

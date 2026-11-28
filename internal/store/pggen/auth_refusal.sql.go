@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const boundAuthRefusalTransaction = `-- name: BoundAuthRefusalTransaction :exec
+SELECT set_config('lock_timeout', $1::text, true), set_config('statement_timeout', $1::text, true), set_config('transaction_timeout', $1::text, true)
+`
+
+// hikyo:reason refusal accounting bounds each lock wait, each statement and the whole transaction server-side so an abandoned or idle attempt cannot keep waiting on or holding the singleton row past the caller's deadline
+// hikyo:authn-resolution
+func (q *Queries) BoundAuthRefusalTransaction(ctx context.Context, timeoutMs string) error {
+	_, err := q.db.Exec(ctx, boundAuthRefusalTransaction, timeoutMs)
+	return err
+}
+
 const readAuthRefusalWindow = `-- name: ReadAuthRefusalWindow :one
 SELECT window_start, state, floor(extract(epoch FROM clock_timestamp()))::bigint AS now_seconds
 FROM auth_refusal_window WHERE id = 1 FOR UPDATE

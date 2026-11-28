@@ -1,16 +1,17 @@
 package importer
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -56,7 +57,7 @@ type Scope struct {
 	EnvSlug    string   `json:"env_slug,omitempty"`
 	Mount      string   `json:"mount,omitempty"`
 	PathPrefix string   `json:"path_prefix,omitempty"`
-	KVVersion  int      `json:"kv_version,omitempty"`
+	KVVersion  int      `json:"kv_version,omitzero"`
 }
 
 // EnvironmentMapping is one source-environment → target-environment row.
@@ -247,14 +248,11 @@ type ValuesFile struct {
 // exactly one trailing newline. Byte-stable for identical input, which is what
 // makes a template digest mean anything.
 func Encode(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
+	out, err := json.Marshal(v, jsonwire.Stable, jsontext.EscapeForHTML(false), jsontext.WithIndent("  "))
+	if err != nil {
 		return nil, fmt.Errorf("import: serializing an artifact: %w", err)
 	}
-	return buf.Bytes(), nil
+	return append(out, '\n'), nil
 }
 
 // Digest is the artifact digest spelling used by the manifest's template

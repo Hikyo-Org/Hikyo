@@ -390,12 +390,16 @@ func (rl *RenderLock) WriteGeneration(runtimeDir string, keys *crypto.LocalKeys,
 }
 
 // openRuntimeRoot opens runtimeDir as an os.Root after verifying custody: it
-// is a directory (not a symlink), the opened handle is the entry that was
-// checked, and it passes checkRuntimeCustody. With create it makes the dir
+// is a clean absolute path to a directory (not a symlink), the opened handle is the
+// entry that was checked, it passes checkRuntimeCustody, and runtimeDir still
+// names the opened handle after that check. With create it makes the dir
 // first. A missing dir returns an error wrapping os.ErrNotExist. Every consumer
 // of plaintext generations (write, recover, GC, cursor eligibility) opens the
 // runtime dir through here.
 func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
+	if err := refuseUncleanRuntimeDir(runtimeDir); err != nil {
+		return nil, err
+	}
 	parent, err := os.OpenRoot(filepath.Dir(runtimeDir))
 	if err != nil {
 		return nil, fmt.Errorf("compose: open runtime dir parent: %w", err)
@@ -446,12 +450,34 @@ func openRuntimeRoot(runtimeDir string, create bool) (*os.Root, error) {
 		_ = root.Close()
 		return nil, fmt.Errorf("compose: stat runtime dir parent: %w", err)
 	}
+	runtimeOpened()
 	if err := checkRuntimeCustody(runtimeDir, st, pinfo); err != nil {
 		_ = root.Close()
 		return nil, err
 	}
+	// The ancestor walk resolves the path after the open, top-down, so once it
+	// passes no other user can rename any component; the path must then still
+	// name the opened root, or a swap during the walk vetted another hierarchy.
+	if now, err := os.Lstat(runtimeDir); err != nil || !os.SameFile(now, st) {
+		_ = root.Close()
+		return nil, fmt.Errorf("%w: runtime dir %s moved during the custody check", ErrRuntimeCustody, runtimeDir)
+	}
 	return root, nil
 }
+
+// refuseUncleanRuntimeDir refuses a path the custody check would vet in a
+// lexically cleaned or $PWD-joined form while the kernel, and Compose, resolve
+// `..` after a symlink physically.
+func refuseUncleanRuntimeDir(runtimeDir string) error {
+	if !filepath.IsAbs(runtimeDir) || filepath.Clean(runtimeDir) != runtimeDir {
+		return fmt.Errorf("%w: runtime dir %s is not a clean absolute path", ErrRuntimeCustody, runtimeDir)
+	}
+	return nil
+}
+
+// runtimeOpened runs between opening the runtime dir and its custody check; a
+// seam so tests can move the hierarchy inside that window.
+var runtimeOpened = func() {}
 
 // ErrRuntimeCustody marks a runtime dir another user could control (foreign
 // owner, unsafe parent, non-directory or swapped entry); render refuses it.
@@ -461,6 +487,9 @@ var ErrRuntimeCustody = errors.New("compose: runtime dir custody refused")
 // ErrRuntimeCustody refusal, or an error inspecting it), or nil. A missing dir
 // is not a failure; doctor uses this read-only form of the openRuntimeRoot check.
 func RuntimeDirCustody(runtimeDir string) error {
+	if err := refuseUncleanRuntimeDir(runtimeDir); err != nil {
+		return err
+	}
 	info, err := os.Lstat(runtimeDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

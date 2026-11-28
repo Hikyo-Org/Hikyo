@@ -133,6 +133,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDeliveryTargetList)
 	add(budgetClassExempt, "file-target configuration and inspection: project-scoped admin metadata, one row per workload service account (§10 authenticated API)",
 		authz.OpFileTargetCreate, authz.OpFileTargetUpdate, authz.OpFileTargetDelete, authz.OpFileTargetInspect)
+	add(budgetClassExempt, "who-can resolve: one project-sized read (the project's grant and rule rows, rules bounded by MaxRulesPerOrg) evaluated per listed principal in one transaction, like the project listings; no value or crypto work (§10 authenticated API)",
+		authz.OpRuleResolve)
 	add(budgetClassExempt, "paged audit read ≤1000/page (§2/§10)",
 		authz.OpAuditQueryOrg, authz.OpAuditQueryProject, authz.OpAuditQueryEnv, authz.OpAuditInstanceQuery)
 	add(budgetClassExempt, "outbox worker push; §12 outbox concurrency (1/target, 4/org) bounds it",
@@ -194,12 +196,15 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpGrantListProject, authz.OpGrantListOrg, authz.OpGrantListInstance,
 		authz.OpGrantRevokeEnv, authz.OpGrantRevokeProject, authz.OpGrantRevokeOrg, authz.OpGrantRevokeInstance,
 		// member access rules: one rule row per create or revoke, bounded by
-		// MaxRuleItems and MaxRulesPerOrg
+		// MaxRuleItems and MaxRulesPerOrg; the listings are project- or org-sized reads
 		authz.OpRuleCreate, authz.OpRuleRevoke, authz.OpRuleListOrg, authz.OpRuleListProject,
 		// machine identities / credentials / bindings / service accounts
 		authz.OpServiceAccountCreate, authz.OpServiceAccountList, authz.OpServiceAccountDelete,
 		authz.OpCredentialMint, authz.OpCredentialList, authz.OpCredentialRevoke,
 		authz.OpCredentialReset, authz.OpCredentialResetInstance,
+		// incident ledger (#1039): one incident row and a bounded page of items
+		// per call; the lease listings are bounded pages
+		authz.OpIncidentOrg, authz.OpIncidentInstance, authz.OpIncidentLeasesProject, authz.OpIncidentLeasesInstance, authz.OpIncidentAdapterWork,
 		authz.OpCredentialPolicyRead, authz.OpCredentialPolicyUpdate,
 		authz.OpBindingCreate,
 		// Bounded developer delegation: authenticated API budget governs lifecycle
@@ -263,6 +268,13 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// concurrency cap; the request itself only writes a row)
 		authz.OpDynamicProviderInspect, authz.OpDynamicProviderCredentialRevoke, authz.OpDynamicProviderDelete,
 		authz.OpLeaseInspect, authz.OpLeaseRenew, authz.OpLeaseRevoke, authz.OpLeaseSettle,
+		// scheduled credential rotation configuration (#148): single-row
+		// lifecycle writes and reads with no external call or fan-out
+		authz.OpRotationCreate, authz.OpRotationInspect, authz.OpRotationPause,
+		authz.OpRotationResume, authz.OpRotationDelete, authz.OpRotationRunNow, authz.OpRotationReleaseHold, authz.OpRotationRuns,
+		// the executor's own publish transaction (#148, S2): never a request
+		// path, charged under the publish categories by PublishPlanned itself
+		authz.OpRotationRun,
 		// ssh certificates (#155): bounded reads of one environment's CAs,
 		// profiles and certificates (the KRL read is capped at its serial
 		// bound), and single-row lifecycle writes with no external call

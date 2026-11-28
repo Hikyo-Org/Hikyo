@@ -210,6 +210,16 @@ Before you request review, run the checks for what you touched:
 - Run the formatter and linters so the `lint` gate does not bounce the pull
   request.
 
+User-visible changes (a CLI command or flag, an `/api/v1` operation or field, a
+server setting) update the matching page under
+`docs/site/src/content/docs/docs/` in the same pull request. The `docs-impact`
+feedback check enforces this for `internal/cli/testdata/help.txt`,
+`api/openapi.yaml` and `internal/config/variables.go`, and for the desktop shell's
+routes and launch environment (`desktop/internal/shell/shellroutes.go`,
+`desktop/main_darwin.go`), which `docs/spec/desktop-shell-protocol.md` or
+`desktop/README.md` satisfy; if no docs change is needed, add a `Docs-Impact: none - <reason>` trailer to a commit, in the final
+trailer block next to `Signed-off-by`.
+
 You do not need to reproduce the full release gate locally; CI is the source of
 truth for that.
 
@@ -259,17 +269,65 @@ The hook also runs `scripts/ci/golangci-lint-new.sh` when a push changes Go code
 minute). It applies the rules in `.golangci.yml`, chosen from findings that kept
 recurring in review (unchecked errors, `==` on errors, `http.Get` without a
 context, ignored `json.Marshal` errors, staticcheck
-`SA*` bugs plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
+`SA*` bugs except `SA4006` and `SA4009`, plus `QF1001` and `QF1003` (not its style checks), unsafe integer narrowing, subprocess
 arguments, file modes), and reports only issues on lines you changed since the
-merge base. It lints a temporary worktree at the pushed commit, so any branch
+merge base, so the existing baseline of those rules never blocks you. A second strict
+pass applies `.golangci-strict.yml` (wastedassign, unused, staticcheck `SA4006` and
+`SA4009`) to every whole changed package (a moved file counts for both packages),
+since those rules hold at zero across the repo. It lints a temporary worktree at the pushed commit, so any branch
 can be pushed from any worktree, and uncommitted files and uncommitted local edits to
-`.golangci.yml` are ignored (the pushed commit's config, pin and script apply); fetch `hikyo-upstream` first, as
+`.golangci.yml` and `.golangci-strict.yml` are ignored (the pushed commit's configs, pin and script apply); fetch `hikyo-upstream` first, as
 a stale base widens "new code". Only the default build for your platform is
 linted (files for another OS, or tagged `ui`, `k8se2e` or `floor*`, are not), and
 type errors are always reported in full. Run it by hand with
 `scripts/ci/golangci-lint-new.sh hikyo-upstream/main`.
 Set `HIKYO_PREPUSH_GOLANGCI=skip` to skip it for a WIP push; the advisory
 `ci-advisory-golangci` check still runs it on the pull request.
+
+Last, the hook runs the Go tests your push can affect, and only those
+(`scripts/ci/go-affected-test.sh`, which runs the selection from
+`scripts/ci/go-affected-packages.sh`; run the latter by hand with
+`scripts/ci/go-affected-packages.sh "$(git merge-base hikyo-upstream/main HEAD)"`
+in a checkout of the pushed commit). Every changed or deleted file counts for the
+nearest ancestor directory that is a package, so embedded files (a migration
+`.sql` reaches `internal/store`) and files under `testdata`, `_*` and `.*`
+directories, `.go` fixtures included, select the owning package; files in a
+nested module (`desktop/`) select nothing. The selection adds packages that
+embed a changed file, packages that no longer load, every package whose test
+build depends on one of those, and all packages when `go.mod` or `go.sum`
+changes. Docs-only and frontend-only pushes select nothing.
+
+The runner executes the selection with `go test -p 2`, `internal/app` (two runs,
+as in CI) and `internal/lint` alone afterwards, with `CI` unset and the package
+count printed first. PostgreSQL tests run only when `HIKYO_TEST_POSTGRES_DSN` is
+set; otherwise the hook says they are skipped.
+
+Limits, all left to CI:
+
+- `internal/isolation` and `scripts/ci` are never run by the hook, even when
+  selected, and the hook names them. CI shards the first six ways with an 18m
+  timeout, and the second took over 600s locally. A break only those catch, such
+  as an isolation invariant like #1515, is found by CI, not by the push.
+- Tests that read repository files at runtime without embedding them are not
+  detected, except for the few explicit paths listed in the selector.
+- PostgreSQL tests are skipped without a DSN.
+
+How it runs: the tests use a detached worktree at the pushed commit, kept as
+`hikyo-gotest-tree` in the git directory and moved to each pushed commit (its
+files are reset and cleaned every time, and a dirty or broken tree is rebuilt),
+so the Go build and test caches, which key on the source path, stay warm between
+pushes. There is no `-trimpath`: tests find repository files through their own
+paths, and `-trimpath` made them fail. One push at a time uses the tree; a
+second push from another worktree is refused while the first runs, a lock left
+by a killed push on the same host is taken over (one with no owner recorded yet
+never is), and a refusal prints the command
+that clears the lock. The SPA build is not needed: a placeholder
+stands in for `internal/webui/dist`.
+
+Expect about 25 minutes on a cold cache for a widely depended-on change. The
+measured warm figure (220s) is a re-run of the same commit; a push that changes a
+widely used package rebuilds and retests its dependents and takes longer. Set `HIKYO_PREPUSH_GOTEST=skip` to skip the
+step for a WIP push.
 
 ## Continuous integration
 

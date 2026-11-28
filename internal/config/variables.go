@@ -64,8 +64,8 @@ type VariableDescriptor struct {
 	Secret                  bool               `json:"secret"`
 	Import                  VariableImport     `json:"import"`
 	FileContentKey          string             `json:"fileContentKey,omitempty"`
-	ReferencedContentSecret bool               `json:"referencedContentSecret,omitempty"`
-	DevelopmentOnly         bool               `json:"developmentOnly,omitempty"`
+	ReferencedContentSecret bool               `json:"referencedContentSecret,omitzero"`
+	DevelopmentOnly         bool               `json:"developmentOnly,omitzero"`
 }
 
 // VariableInventory returns an independent, key-sorted copy of the complete

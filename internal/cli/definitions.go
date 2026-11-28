@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"flag"
 	"fmt"
@@ -158,7 +158,7 @@ func runDefinitionsVerb(ctx context.Context, ios IO, sub string, args []string) 
 
 	case "check":
 		var result apigen.DefinitionsCheckResult
-		if err := client.Do(ctx, http.MethodPost, base+"/check", json.RawMessage(canonical), &result); err != nil {
+		if err := client.Do(ctx, http.MethodPost, base+"/check", jsontext.Value(canonical), &result); err != nil {
 			return err
 		}
 		if err := Render(ios.Stdout, f, definitionsCheckTable(result)); err != nil {
@@ -179,7 +179,7 @@ func runDefinitionsVerb(ctx context.Context, ios IO, sub string, args []string) 
 			path += "?acknowledge=" + url.QueryEscape(strings.Join(acks, ","))
 		}
 		var result apigen.DefinitionsPlanResponse
-		if err := client.Do(ctx, http.MethodPost, path, json.RawMessage(canonical), &result); err != nil {
+		if err := client.Do(ctx, http.MethodPost, path, jsontext.Value(canonical), &result); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, definitionsPlanTable(result))

@@ -61,6 +61,11 @@ because its outcome is unknown. Counts are exact for committed updates; no
 lossless claim is made during an outage. Health counters are process-local and
 reset on restart; durable summaries and the staging row are database-shared.
 
+A refusal flood can itself push accounting past its 100 ms budget, so an
+unhealthy reading during an attack is expected and is a signal to investigate,
+not proof of an unrelated fault. The budget is detached from the client's
+request context, so a client that disconnects mid-refusal cannot hide it.
+
 Alert on failed accounting, unhealthy collection, scrape failure and an overdue
 pending window. For example, an increase in the failure counter over five minutes
 or a nonzero pending timestamp older than 65 seconds warrants investigation.

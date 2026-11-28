@@ -1,83 +1,60 @@
 package lint
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
-	"strings"
+	"strconv"
 
-	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/analysis"
 )
 
-// CheckProofForgery is analyzer 3 (tenant-isolation ADR, invariant 9). The
-// concrete proof type is unexported, so it cannot be named outside
-// internal/authz at all — what remains expressible, and is flagged here:
-//
-//   - a nil literal in a Proof-typed position (call argument, variable
-//     initialisation, assignment, return, struct literal): the only
-//     forgeable Proof value. The store boundary already rejects nil at
-//     runtime; the guard removes the expression at build time.
-//   - reflect or unsafe imported by a package that handles Proof values:
-//     conservative by design — the pair is how a forged proof would be
-//     assembled, and no package outside authz has business combining them.
-//
-// The authorization package itself (and its tests) are exempt: boundary
-// tests must construct exactly these invalid values.
-func CheckProofForgery(pkgs []*packages.Package) []string {
-	var findings []string
-	for _, p := range flatten(pkgs) {
-		if !strings.HasPrefix(p.PkgPath, Module+"/") && p.PkgPath != Module {
-			continue
-		}
+// ForgeGuard keeps proof values canonical outside the authz package. "Handles Proof values" is
+// decided from the files of the variant being analyzed, in-package tests
+// included.
+var ForgeGuard = &analysis.Analyzer{
+	Name: "forgeguard",
+	Doc:  "no nil authz.Proof, and no reflect/unsafe import beside Proof values",
+	Run: func(pass *analysis.Pass) (any, error) {
+		path := pass.Pkg.Path()
 		// The authorization package and its test variants are exempt:
 		// boundary tests construct exactly these invalid values on purpose.
-		// Exact paths only — a prefix match would silently exempt a
+		// Exact paths only: a prefix match would silently exempt a
 		// neighbouring `internal/authzforge` that reflects on proof values.
-		if authzExempt[p.PkgPath] {
-			continue
-		}
-		// flatten reaches imported module packages that are not roots of the
-		// current load: with NeedDeps omitted they carry Types (from export
-		// data) but no TypesInfo. This analyzer, unlike the ones that select
-		// their target package by path, walks TypesInfo.Uses on every package,
-		// so it must skip those explicitly. In LoadRepo every module package is
-		// a root, so this never elides a real check.
-		if p.TypesInfo == nil {
-			continue
+		if !inModule(path) || authzExempt[path] {
+			return nil, nil
 		}
 		usesProof := false
-		for _, obj := range p.TypesInfo.Uses {
+		for _, obj := range pass.TypesInfo.Uses {
 			if isAuthzProof(obj.Type()) {
 				usesProof = true
 				break
 			}
 		}
 		if usesProof {
-			for imp := range p.Imports {
-				if imp == "reflect" || imp == "unsafe" {
-					findings = append(findings,
-						fmt.Sprintf("forgeguard: %s imports %q while handling authz.Proof values", p.PkgPath, imp))
+			for _, file := range pass.Files {
+				for _, spec := range file.Imports {
+					if imp, _ := strconv.Unquote(spec.Path.Value); imp == "reflect" || imp == "unsafe" {
+						pass.Reportf(spec.Pos(), "%s imports %q while handling authz.Proof values", path, imp)
+					}
 				}
 			}
 		}
-		findings = append(findings, nilProofLiterals(p)...)
-	}
-	return findings
+		nilProofLiterals(pass)
+		return nil, nil
+	},
 }
 
 // authzExempt is the exact set of package paths allowed to construct
 // non-canonical proof values: the authorization package (in-package tests
-// share its path), the test binary go/packages reports beside it, and the
-// external-test package path should one ever be added.
+// share its path) and the external-test package path should one ever be added.
 var authzExempt = map[string]bool{
 	Module + "/internal/authz":      true,
-	Module + "/internal/authz.test": true,
 	Module + "/internal/authz_test": true,
 }
 
 func isAuthzProof(t types.Type) bool {
-	n, ok := t.(*types.Named)
+	n, ok := types.Unalias(t).(*types.Named)
 	if !ok {
 		return false
 	}
@@ -88,22 +65,41 @@ func isAuthzProof(t types.Type) bool {
 // nilProofLiterals walks the syntax for nil expressions in Proof-typed
 // positions. go/types keeps untyped nil untyped, so each syntactic position
 // is resolved explicitly: call arguments, variable declarations,
-// assignments, returns, and keyed struct literals. Stated limit: a nil
+// assignments, returns, and keyed struct literals. Stated limits: a nil
 // smuggled through a positional struct literal or an intermediate untyped
-// construct escapes this walk — and still dies at the store boundary, which
-// is the enforcement; this guard just surfaces it earlier.
-func nilProofLiterals(p *packages.Package) []string {
-	var findings []string
-	flag := func(n ast.Node) {
-		pos := p.Fset.Position(n.Pos())
-		findings = append(findings,
-			fmt.Sprintf("forgeguard: %s: nil in an authz.Proof position — the one forgeable value; get a proof from authorize()", pos))
+// construct escapes this walk, and so do an unassigned local Proof passed
+// on, an omitted Proof struct field, a naked named return and a generic zero
+// value. Each still yields a nil proof that the store refuses at runtime,
+// which is the enforcement; this guard just surfaces the common spellings
+// earlier.
+func nilProofLiterals(p *analysis.Pass) {
+	report := func(n ast.Node) {
+		p.Reportf(n.Pos(), "nil in an authz.Proof position: the one forgeable value; get a proof from authorize()")
 	}
 	isNil := func(e ast.Expr) bool {
-		id, ok := e.(*ast.Ident)
+		id, ok := ast.Unparen(e).(*ast.Ident)
 		return ok && id.Name == "nil" && p.TypesInfo.Uses[id] == types.Universe.Lookup("nil")
 	}
-	for _, file := range p.Syntax {
+	for _, file := range p.Files {
+		// A package-level authz.Proof variable with no initialiser starts nil.
+		// The declaration itself is refused; a later assignment is not tracked.
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Values) != 0 {
+					continue
+				}
+				for _, name := range vs.Names {
+					if obj := p.TypesInfo.Defs[name]; obj != nil && isAuthzProof(obj.Type()) {
+						report(name)
+					}
+				}
+			}
+		}
 		// Enclosing-function result types, resolved by narrowest span, so a
 		// `return nil` can be matched against the function's Proof results.
 		type fnSpan struct {
@@ -153,10 +149,21 @@ func nilProofLiterals(p *packages.Package) []string {
 				results := enclosingResults(node.Pos())
 				for i, e := range node.Results {
 					if i < len(results) && isNil(e) && isAuthzProof(results[i]) {
-						flag(e)
+						report(e)
 					}
 				}
 			case *ast.CallExpr:
+				fun := p.TypesInfo.Types[node.Fun]
+				if fun.IsType() && isAuthzProof(fun.Type) && len(node.Args) == 1 && isNil(node.Args[0]) {
+					report(node)
+					break
+				}
+				if id, ok := node.Fun.(*ast.Ident); ok && len(node.Args) == 1 && p.TypesInfo.Uses[id] == types.Universe.Lookup("new") {
+					if tv, ok := p.TypesInfo.Types[node.Args[0]]; ok && tv.IsType() && isAuthzProof(tv.Type) {
+						report(node)
+						break
+					}
+				}
 				sig, _ := p.TypesInfo.Types[node.Fun].Type.(*types.Signature)
 				if sig == nil {
 					break
@@ -173,7 +180,7 @@ func nilProofLiterals(p *packages.Package) []string {
 						pt = sig.Params().At(i).Type()
 					}
 					if pt != nil && isAuthzProof(pt) {
-						flag(arg)
+						report(arg)
 					}
 				}
 			case *ast.ValueSpec:
@@ -181,7 +188,7 @@ func nilProofLiterals(p *packages.Package) []string {
 					if isNil(v) {
 						for _, name := range node.Names {
 							if obj := p.TypesInfo.Defs[name]; obj != nil && isAuthzProof(obj.Type()) {
-								flag(v)
+								report(v)
 							}
 						}
 					}
@@ -190,7 +197,7 @@ func nilProofLiterals(p *packages.Package) []string {
 				for i, rhs := range node.Rhs {
 					if isNil(rhs) && i < len(node.Lhs) {
 						if tv, ok := p.TypesInfo.Types[node.Lhs[i]]; ok && isAuthzProof(tv.Type) {
-							flag(rhs)
+							report(rhs)
 						}
 					}
 				}
@@ -198,7 +205,7 @@ func nilProofLiterals(p *packages.Package) []string {
 				if isNil(node.Value) {
 					if id, ok := node.Key.(*ast.Ident); ok {
 						if obj := p.TypesInfo.Uses[id]; obj != nil && isAuthzProof(obj.Type()) {
-							flag(node.Value)
+							report(node.Value)
 						}
 					}
 				}
@@ -206,5 +213,4 @@ func nilProofLiterals(p *packages.Package) []string {
 			return true
 		})
 	}
-	return findings
 }

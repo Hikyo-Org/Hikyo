@@ -10,10 +10,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/sigstore/sigstore/pkg/signature"
 )
@@ -56,7 +57,7 @@ func TestMaintainedKeyVerifierPreservesSupportedAlgorithms(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bundle, err := json.Marshal(releasetrust.LegacyBundle{Base64Signature: base64.StdEncoding.EncodeToString(sig)})
+			bundle, err := json.Marshal(releasetrust.LegacyBundle{Base64Signature: base64.StdEncoding.EncodeToString(sig)}, jsonwire.Stable)
 			if err != nil {
 				t.Fatal(err)
 			}

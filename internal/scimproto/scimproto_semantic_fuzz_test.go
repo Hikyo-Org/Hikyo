@@ -1,9 +1,12 @@
 package scimproto
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // FuzzFilterSemanticContract generates quoted values independently of the
@@ -13,8 +16,12 @@ func FuzzFilterSemanticContract(f *testing.F) {
 	f.Add("Sales and Marketing (EU)", byte(0))
 	f.Add("\" or userName pr", byte(1))
 	f.Add("Kelvin\n\\", byte(2))
+	f.Add("Sales \xff\xfe Marketing", byte(3))
 	f.Fuzz(func(t *testing.T, value string, selector byte) {
-		encoded, err := json.Marshal(value)
+		// v2 refuses invalid UTF-8; replace it with U+FFFD as v1 did (though
+		// unescaped). That loses nothing: the parsers refuse raw invalid UTF-8
+		// (TestInvalidUTF8Refused).
+		encoded, err := json.Marshal(value, jsonwire.Stable, jsontext.AllowInvalidUTF8(true))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,8 +72,12 @@ func FuzzFilterSemanticContract(f *testing.F) {
 func FuzzPatchAtomicRefusal(f *testing.F) {
 	f.Add("external identity", byte(0))
 	f.Add("\"}],\"op\":\"remove\"", byte(1))
+	f.Add("external \xff identity", byte(1))
 	f.Fuzz(func(t *testing.T, value string, selector byte) {
-		encoded, err := json.Marshal(value)
+		// v2 refuses invalid UTF-8; replace it with U+FFFD as v1 did (though
+		// unescaped). That loses nothing: the parsers refuse raw invalid UTF-8
+		// (TestInvalidUTF8Refused).
+		encoded, err := json.Marshal(value, jsonwire.Stable, jsontext.AllowInvalidUTF8(true))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,4 +108,35 @@ func FuzzPatchAtomicRefusal(f *testing.F) {
 			t.Fatalf("invalid suffix leaked an accepted prefix: %#v, %v", ops, e)
 		}
 	})
+}
+
+// TestInvalidUTF8Refused pins the refusal the fuzz targets above rely on:
+// scimproto's parsers refuse raw invalid UTF-8 and unpaired surrogate escapes
+// instead of replacing them, and still accept valid non-ASCII values.
+func TestInvalidUTF8Refused(t *testing.T) {
+	for _, c := range []struct {
+		literal, want string // want is empty when the literal must be refused
+	}{
+		{"a\xffb", ""},
+		{`a\ud800b`, ""},
+		{`a\udc00b`, ""},
+		{"a\u00e9b", "a\u00e9b"},
+		{`a\u00e9b`, "a\u00e9b"},
+	} {
+		v, refuse := c.literal, c.want == ""
+		f, e := ParseFilter(`userName eq "`+v+`"`, ResourceUser)
+		if refuse && (e == nil || e.SCIMType != TypeInvalidFilter) || !refuse && (e != nil || f.Value != c.want) {
+			t.Errorf("filter %q: got %#v, %v; want value %q (empty: invalidFilter)", v, f, e, c.want)
+		}
+		patch := `{"schemas":["` + SchemaPatchOp + `"],"Operations":[{"op":"replace","path":"externalId","value":"` + v + `"}]}`
+		ops, e := ParsePatch([]byte(patch), ResourceUser)
+		want := PatchPlainPayload{Attribute: "externalId", Value: c.want}
+		if refuse && (e == nil || e.SCIMType != TypeInvalidSyntax || ops != nil) || !refuse && (e != nil || len(ops) != 1 || ops[0].Payload != want) {
+			t.Errorf("patch %q: got %#v, %v; want value %q (empty: invalidSyntax)", v, ops, e, c.want)
+		}
+		u, e := DecodeUser([]byte(`{"schemas":["` + SchemaUser + `"],"userName":"` + v + `"}`))
+		if refuse && (e == nil || e.SCIMType != TypeInvalidSyntax) || !refuse && (e != nil || u.UserName != c.want) {
+			t.Errorf("user %q: got %#v, %v; want userName %q (empty: invalidSyntax)", v, u, e, c.want)
+		}
+	}
 }

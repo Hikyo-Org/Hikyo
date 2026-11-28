@@ -168,12 +168,14 @@ const zMinted = mintMachineCredentialOp.response.pick({ value: true, clamped: tr
 export async function mintCredential(
   p: ProjectRef,
   serviceAccount: string,
+  lifetimeSeconds?: number,
 ): Promise<z.infer<typeof zMinted>> {
   return parsedPick(
     mintMachineCredentialOp,
     {
       path: { org: p.org, project: p.project, serviceAccount },
-      body: {},
+      // Absent means the server's default; the server clamps to the instance ceiling.
+      body: lifetimeSeconds === undefined ? {} : { lifetime_seconds: lifetimeSeconds },
     },
     { value: true, clamped: true, expires_at: true },
   );
@@ -548,24 +550,6 @@ export function grantSubmittable(
   return grantableFor(scope, capability, machineReveal).some((s) => s.id === environment);
 }
 
-/**
- * parseClaimNumber turns a typed int64 pin into a number, or refuses.
- *
- * `Number()` is not usable here and the failures are not cosmetic: an empty
- * field becomes 0, which is a valid-looking repository id nobody owns; `1e3`
- * and `4242.7` are accepted; and anything past 2^53 silently rounds to a
- * NEIGHBOURING repository id, which would bind a production service account to
- * whatever repository happens to hold that number. Digits only, and inside the
- * range JSON can carry losslessly.
- */
-export function parseClaimNumber(raw: string): number | null {
-  if (!/^-?[0-9]+$/.test(raw.trim())) {
-    return null;
-  }
-  const value = Number(raw.trim());
-  return Number.isSafeInteger(value) ? value : null;
-}
-
 /** isoDay renders an instant as the calendar day, which is all these surfaces show. */
 export function isoDay(timestamp: string): string {
   return timestamp.slice(0, 10);
@@ -698,14 +682,20 @@ type IssuerPlatform = 'kubernetes' | 'forgejo' | 'github-actions';
 type ClaimField = {
   readonly claim: string;
   readonly label: string;
-  readonly kind: 'string' | 'number' | 'event';
+  /** `id` is a decimal id (digits only) that the issuer emits, and the binding pins, as a string. */
+  readonly kind: 'string' | 'id' | 'event';
+  /** Prefilled in a new binding; the operator may change it. */
+  readonly defaultValue?: string;
 };
 
 export type FederationPreset = {
   readonly id: IssuerPlatform;
   readonly label: string;
   readonly issuer: string;
+  /** Seeded into the subject field; empty when the subject must come from a real token. */
   readonly subject: string;
+  /** Placeholder shown in the subject field when `subject` is empty. */
+  readonly subjectHint?: string;
   readonly audience: string;
   /**
    * The claims this platform's bindings MUST pin, which the server refuses a
@@ -723,8 +713,12 @@ export type FederationPreset = {
  * Kubernetes pins the ServiceAccount UID through its JSON Pointer, a
  * recreated ServiceAccount with the same name has a different UID, which is
  * precisely what the pin closes. The two CI platforms must pin `event_name`,
- * and GitHub Actions additionally pins the numeric repository ids, because a
- * renamed-and-reused repository path would otherwise inherit the binding.
+ * and GitHub Actions additionally pins the repository ids, because a
+ * renamed-and-reused repository path would otherwise inherit the binding, plus
+ * `ref_protected`, `runner_environment` and `job_workflow_ref`, which narrow
+ * which runs are given the binding's credentials. GitHub emits every one of
+ * these as a JSON string ("74", "true"), and the server refuses a required pin
+ * of any other kind, so every field here is pinned as a string.
  */
 export const KUBERNETES_PRESET: FederationPreset = {
   id: 'kubernetes',
@@ -745,7 +739,7 @@ const FORGEJO_PRESET: FederationPreset = {
   audience: '',
   claims: [
     { claim: 'repository', label: 'Repository', kind: 'string' },
-    { claim: 'event_name', label: 'Event name', kind: 'event' },
+    { claim: 'event_name', label: 'Event name', kind: 'event', defaultValue: 'push' },
   ],
 };
 
@@ -753,12 +747,19 @@ const GITHUB_ACTIONS_PRESET: FederationPreset = {
   id: 'github-actions',
   label: 'GitHub Actions',
   issuer: 'https://token.actions.githubusercontent.com',
-  subject: 'repo:owner/repository:ref:refs/heads/main',
+  // GitHub's subject format varies (repositories created, renamed or transferred
+  // after 2026-07-15 use the immutable form), so the operator copies it from a
+  // real token rather than editing a guess.
+  subject: '',
+  subjectHint: 'copy sub from a real token, e.g. repo:owner/repository:ref:refs/heads/main',
   audience: '',
   claims: [
-    { claim: 'repository_id', label: 'Repository id', kind: 'number' },
-    { claim: 'repository_owner_id', label: 'Repository owner id', kind: 'number' },
-    { claim: 'event_name', label: 'Event name', kind: 'event' },
+    { claim: 'repository_id', label: 'Repository id', kind: 'id' },
+    { claim: 'repository_owner_id', label: 'Repository owner id', kind: 'id' },
+    { claim: 'event_name', label: 'Event name', kind: 'event', defaultValue: 'push' },
+    { claim: 'ref_protected', label: 'Ref protected', kind: 'string', defaultValue: 'true' },
+    { claim: 'runner_environment', label: 'Runner environment', kind: 'string', defaultValue: 'github-hosted' },
+    { claim: 'job_workflow_ref', label: 'Job workflow ref', kind: 'string' },
   ],
 };
 
@@ -773,32 +774,46 @@ export function presetFieldId(claim: string): string {
   return `binding-${claim.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
 }
 
+/** The server's DefaultCredentialLifetime (internal/service/identities.go), in seconds. */
+export const DEFAULT_CREDENTIAL_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
+
 /**
- * BINDING_LIFETIMES is the binding's own lifetime, which is #17's rule rather
- * than a convenience: a binding is a standing permission to present tokens and
- * expires on the same terms as a bearer credential, renewal is a mint, never
- * an edit, because bindings are immutable.
+ * CREDENTIAL_LIFETIMES is the lifetime choice shared by the bearer mint and
+ * the federation binding, which is #17's rule rather than a convenience: a
+ * binding is a standing permission to present tokens and expires on the same
+ * terms as a bearer credential, renewal is a mint, never an edit, because
+ * bindings are immutable.
+ *
+ * The instance ceiling is not readable by an ordinary identity manager, so the
+ * presets are not trimmed to it: the server clamps and says so (`clamped`).
  *
  * `indefinite` is present and DISABLED with its reason, exactly as the frozen
  * prototype has it: the instance opt-in that admits it is off by default, and a
  * missing option would leave an operator wondering whether the product has the
  * concept at all.
  */
-export const BINDING_LIFETIMES: ReadonlyArray<{
+export const CREDENTIAL_LIFETIMES: ReadonlyArray<{
   readonly id: string;
   readonly label: string;
   readonly seconds?: number;
   readonly disabled?: boolean;
 }> = [
-  { id: 'default', label: 'Instance default' },
+  { id: 'default', label: 'Instance default (30 days)' },
   { id: '30d', label: '30 days', seconds: 30 * 24 * 60 * 60 },
   { id: '90d', label: '90 days', seconds: 90 * 24 * 60 * 60 },
+  { id: '180d', label: '180 days', seconds: 180 * 24 * 60 * 60 },
+  { id: '1y', label: '1 year', seconds: 365 * 24 * 60 * 60 },
   {
     id: 'indefinite',
     label: 'Indefinite: requires the instance allow_indefinite opt-in',
     disabled: true,
   },
 ];
+
+/** The seconds a preset asks for; undefined for the instance default. */
+export function lifetimeSecondsFor(id: string): number | undefined {
+  return CREDENTIAL_LIFETIMES.find((entry) => entry.id === id)?.seconds;
+}
 
 /** The events a CI binding can pin. The last two are the refused pair. */
 export const CI_EVENTS = ['push', 'workflow_dispatch', 'pull_request', 'pull_request_target'] as const;

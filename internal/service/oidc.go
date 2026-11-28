@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -13,11 +15,14 @@ import (
 	"strings"
 	"time"
 
+	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
+
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/oidcrp"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -152,6 +157,18 @@ func (e providerIssuerMismatch) SafeDetail() string {
 	return "issuer: the discovery document names issuer " + strconv.Quote(e.discovered) + "; configure that issuer instead"
 }
 
+// LifecycleProfileClerk is the v1 member of the closed directory-lifecycle
+// profile enum (human-auth ADR, 2026-11-17 amendment, a). The profile names the
+// directory's webhook dialect; today that is Svix's `svix-*` header names and
+// Clerk's event payloads.
+const LifecycleProfileClerk = "clerk"
+
+// providerLifecycleAAD binds a sealed lifecycle signing secret to its provider
+// row under its own field tag, so it cannot be swapped with the client secret.
+func providerLifecycleAAD(providerID string) crypto.InstanceFieldAAD {
+	return crypto.InstanceFieldAAD{OwnerTable: "oidc_providers", OwnerRowID: providerID, FieldTag: "lifecycle_secret"}
+}
+
 // providerSecretAAD binds a sealed client secret to the provider row that owns
 // it, so a secret lifted from one row cannot be replayed into another's.
 func providerSecretAAD(providerID string) crypto.InstanceFieldAAD {
@@ -193,13 +210,12 @@ func validateAssurancePolicy(policy *string) (*string, error) {
 	if policy == nil {
 		return nil, nil
 	}
-	decoder := json.NewDecoder(strings.NewReader(*policy))
-	decoder.DisallowUnknownFields()
+	decoder := jsontext.NewDecoder(strings.NewReader(*policy))
 	var p assurancePolicy
-	if err := decoder.Decode(&p); err != nil {
+	if err := json.UnmarshalDecode(decoder, &p, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("%w: invalid assurance_policy", domain.ErrInvalid)
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: assurance_policy carries trailing content", domain.ErrInvalid)
 	}
 	if len(p.ACRValues) > maxAssurancePolicyItems || len(p.AMRSets) > maxAssurancePolicyItems {
@@ -220,7 +236,7 @@ func validateAssurancePolicy(policy *string) (*string, error) {
 			}
 		}
 	}
-	canonical, err := json.Marshal(p)
+	canonical, err := json.Marshal(p, jsonwire.Stable)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid assurance_policy", domain.ErrInvalid)
 	}
@@ -317,14 +333,22 @@ type ProviderView struct {
 	AssurancePolicy *string
 	Enabled         bool
 	RowVersion      int64
+	// LifecycleProfile is nil when the provider takes no directory lifecycle
+	// events. The signing secret is write-only: only whether one is set shows.
+	LifecycleProfile   *string
+	LifecycleSecretSet bool
+	// LifecycleURI is the endpoint to register at the directory.
+	LifecycleURI string
 }
 
-func providerView(p authz.OIDCProvider) ProviderView {
+func (s *Providers) view(p authz.OIDCProvider) ProviderView {
 	return ProviderView{
 		Slug: p.Slug, DisplayName: p.DisplayName, Issuer: p.Issuer, ClientID: p.ClientID,
 		Scopes: p.Scopes, RedirectURI: p.RedirectURI,
 		AssurancePolicy: p.AssurancePolicy, Enabled: p.Enabled,
-		RowVersion: p.RowVersion,
+		RowVersion:       p.RowVersion,
+		LifecycleProfile: p.LifecycleProfile, LifecycleSecretSet: len(p.LifecycleSecret) > 0,
+		LifecycleURI: s.lifecycleURI(p.Slug),
 	}
 }
 
@@ -337,6 +361,11 @@ type ProviderInput struct {
 	Scopes          string
 	AssurancePolicy *string
 	Enabled         bool
+	// LifecycleProfile selects the directory lifecycle dialect (nil: none).
+	// LifecycleSecret is the directory's webhook signing secret; empty keeps the
+	// stored one when the profile stays set, and is refused when none is stored.
+	LifecycleProfile *string
+	LifecycleSecret  string
 	// CreateOnly distinguishes an API create from legacy internal upsert calls.
 	// ExpectedRowVersion pins an API reconfiguration to the displayed row.
 	CreateOnly         bool
@@ -345,6 +374,48 @@ type ProviderInput struct {
 
 func (s *Providers) redirectURI(slug string) string {
 	return strings.TrimRight(s.ExternalOrigin, "/") + "/api/v1/auth/oidc/" + slug + "/callback"
+}
+
+func (s *Providers) lifecycleURI(slug string) string {
+	return strings.TrimRight(s.ExternalOrigin, "/") + "/api/v1/auth/oidc/" + slug + "/lifecycle"
+}
+
+// validateLifecycle checks the closed profile enum and the secret's shape. A
+// secret without a profile, or a malformed secret, is refused before anything
+// is written. Whether a profile with no secret is acceptable depends on the
+// stored row, so that half is decided in create and update.
+func validateLifecycle(in ProviderInput) error {
+	if in.LifecycleProfile == nil {
+		if in.LifecycleSecret != "" {
+			return fmt.Errorf("%w: lifecycle_secret needs a lifecycle_profile", domain.ErrInvalid)
+		}
+		return nil
+	}
+	if *in.LifecycleProfile != LifecycleProfileClerk {
+		return fmt.Errorf("%w: unknown lifecycle_profile", domain.ErrInvalid)
+	}
+	if in.LifecycleSecret == "" {
+		return nil
+	}
+	wh, err := standardwebhooks.NewWebhook(in.LifecycleSecret)
+	if err != nil || wh == nil {
+		return fmt.Errorf("%w: lifecycle_secret is not a Standard Webhooks signing secret", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// sealLifecycle seals the lifecycle signing secret under its own AAD. Like
+// sealSecret it returns the instance DEK version, which the caller fences on.
+//
+// fence:delegated: returns the sealed secret and its instance DEK version to
+// the Put transaction, which fences before writing.
+func (s *Providers) sealLifecycle(providerID, secret string) ([]byte, uint32, error) {
+	sealer := s.Keyring.ForInstance()
+	sealed, err := sealer.SealField(providerLifecycleAAD(providerID), []byte(secret))
+	if err != nil {
+		return nil, 0, err
+	}
+	return sealed, sealer.Version(), nil
 }
 
 // Put creates a provider or reconfigures an existing one. The issuer is
@@ -363,6 +434,9 @@ func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in Provid
 		return ProviderView{}, err
 	}
 	in.AssurancePolicy = validatedPolicy
+	if err := validateLifecycle(in); err != nil {
+		return ProviderView{}, err
+	}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		// Authorize BEFORE discovery closes an SSRF: only an instance-config
 		// holder may make the server fetch an arbitrary issuer URL. Discovery
@@ -448,12 +522,27 @@ func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAutho
 	if err != nil {
 		return err
 	}
+	var lifecycleSealed []byte
+	if in.LifecycleProfile != nil {
+		if in.LifecycleSecret == "" {
+			return fmt.Errorf("%w: lifecycle_profile needs a lifecycle_secret", domain.ErrInvalid)
+		}
+		var lifecycleDEK uint32
+		lifecycleSealed, lifecycleDEK, err = s.sealLifecycle(id, in.LifecycleSecret)
+		if err != nil {
+			return err
+		}
+		if err := fenceInstanceVersion(ctx, r, p, lifecycleDEK); err != nil {
+			return err
+		}
+	}
 	now := s.now()
 	prov := authz.NewProvider{
 		ID: id, Slug: slug, DisplayName: in.DisplayName, Kind: OIDCKind, Issuer: in.Issuer,
 		ClientID: in.ClientID, ClientSecret: sealed, Scopes: in.Scopes, RedirectURI: s.redirectURI(slug),
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
 		DEKVersion: dek, CreatedAt: now, UpdatedAt: now,
+		LifecycleProfile: in.LifecycleProfile, LifecycleSecret: lifecycleSealed,
 	}
 	// Writer fence (invariant 7): refuse if a rotate-dek --instance retired the
 	// version the secret was sealed under since sealSecret snapshotted it.
@@ -466,11 +555,12 @@ func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAutho
 	if err := s.auditChanged(ctx, r, p, principal, id, "created", 0); err != nil {
 		return err
 	}
-	*out = providerView(authz.OIDCProvider{
+	*out = s.view(authz.OIDCProvider{
 		Slug: slug, DisplayName: in.DisplayName, Issuer: in.Issuer, ClientID: in.ClientID,
 		Scopes: in.Scopes, RedirectURI: prov.RedirectURI,
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
-		RowVersion: 1,
+		RowVersion:       1,
+		LifecycleProfile: in.LifecycleProfile, LifecycleSecret: lifecycleSealed,
 	})
 	return nil
 }
@@ -480,11 +570,19 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 	if err != nil {
 		return err
 	}
+	lifecycleSealed, lifecycleChanged, err := s.lifecycleForUpdate(ctx, r, p, existing, in)
+	if err != nil {
+		return err
+	}
+	// Lifecycle fields are not login-path material (ADR 2026-11-17 a): a write
+	// that changes only them sweeps nothing. Anything else keeps sweeping.
+	sweep := !lifecycleChanged || !s.loginPathUnchanged(existing, in)
 	upd := authz.ProviderUpdate{
 		ID: existing.ID, DisplayName: in.DisplayName, ClientID: in.ClientID, ClientSecret: sealed,
 		Scopes: in.Scopes, RedirectURI: s.redirectURI(existing.Slug),
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
 		DEKVersion: dek, RowVersion: existing.RowVersion, UpdatedAt: s.now(),
+		LifecycleProfile: in.LifecycleProfile, LifecycleSecret: lifecycleSealed,
 	}
 	// Writer fence (invariant 7): refuse a secret sealed under a version a
 	// concurrent rotate-dek --instance retired.
@@ -501,23 +599,70 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 	// Any reconfigure changes security material (client, secret, assurance
 	// policy, or enabled state; the issuer cannot change), so every session
 	// authenticated through this provider is swept in the same tx (A4).
-	if err := revokeDeveloperProvenance(ctx, az, principal, "provider", existing.ID, s.now()); err != nil {
-		return err
-	}
-	swept, err := az.SweepSessionsForProvider(ctx, existing.ID)
-	if err != nil {
-		return err
+	var swept int64
+	if sweep {
+		if err := revokeDeveloperProvenance(ctx, az, principal, "provider", existing.ID, s.now()); err != nil {
+			return err
+		}
+		swept, err = az.SweepSessionsForProvider(ctx, existing.ID)
+		if err != nil {
+			return err
+		}
 	}
 	if err := s.auditChanged(ctx, r, p, principal, existing.ID, "updated", swept); err != nil {
 		return err
 	}
-	*out = providerView(authz.OIDCProvider{
+	*out = s.view(authz.OIDCProvider{
 		Slug: existing.Slug, DisplayName: in.DisplayName, Issuer: existing.Issuer, ClientID: in.ClientID,
 		Scopes: in.Scopes, RedirectURI: upd.RedirectURI,
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
-		RowVersion: existing.RowVersion + 1,
+		RowVersion:       existing.RowVersion + 1,
+		LifecycleProfile: in.LifecycleProfile, LifecycleSecret: lifecycleSealed,
 	})
 	return nil
+}
+
+// lifecycleForUpdate resolves the sealed lifecycle secret an update writes and
+// whether the lifecycle configuration changed at all. A cleared profile clears
+// the secret; a kept profile with no new secret keeps the stored record.
+func (s *Providers) lifecycleForUpdate(ctx context.Context, r store.Repos, p authz.Proof, existing authz.OIDCProvider, in ProviderInput) ([]byte, bool, error) {
+	if in.LifecycleProfile == nil {
+		return nil, existing.LifecycleProfile != nil, nil
+	}
+	if in.LifecycleSecret == "" {
+		if existing.LifecycleProfile == nil || len(existing.LifecycleSecret) == 0 {
+			return nil, false, fmt.Errorf("%w: lifecycle_profile needs a lifecycle_secret", domain.ErrInvalid)
+		}
+		return existing.LifecycleSecret, *existing.LifecycleProfile != *in.LifecycleProfile, nil
+	}
+	sealed, dek, err := s.sealLifecycle(existing.ID, in.LifecycleSecret)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := fenceInstanceVersion(ctx, r, p, dek); err != nil {
+		return nil, false, err
+	}
+	return sealed, true, nil
+}
+
+// loginPathUnchanged reports whether a reconfigure leaves everything but the
+// lifecycle fields as stored, comparing the client secret by its plaintext (a
+// reseal never reproduces the stored record). An unreadable stored secret counts
+// as changed.
+func (s *Providers) loginPathUnchanged(existing authz.OIDCProvider, in ProviderInput) bool {
+	same := existing.DisplayName == in.DisplayName && existing.ClientID == in.ClientID &&
+		existing.Scopes == in.Scopes && existing.Enabled == in.Enabled &&
+		(existing.AssurancePolicy == nil) == (in.AssurancePolicy == nil) &&
+		(existing.AssurancePolicy == nil || *existing.AssurancePolicy == *in.AssurancePolicy)
+	if !same {
+		return false
+	}
+	plain, err := s.Keyring.ForInstance().OpenField(providerSecretAAD(existing.ID), existing.ClientSecret)
+	if err != nil {
+		return false
+	}
+	defer crypto.Zero(plain)
+	return subtle.ConstantTimeCompare(plain, []byte(in.ClientSecret)) == 1
 }
 
 // Get returns one provider by slug.
@@ -535,7 +680,7 @@ func (s *Providers) Get(ctx context.Context, actor Actor, slug string) (Provider
 		if err != nil {
 			return err
 		}
-		out = providerView(prov)
+		out = s.view(prov)
 		return s.auditRead(ctx, r, p, caller.Principal, "get", 1)
 	})
 	return out, err
@@ -555,7 +700,7 @@ func (s *Providers) List(ctx context.Context, actor Actor) ([]ProviderView, erro
 		}
 		out = make([]ProviderView, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, providerView(row))
+			out = append(out, s.view(row))
 		}
 		return s.auditRead(ctx, r, p, caller.Principal, "list", len(rows))
 	})

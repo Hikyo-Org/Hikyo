@@ -5,7 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/scripts/ci/checksuites"
 )
 
@@ -110,7 +112,7 @@ func (c client) send(ctx context.Context, method, path, endpoint string, body, r
 	var data []byte
 	if body != nil {
 		var err error
-		if data, err = json.Marshal(body); err != nil {
+		if data, err = json.Marshal(body, jsonwire.Stable); err != nil {
 			return err
 		}
 	}
@@ -160,9 +162,12 @@ func (c client) attempt(ctx context.Context, method, path, endpoint string, data
 	if result == nil {
 		return 0, false, nil
 	}
-	// Decode buffers a whole value before unmarshalling, so a truncated body
+	// ReadValue buffers a whole value before unmarshalling, so a truncated body
 	// leaves result untouched and the read can be repeated.
-	err = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(result)
+	value, err := jsontext.NewDecoder(io.LimitReader(resp.Body, 4<<20)).ReadValue()
+	if err == nil {
+		err = json.Unmarshal(value, result)
+	}
 	return 0, err != nil && transientTransportError(ctx, err), err
 }
 

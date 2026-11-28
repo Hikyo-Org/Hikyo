@@ -2,12 +2,14 @@ package ci_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type ciDoctorFinding struct {
@@ -49,7 +51,7 @@ func TestDeploymentDoctorFindingContract(t *testing.T) {
 					"adapter-targets": "ok", "argon2-floor": "ok", "backup-retention": "warn",
 					"backup-rpo": "warn", "data-volume": deployment.volume, "database-durability": "ok",
 					"pin-expiry": "ok", "pki": "ok", "project-storage": "ok", "reencrypt": "ok",
-					"restore-drill": "warn", "retention-prune": "ok", "root-escrow": "warn", "root-rotation": "ok",
+					"restore-drill": "warn", "retention-prune": "ok", "root-escrow": "warn", "root-rotation": "ok", "rotation": "ok",
 				} {
 					if code == tc.changeCode && tc.omit {
 						continue
@@ -66,7 +68,7 @@ func TestDeploymentDoctorFindingContract(t *testing.T) {
 						report.Findings = append(report.Findings, finding)
 					}
 				}
-				raw, err := json.Marshal(report)
+				raw, err := json.Marshal(report, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -48,7 +48,7 @@ secret derived from the root key; the code accepts any nonempty secret up to
 1024 bytes, so a human passphrase has unverifiable entropy. The only rewrap
 caller migrates a legacy passphrase vault (`automatic_upgrade.go:372`) and
 preserves the record (`vault.go:155-157`). Drills use the vault's escrowed root
-(`automatic_upgrade.go:420`). `rotate-root-key` does not re-seal the vault.
+(`automatic_upgrade.go:420`). `rotate-root-key` re-seals the runtime-owned vault (#1154); the root-only host vault stays unreachable from the server and is not re-sealed.
 A root-sealed record cannot recover the root it is sealed with; a passphrase-sealed
 record can yield a lost root, which is another reason its entropy matters. The record is bounded by age's 16-byte
 file key. Consequences, stated for the owning child (#1126), not designed here:
@@ -61,11 +61,13 @@ file key. Consequences, stated for the owning child (#1126), not designed here:
 * Option (b), seal with the existing 256-bit envelope keyed from the root: lifts
   the record off the category-1 floor; new file format and reader-first
   migration.
-* Under either option `rotate-root-key` does not re-seal, so after it the new
-  root's secret fails with `ErrUnlock`, which is then read as a passphrase vault
-  (`automatic_upgrade.go:357-364`); the vault-generated identity and attestation
-  key are stranded. Requirement on #1126: re-seal during root rotation before any
-  flow here relies on rotating the root.
+* Before #1154 `rotate-root-key` did not re-seal, so after it the new root's
+  secret failed with `ErrUnlock`, which is then read as a passphrase vault
+  (`automatic_upgrade.go:357-364`), stranding the vault-generated identity and
+  attestation key. The runtime-owned vault is now re-sealed during rotation
+  (stage at prepare, commit at finalize), a hybrid identity included; the
+  root-only host vault of `sudo hikyo upgrade` is not reachable by the server
+  and is not re-sealed.
 * Either way a vault holding root escrow must not be used where identity and
   root must stay in separate domains.
 
@@ -164,15 +166,21 @@ Accepted as recommended on 2026-11-02. Owner: Marc Went. Not operative; see the
 ### Pairing and remote proofs (I20)
 
 2048-bit SRP and Ed25519 DPoP; no standards-backed maintained PQ PAKE in the
-pinned dependencies; `go-jose` v4.1.6 has no ML-DSA; a JOSE ML-DSA identifier's
-status was not checked. Decision: #1130 stays HOLD (E-01). Hybrid TLS
+pinned dependencies; `go-jose` was v4.1.6 at decision time (no ML-DSA); `dev`
+now pins v4.1.9, which has ML-DSA since v4.1.8 (Go 1.27 only), but Hikyo's key
+loader and allowlists refuse it
+([E-04](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective),
+rechecked 2026-11-23). [RFC 9964](https://www.rfc-editor.org/rfc/rfc9964)
+registers JOSE `ML-DSA-65`; the identifier's status was not checked at decision
+time. Decision: #1130 stays HOLD (E-01). Hybrid TLS
 stops **recording** of the exchange; it does not stop an **active** forger of the
 classical pinned leaf, who captures the SRP transcript. Pairing pins are read over
 a classical chain unless the operator supplies an override
 (`internal/remotefetch/pairing_identity.go:58`), so a read pin is only as authentic
 as that chain. No quantum-safe answer exists; claim limited: no PQ
 authenticity, pin or password-exchange claim for pairing. Not recommended: a
-KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now (no library path).
+KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now
+(Hikyo refuses ML-DSA keys).
 
 ### Release trust and install paths
 
@@ -240,11 +248,13 @@ Update 2026-11-03 (#1134, [external compatibility](external-compatibility.md#fac
 OpenSSH 10.6 (2026-10-06) enables a composite PQ signature `ssh-mldsa44-ed25519`,
 so "no PQ signatures" above is stale. E-02 stands: the scheme is ML-DSA-44
 (excluded by DEC-02) and `x/crypto/ssh` v0.58.0 cannot produce it. RFC 9964
-registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 still lacks
-them. The decision text is the owner's and is not edited here. On 2026-11-04 the owner
-decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes ML-DSA-44 and DEC-03
-did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or
-`x/crypto` adds one.
+registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 lacked
+them at candidate time (rechecked 2026-11-23: v4.1.9 has ML-DSA, see
+[E-04](external-compatibility.md#exception-terms-proposed-only-e-06-is-effective)).
+The decision text is the owner's and is not edited here. On 2026-11-04 the
+owner decided not to adopt `ssh-mldsa44-ed25519` (F-04): DEC-02 excludes
+ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a
+composite without ML-DSA-44 or `x/crypto` adds one.
 
 ### Rollout authority (I23) and PKI root (I24)
 
@@ -296,7 +306,7 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 | E-17 | Unobservable readers, verifiers and local floors (I07, I26) | Third-party installs cannot be measured; floor is a local claim | #1126, #1132 | DEC-11 |
 | E-18 | Single listener certificate pair (`internal/app/tls.go:31`): a strict ML-DSA leaf may be rejected by browsers and compat clients; sole ML-DSA recovery key (I09, I26) | Availability and recovery | #1127, #1132 | DEC-06, DEC-14 |
 | E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today, so `backup-receipt/v2` (the signed upgrade compatibility banner) does not meet "every export path emits a receipt" | #1126 | DEC-11 |
-| E-20 | Pin-based owned clients on strict hops (`internal/cli/client.go:151`; I11) | The pin replaces chain verification, so strict gives confidentiality with no authenticity claim | #1127 | DEC-06 |
+| E-20 | Pin-based owned clients on strict hops (`internal/clienttrust/clienttrust.go:195`; I11) | The pin replaces chain verification, so strict gives confidentiality with no authenticity claim | #1127 | DEC-06 |
 | E-21 | Host-authority recovery of configuration (`internal/service/self_config_recovery.go:55`, repair boot in `internal/app/app.go:369`; every strict surface, starting with I09, I11) | Can select a published revision below strict without the MFA-bound plan, and a repair boot runs the previous policy; host access is already operator-equivalent | #1127 | DEC-10 |
 | E-22 | Stale-node fencing under strict (every strict surface; starts with I09, I11). Peer: any node of a multi-node instance whose active generation is below the desired one. Version: from the first release that can select strict (#1127) until a fence ships. Expiry: 180 days from the owner's decision on 2026-11-04, so 2027-05-03, or the next trigger. Recheck trigger: #1127 designing the fence, or a stale node observed serving after strict was selected | Strict is per process. A stale node keeps serving after strict is selected and is not reported as not enforcing; no fence is built | #1127 | DEC-10 (amended 2026-11-04) |
 

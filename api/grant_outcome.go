@@ -1,8 +1,10 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type grantOutcomeValue uint8
@@ -73,7 +75,7 @@ func (o GrantOutcome) MarshalJSON() ([]byte, error) {
 	if !o.Valid() {
 		return nil, fmt.Errorf("invalid grant outcome value %d", o.value)
 	}
-	return json.Marshal(o.String())
+	return json.Marshal(o.String(), jsonwire.Stable)
 }
 
 func (o *GrantOutcome) UnmarshalJSON(data []byte) error {

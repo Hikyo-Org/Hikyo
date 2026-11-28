@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"math/rand"
 	"net/http"
@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 // Exercise the real request sender: ordinary authenticated reads share the
@@ -438,7 +440,7 @@ func TestMissingExecutableProducesFailedReceipt(t *testing.T) {
 	if err == nil || r.Status != "failed" || r.CompletedAt.IsZero() {
 		t.Fatal("unexecuted artifact campaign passed")
 	}
-	raw, err := json.Marshal(r)
+	raw, err := json.Marshal(r, jsonwire.Stable)
 	if err != nil || !bytes.Contains(raw, []byte(`"status":"failed"`)) {
 		t.Fatal("failure receipt absent")
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -135,7 +136,23 @@ func isBashShell(shell, runsOn string) bool {
 		// value or group mapping we cannot resolve is treated as bash, which fails safe.
 		return !strings.HasPrefix(strings.ToLower(runsOn), "windows")
 	}
-	return shell == "bash" || strings.HasPrefix(shell, "bash ")
+	// A custom template (/bin/bash -e {0}, env FOO=1 bash {0}) may run bash in many ways, so only
+	// a known other interpreter is skipped; anything else, an expression or a blank shell
+	// included, is scanned as bash, which fails safe: a misjudged step may fail to parse. sh is
+	// scanned too: on a macOS runner it is bash 3.2.
+	exe := shellExecutable(shell)
+	return exe == "" || !slices.Contains([]string{"dash", "zsh", "pwsh", "powershell", "cmd", "python", "python3", "node", "perl", "ruby"}, exe)
+}
+
+// shellExecutable returns the lowercased basename of a shell template's first word, without
+// quotes or .exe, or "" for a blank shell.
+func shellExecutable(shell string) string {
+	words := strings.Fields(shell)
+	if len(words) == 0 {
+		return ""
+	}
+	exe := strings.ToLower(strings.Trim(words[0], `"'`))
+	return strings.TrimSuffix(exe[strings.LastIndexAny(exe, `/\`)+1:], ".exe") // a Windows path uses \
 }
 
 func firstNonEmpty(values ...string) string {
@@ -349,8 +366,21 @@ func TestIsBashShellTreatsWindowsDefaultAsPowerShell(t *testing.T) {
 		{"", "${{ matrix.os }}", true}, // unresolvable: scanned as bash, which fails safe
 		{"bash", "windows-latest", true},
 		{"bash -e {0}", "windows-latest", true},
+		{"/bin/bash -e {0}", "ubuntu-latest", true},
+		{"/usr/bin/env bash {0}", "ubuntu-latest", true},
+		{"${{ matrix.shell }}", "ubuntu-latest", true},
+		{"env FOO=1 bash {0}", "ubuntu-latest", true},
+		{"\"/bin/bash\" -e {0}", "ubuntu-latest", true},
+		{"  ", "ubuntu-latest", true},
+		{"  ", "windows-latest", true},
+		{"python", "ubuntu-latest", false},
+		{"\"pwsh\" -command \". '{0}'\"", "ubuntu-latest", false},
+		{"C:\\Windows\\cmd.EXE /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\"", "windows-latest", false},
+		{"pwsh -command \". '{0}'\"", "ubuntu-latest", false},
+		{"/bin/sh -e {0}", "macos-15", true},
 		{"pwsh", "ubuntu-latest", false},
-		{"sh", "", false},
+		{"sh", "", true},
+		{"powershell", "windows-latest", false},
 	} {
 		if got := isBashShell(tc.shell, tc.runsOn); got != tc.want {
 			t.Errorf("isBashShell(%q, %q) = %v, want %v", tc.shell, tc.runsOn, got, tc.want)

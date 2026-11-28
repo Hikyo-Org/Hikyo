@@ -448,7 +448,7 @@ export const zAdapterVisibility = z.enum([
 ]);
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's encrypted webhook registry.
  */
 export const zAdapterProvider = z.string();
 
@@ -727,6 +727,136 @@ export const zDynamicLease = z.object({
 
 export const zDynamicLeaseList = z.object({
     items: z.array(zDynamicLease)
+});
+
+/**
+ * `paused` is an operator or cascade pause (a deleted provider, a protected
+ * environment or an approval policy pauses the rotations it would break);
+ * `halted` is the executor's named stop (a failed authority or pre-publish
+ * gate, or an exhausted retry window); the rotation's `halt_reason` names
+ * which. Only a full resume authorization leaves either. `disabled` is the
+ * soft delete.
+ *
+ */
+export const zCredentialRotationState = z.enum([
+    'active',
+    'paused',
+    'halted',
+    'disabled'
+]);
+
+/**
+ * Why a halted rotation stopped, as a fixed word, never free text and never
+ * provider detail. `retries_exhausted`: the cycle's retry window ran out
+ * before a run could publish or extend the credential, so the delivered
+ * credential is not extended. `authority_lost`: the recorded person no longer
+ * holds the access the rotation needs, or one of its keys or its environment
+ * is gone. `gate_failed`: a pre-publish gate refused, for example the
+ * environment became protected, a key changed or a draft appeared. `unknown`: the stored reason is not one of the words the
+ * server writes (a legacy or restored value). OPEN enum: a later release may
+ * add a word, so a client keeps an unrecognised one and says only that the
+ * rotation is halted.
+ *
+ */
+export const zRotationHaltReason = z.string();
+
+export const zCreateRotationRequest = z.object({
+    provider_id: zId,
+    key_id: zId,
+    username_key_id: zId,
+    interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800))
+});
+
+export const zRotationStateRequest = z.object({
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+});
+
+export const zRunRotationNowRequest = z.object({
+    confirm_destructive: z.boolean(),
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    skip_overlap: z.boolean().optional().default(false)
+});
+
+export const zRotationRunRequested = z.object({
+    rotation_id: zId,
+    run_id: zId,
+    skip_overlap: z.boolean()
+});
+
+/**
+ * The run's state-machine phase. `quarantine` and `failed` are terminal; `done` is a settled run.
+ */
+export const zRotationRunPhase = z.enum([
+    'minting',
+    'minted',
+    'staged',
+    'published',
+    'overlap',
+    'revoking',
+    'revoke_refused',
+    'done',
+    'quarantine',
+    'failed'
+]);
+
+/**
+ * The newest run of a rotation, the top row of its runs list: metadata only.
+ * Neither a role handle nor any provider detail is carried.
+ *
+ */
+export const zRotationLastRun = z.object({
+    id: zId,
+    phase: zRotationRunPhase,
+    error_code: z.string().nullish(),
+    phase_at: zTimestamp
+});
+
+export const zCredentialRotation = z.object({
+    id: zId,
+    environment_id: zId,
+    provider_id: zId,
+    key_id: zId,
+    username_key_id: zId,
+    interval_seconds: z.coerce.bigint().gte(BigInt(3600)).lte(BigInt(7776000)),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(604800)),
+    authority_principal_id: zId,
+    created_by: zId,
+    state: zCredentialRotationState,
+    halt_reason: zRotationHaltReason.optional(),
+    last_run: zRotationLastRun.optional(),
+    owed_drop_runs: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    owed_drop_runs_versions_changed: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    restore_hold: z.boolean(),
+    next_run_at: z.iso.datetime().nullish(),
+    credential_expires_at: z.iso.datetime().nullish(),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    created_at: zTimestamp,
+    updated_at: zTimestamp
+});
+
+export const zCredentialRotationList = z.object({
+    items: z.array(zCredentialRotation),
+    next_after: z.string().max(128).optional()
+});
+
+export const zRotationRun = z.object({
+    id: zId,
+    trigger: z.enum(['schedule', 'manual']),
+    phase: zRotationRunPhase,
+    published_revision: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    revocation_delay_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    started_at: zTimestamp,
+    phase_at: zTimestamp,
+    error_code: z.string().nullish(),
+    not_converged_adapter_targets: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish(),
+    credential_valid_until: z.iso.datetime().nullish(),
+    credential_valid_until_lower_bound: z.boolean().optional()
+});
+
+export const zRotationRunList = z.object({
+    items: z.array(zRotationRun),
+    next_after: z.string().max(128).optional()
 });
 
 export const zMintLeaseRequest = z.object({
@@ -1362,6 +1492,8 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'approve',
         'reject',
         'bypass',
+        'mint',
+        'access',
         'self-config',
         'developer-credential'
     ]),
@@ -1375,6 +1507,8 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
+        'access.bypass',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',
@@ -1424,6 +1558,8 @@ export const zCliReauthTransaction = z.object({
         'approve',
         'reject',
         'bypass',
+        'mint',
+        'access',
         'self-config',
         'developer-credential'
     ]),
@@ -1437,6 +1573,8 @@ export const zCliReauthTransaction = z.object({
         'value.copy-destination',
         'approval.vote',
         'approval.bypass',
+        'identity.credential-mint',
+        'access.bypass',
         'self-config.adopt',
         'self-config.apply',
         'self-config.test',
@@ -2477,9 +2615,11 @@ export const zUpdateFederationIssuerRequest = z.object({
  * value. Exactly one of `string_value`, `number_value` or `bool_value` is
  * set, and that is what makes "a string is never folded to a number" true
  * at the wire boundary rather than only inside the validator:
- * `repository_id: 123` and `repository_id: "123"` are two different
- * requests that cannot be mistaken for one another, and a 64-bit repository
- * id survives without passing through a float.
+ * `run_attempt: 1` and `run_attempt: "1"` are two different requests that
+ * cannot be mistaken for one another, and a 64-bit integer survives without
+ * passing through a float. A platform's required pins are JSON strings,
+ * because the issuer emits them as strings (GitHub's `repository_id` is
+ * `"74"`); a required pin of another kind is refused at creation.
  *
  * A pin naming none or several values is refused rather than resolved by
  * precedence.
@@ -2939,6 +3079,17 @@ export const zRuleCapability = z.enum([
  */
 export const zRuleAxisMode = z.enum(['all', 'only']);
 
+/**
+ * `only` reaches the listed `projects`. `all` reaches every project of
+ * the organisation, including projects created later; such a rule covers
+ * every environment and narrows keys by folder only. Omitted, a rule's
+ * project mode is `only`. The default is stated here rather than as a
+ * schema `default`, so generated clients never add the property to a
+ * request: a server before revision 21 refuses it.
+ *
+ */
+export const zRuleProjectMode = z.enum(['all', 'only']);
+
 export const zRuleEnvironmentItem = z.object({
     project: zId,
     environment: zId
@@ -3126,7 +3277,14 @@ export const zRetentionHealth = z.object({
     adapter_targets_attention: z.int().gte(0),
     adapter_jobs_queued: z.int().gte(0),
     pki_certificates_unknown: z.int().gte(0).optional(),
-    pki_issuers_on_hold: z.int().gte(0).optional()
+    pki_issuers_on_hold: z.int().gte(0).optional(),
+    rotation_runs_quarantined: z.int().gte(0).optional(),
+    rotation_runs_unknown_outcome: z.int().gte(0).optional(),
+    rotation_runs_revoke_refused: z.int().gte(0).optional(),
+    rotation_halted: z.int().gte(0).optional(),
+    rotation_restore_held: z.int().gte(0).optional(),
+    rotation_overdue: z.int().gte(0).optional(),
+    rotation_credentials_expiring: z.int().gte(0).optional()
 });
 
 export const zProjectRetentionPolicy = z.object({
@@ -3602,8 +3760,26 @@ export const zRuleKeyAxis = z.object({
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * With `project_mode` `all` the rule reaches every project of the
+ * organisation, including projects created later. A response lists the
+ * organisation's current projects (a project listing: only that
+ * project), with the rule's folder items repeated under each, so
+ * `projects` is never empty; an organisation listing's or a create's
+ * `where` is a valid create request. A create lists exactly the organisation's current
+ * projects (otherwise 409), keeps the environment axis `all` without
+ * items, and repeats the same folder items, never single keys, under
+ * every project.
+ *
+ * The 500 bound counts the rule as it is listed: every current project
+ * plus its folder items repeated under each. A create that would list
+ * more is refused with 409 `limit_exceeded`. A project creation that
+ * would list an existing rule over all projects past it is refused with
+ * 409 `conflict`, whose detail names the blocking rules to a member
+ * manager. A listing is never truncated.
+ *
  */
 export const zRuleWhere = z.object({
+    project_mode: zRuleProjectMode.optional(),
     projects: z.array(zId).min(1).max(500),
     environments: zRuleEnvironmentAxis,
     keys: zRuleKeyAxis
@@ -3627,6 +3803,32 @@ export const zReplaceRulesRequest = z.intersection(z.union([
     revoke: z.array(zId).max(32).optional(),
     create: z.array(zCreateRuleRequest).max(32).optional()
 }));
+
+export const zAccessExcept = z.object({
+    rule: zId,
+    environments: z.array(zId),
+    keys: z.array(zRuleKeyItem),
+    key_limited: z.boolean()
+});
+
+export const zAccessPrincipal = z.object({
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    kind: zPrincipalKind,
+    grants: z.array(zGrantScope),
+    rules: z.array(zId),
+    excepts: z.array(zAccessExcept)
+});
+
+export const zAccessResolution = z.object({
+    permission: zRuleCapability,
+    environment: zId,
+    key: zId.optional(),
+    can: z.array(zAccessPrincipal),
+    excepted: z.array(zAccessPrincipal),
+    needs_see: z.array(zAccessPrincipal),
+    none: z.array(zAccessPrincipal)
+});
 
 export const zRule = z.object({
     id: zId,
@@ -3934,6 +4136,13 @@ export const zIdentityUnlinkRequest = z.object({
     proof: z.string().max(1024)
 });
 
+/**
+ * The directory lifecycle dialect, a closed set; null means the provider
+ * takes no lifecycle events.
+ *
+ */
+export const zOidcLifecycleProfile = z.enum(['clerk']).nullable();
+
 export const zOidcProviderInput = z.object({
     display_name: z.string().max(256),
     issuer: z.string().max(2048),
@@ -3941,6 +4150,8 @@ export const zOidcProviderInput = z.object({
     client_secret: z.string().max(4096),
     scopes: z.string().max(1024),
     assurance_policy: z.string().max(4096).nullish(),
+    lifecycle_profile: zOidcLifecycleProfile.optional(),
+    lifecycle_secret: z.string().max(4096).optional(),
     enabled: z.boolean(),
     row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
@@ -3963,6 +4174,9 @@ export const zOidcProvider = z.object({
     scopes: z.string(),
     redirect_uri: z.string(),
     assurance_policy: z.string().nullish(),
+    lifecycle_profile: zOidcLifecycleProfile.optional(),
+    lifecycle_secret_set: z.boolean(),
+    lifecycle_uri: z.string(),
     enabled: z.boolean(),
     row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
 });
@@ -5265,6 +5479,13 @@ export const zDynamicProviderId = zId;
 
 export const zLeaseId = zId;
 
+export const zRotationId = zId;
+
+/**
+ * The generation the caller last read. A different current generation is a conflict.
+ */
+export const zExpectedGeneration = z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
+
 export const zSshcaid = zId;
 
 export const zSshcaKeyId = zId;
@@ -6489,6 +6710,22 @@ export const zListProjectRulesPath = z.object({
  */
 export const zListProjectRulesResponse = zRuleList;
 
+export const zResolveAccessPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+export const zResolveAccessQuery = z.object({
+    permission: zRuleCapability,
+    key: zId.optional()
+});
+
+/**
+ * The answer, in four groups.
+ */
+export const zResolveAccessResponse = zAccessResolution;
+
 export const zApplyProjectTemplateBody = zApplyTemplateRequest;
 
 export const zApplyProjectTemplatePath = z.object({
@@ -7169,6 +7406,17 @@ export const zOidcCallbackQuery = z.object({
  * The minted or rotated session.
  */
 export const zOidcCallbackResponse = zLoginResult;
+
+export const zOidcLifecycleBody = z.string();
+
+export const zOidcLifecyclePath = z.object({
+    provider: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+/**
+ * The event verified and was handled or ignored.
+ */
+export const zOidcLifecycleResponse = z.void();
 
 export const zOauth2StartBody = zOauth2StartRequest;
 
@@ -9529,6 +9777,138 @@ export const zSettleLeasePath = z.object({
  * Lease after settlement.
  */
 export const zSettleLeaseResponse = zDynamicLease;
+
+export const zListRotationsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+export const zListRotationsQuery = z.object({
+    include_disabled: z.boolean().optional().default(false),
+    limit: z.int().gte(1).lte(500).optional().default(100),
+    after: z.string().max(128).optional()
+});
+
+/**
+ * Rotation list.
+ */
+export const zListRotationsResponse = zCredentialRotationList;
+
+export const zCreateRotationBody = zCreateRotationRequest;
+
+export const zCreateRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Rotation configured.
+ */
+export const zCreateRotationResponse = zCredentialRotation;
+
+export const zDeleteRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+export const zDeleteRotationQuery = z.object({
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    abandon: z.boolean().optional().default(false)
+});
+
+/**
+ * Rotation after it was disabled.
+ */
+export const zDeleteRotationResponse = zCredentialRotation;
+
+export const zShowRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation.
+ */
+export const zShowRotationResponse = zCredentialRotation;
+
+export const zPauseRotationBody = zRotationStateRequest;
+
+export const zPauseRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation after the change.
+ */
+export const zPauseRotationResponse = zCredentialRotation;
+
+export const zResumeRotationBody = zRotationStateRequest;
+
+export const zResumeRotationPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation after the change.
+ */
+export const zResumeRotationResponse = zCredentialRotation;
+
+export const zReleaseRotationHoldBody = zRotationStateRequest;
+
+export const zReleaseRotationHoldPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Rotation after the release.
+ */
+export const zReleaseRotationHoldResponse = zCredentialRotation;
+
+export const zRunRotationNowBody = zRunRotationNowRequest;
+
+export const zRunRotationNowPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+/**
+ * Run requested.
+ */
+export const zRunRotationNowResponse = zRotationRunRequested;
+
+export const zListRotationRunsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    rotation: zId
+});
+
+export const zListRotationRunsQuery = z.object({
+    limit: z.int().gte(1).lte(500).optional().default(100),
+    after: z.string().max(128).optional()
+});
+
+/**
+ * Run list.
+ */
+export const zListRotationRunsResponse = zRotationRunList;
 
 export const zListSshCasPath = z.object({
     org: zId,

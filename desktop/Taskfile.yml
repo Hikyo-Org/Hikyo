@@ -1,0 +1,29 @@
+version: '3'
+
+# `wails3 build` and `wails3 package` read this file. No icons, signing or
+# notarization yet (plan PR 4); the bundle is ad-hoc signed so it launches.
+vars:
+  APP_NAME: hikyo-desktop
+  BIN_DIR: bin
+
+tasks:
+  build:
+    summary: Builds the release binary (cgo, macOS)
+    env:
+      CGO_ENABLED: '1'
+      CGO_CFLAGS: -mmacosx-version-min=13.0
+      CGO_LDFLAGS: -mmacosx-version-min=13.0
+    cmds:
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o "{{.BIN_DIR}}/{{.APP_NAME}}"
+
+  package:
+    summary: Builds bin/hikyo-desktop.app
+    deps: [build]
+    cmds:
+      - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS/"
+      - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/"
+      - xattr -cr "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - codesign --verify --deep --strict "{{.BIN_DIR}}/{{.APP_NAME}}.app"

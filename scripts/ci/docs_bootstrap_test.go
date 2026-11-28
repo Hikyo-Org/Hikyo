@@ -73,7 +73,7 @@ if [ "$1" = install ] && [ "$SCENARIO" != install-without-jq ]; then cp "$FIXTUR
 `)
 			write(filepath.Join(bin, "node"), `#!/bin/sh
 printf 'node %s\n' "$*" >>"$FIXTURE/calls"
-if [ "$1" = -p ]; then printf 'pnpm@11.24.0\n'; fi
+if [ "$1" = -p ]; then printf 'pnpm@12.21.0\n'; fi
 `)
 			for _, tool := range []string{"corepack", "pnpm"} {
 				write(filepath.Join(bin, tool), "#!/bin/sh\nprintf '"+tool+" %s\\n' \"$*\" >>\"$FIXTURE/calls\"\n")

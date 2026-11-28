@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -17,7 +18,7 @@ type doctorFinding struct {
 	Severity    string  `json:"severity"`
 	Message     string  `json:"message"`
 	EffectiveAt string  `json:"effective_at"`
-	Fingerprint *string `json:"fingerprint,omitempty"`
+	Fingerprint *string `json:"fingerprint,omitzero"`
 }
 
 type doctorResult struct {
@@ -115,6 +116,12 @@ func doctorResults(providers apigen.SamlProviderList, health apigen.RetentionHea
 	result.Findings = append(result.Findings, pkiFinding)
 	rows = append(rows, []string{pkiFinding.Severity, pkiFinding.Provider, pkiFinding.Code, pkiFinding.EffectiveAt, pkiFinding.Message})
 	if (pkiFinding.Severity == "warn" || pkiFinding.Severity == "unknown") && result.Status == "ok" {
+		result.Status = "warning"
+	}
+	rotationFinding := doctorRotationFinding(health)
+	result.Findings = append(result.Findings, rotationFinding)
+	rows = append(rows, []string{rotationFinding.Severity, rotationFinding.Provider, rotationFinding.Code, rotationFinding.EffectiveAt, rotationFinding.Message})
+	if (rotationFinding.Severity == "warn" || rotationFinding.Severity == "unknown") && result.Status == "ok" {
 		result.Status = "warning"
 	}
 	for _, finding := range doctorDiagnosticFindings(health) {
@@ -241,6 +248,45 @@ func doctorPKIFinding(health apigen.RetentionHealth) doctorFinding {
 		return finding
 	}
 	finding.Message = summary
+	return finding
+}
+
+// doctorRotationFinding surfaces scheduled-rotation state that needs an operator
+// (#148): halted rotations, runs closed as quarantine, runs whose superseded role
+// could not be dropped (it owns objects, or a restore put its value back), runs
+// with an unknown outcome (a possibly live credential), active rotations due for
+// over fifteen minutes with nothing started, and delivered credentials that expire
+// within six hours. A server that did not measure them reports unknown, never ok.
+func doctorRotationFinding(health apigen.RetentionHealth) doctorFinding {
+	finding := doctorFinding{Provider: "-", Code: "rotation", Severity: "ok", EffectiveAt: "-"}
+	counts := []struct {
+		n    *int
+		what string
+	}{
+		{health.RotationHalted, "halted rotation(s)"},
+		{health.RotationRestoreHeld, "rotation(s) held by a restore (release with `hikyo rotation release-hold`)"},
+		{health.RotationRunsQuarantined, "quarantined run(s)"},
+		{health.RotationRunsRevokeRefused, "run(s) whose superseded role could not be dropped"},
+		{health.RotationRunsUnknownOutcome, "run(s) with an unknown outcome"},
+		{health.RotationOverdue, "overdue rotation(s)"},
+		{health.RotationCredentialsExpiring, "credential(s) expiring within the next six hours"},
+	}
+	var parts []string
+	needs := false
+	for _, c := range counts {
+		if c.n == nil {
+			finding.Severity = "unknown"
+			finding.Message = "scheduled-rotation health was not measured"
+			return finding
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", *c.n, c.what))
+		needs = needs || *c.n > 0
+	}
+	finding.Message = strings.Join(parts, ", ")
+	if needs {
+		finding.Severity = "warn"
+		finding.Message += "; `hikyo rotation list` shows halted, held and overdue rotations, `hikyo rotation runs <rotation>` shows quarantined, refused and unknown-outcome runs"
+	}
 	return finding
 }
 

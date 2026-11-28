@@ -3,7 +3,7 @@ package ci_test
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 )
 
 type queueWorkflowContract struct {
@@ -667,7 +669,7 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 				if response == nil {
 					response = map[string]any{"total_count": 1, "jobs": []any{j}}
 				}
-				body, err := json.Marshal(response)
+				body, err := json.Marshal(response, jsonwire.Stable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -839,7 +841,7 @@ func TestQueuePublisherClockReadRetriesOnce(t *testing.T) {
 		if file == "ci-dev-gate.yml" {
 			response = []any{page} // Its read is --paginate --slurp.
 		}
-		good, err := json.Marshal(response)
+		good, err := json.Marshal(response, jsonwire.Stable)
 		if err != nil {
 			t.Fatal(err)
 		}

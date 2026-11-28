@@ -1,7 +1,7 @@
 package securitymaintenance
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io/fs"
 	"os"
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securitystatus"
 )
@@ -83,7 +84,7 @@ func TestPublicStatusScrubsAndBoundsDetailByValue(t *testing.T) {
 		Detail: `registry login "hunter2-user" failed: Authorization: Bearer abc.def.ghi password=hunter2 ` +
 			`dsn: postgres://admin:s3cr3t@db.internal/hikyo HIKYO_ROOT_KEY=0123456789abcdef ` + strings.Repeat("word ", 600),
 	}
-	raw, err := json.Marshal(state.Public())
+	raw, err := json.Marshal(state.Public(), jsonwire.Stable)
 	if err != nil {
 		t.Fatal(err)
 	}
