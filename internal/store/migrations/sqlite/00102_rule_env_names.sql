@@ -28,8 +28,11 @@
 --     (`only` with no name) and carries a manager-facing env_fault naming
 --     the reason, audited as rule.disabled. Those are environment items
 --     naming a missing environment, a project outside the rule, the same
---     name twice in a project, or an all-projects rule (which could not hold
---     environment items before). Only a corrupted database can hold them.
+--     name twice in a project, an all-projects rule (which could not hold
+--     environment items before), or a permission needing whole projects
+--     (project settings, identities, adapters) that names environments,
+--     which never validated and reached nothing. Only a corrupted database
+--     can hold them.
 --
 -- Afterwards rule_items has no env_id: nothing matches environments by id.
 -- env_split_from, env_split_project and env_migration are scratch columns of
@@ -83,6 +86,15 @@ WHERE r.env_fault IS NULL
   AND EXISTS (SELECT 1 FROM rule_items AS a JOIN rule_items AS b
       ON b.rule_id = a.rule_id AND b.axis = 'env' AND b.project_id = a.project_id AND b.env_name = a.env_name AND b.id <> a.id
     WHERE a.rule_id = r.id AND a.axis = 'env');
+-- A permission that needs whole projects (domain.ShapeProject, pinned by
+-- TestRuleEnvNamesMigrationShapeProjectList) never validated with
+-- environment items, so it reached nothing. Split or converted, a part
+-- without items there would be a valid whole-project rule granting what the
+-- old rule did not, so it fails closed before either predicate runs.
+UPDATE rules AS r SET env_fault = 'Disabled by the upgrade to environment names: its permission needs whole projects but it names environments, so it reached nothing. It reaches no environment; revoke it and create it again.'
+WHERE r.env_fault IS NULL
+  AND r.capability IN ('manage-adapters', 'manage-identities', 'project-settings')
+  AND EXISTS (SELECT 1 FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'env');
 
 -- Inconsistent rules: some project of the rule holds an environment carrying
 -- one of the rule's names that is not one of its items there.

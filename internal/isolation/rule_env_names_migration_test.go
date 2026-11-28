@@ -60,6 +60,28 @@ func TestRuleEnvNamesMigrationPostgres(t *testing.T) {
 	testRuleEnvNamesMigration(t, envNamesMigrationDB(t, store.EnginePostgres))
 }
 
+// TestRuleEnvNamesMigrationShapeProjectList pins the whole-project
+// capabilities 00102 faults to domain.ShapeProject on both engines, so a
+// capability gaining that shape cannot be split into a live rule.
+func TestRuleEnvNamesMigrationShapeProjectList(t *testing.T) {
+	var quoted []string
+	for _, c := range domain.RuleCapabilities() {
+		if shape, _ := domain.RuleShapeOf(c); shape == domain.ShapeProject {
+			quoted = append(quoted, "'"+string(c)+"'")
+		}
+	}
+	want := "r.capability IN (" + strings.Join(quoted, ", ") + ")"
+	for _, engine := range []string{"postgres", "sqlite"} {
+		sql, err := store.MigrationsFS.ReadFile("migrations/" + engine + "/00102_rule_env_names.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(string(sql), "r.capability IN ("); n != 1 || !strings.Contains(string(sql), want) {
+			t.Errorf("%s 00102 lists the whole-project capabilities other than %s (%d lists)", engine, want, n)
+		}
+	}
+}
+
 // envNamesMigrationDB is a scratch database of the engine, unmigrated.
 func envNamesMigrationDB(t *testing.T, engine store.Engine) envMigrationDB {
 	t.Helper()
@@ -225,6 +247,17 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	stmts = append(stmts, item("rul_allp_e1", "rul_allp", "env", "prj_a", "env_a_prod", ""))
 	stmts = append(stmts, rule("rul_out", "usr_out", "read", "only", "only", "all")...)
 	stmts = append(stmts, item("rul_out_pa", "rul_out", "project", "prj_a", "", ""), item("rul_out_e1", "rul_out", "env", "prj_b", "env_b_prod", ""))
+	// Fail closed: project settings needs whole projects (ShapeProject), so a
+	// stored one naming environments never validated and reached nothing.
+	// rul_ps excepts a/prod only, which the split would turn into a valid,
+	// live whole-project rule over b; rul_psc excepts prod in both, which the
+	// conversion would keep narrowed.
+	stmts = append(stmts, rule("rul_ps", "usr_ps", "project-settings", "only", "all", "all")...)
+	stmts = append(stmts, projects("rul_ps")...)
+	stmts = append(stmts, item("rul_ps_e1", "rul_ps", "env", "prj_a", "env_a_prod", ""))
+	stmts = append(stmts, rule("rul_psc", "usr_psc", "project-settings", "only", "all", "all")...)
+	stmts = append(stmts, projects("rul_psc")...)
+	stmts = append(stmts, item("rul_psc_e1", "rul_psc", "env", "prj_a", "env_a_prod", ""), item("rul_psc_e2", "rul_psc", "env", "prj_b", "env_b_prod", ""))
 	// Fail closed: an item naming an environment that is gone (seeded below,
 	// past the foreign key), and one environment listed twice (the same name
 	// twice in one project).
@@ -335,6 +368,8 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		{"usr_exc", domain.CapEdit, nil, []domain.EnvID{"env_a_dev", "env_b_prod", "env_b_dev"}, []domain.ProjectID{"prj_b"}},
 		{"usr_fr", domain.CapRead, nil, []domain.EnvID{"env_a_prod", "env_b_prod", "env_b_dev"}, []domain.ProjectID{"prj_b"}},
 		{"usr_allp", domain.CapRead, nil, nil, nil},
+		{"usr_ps", domain.CapProjectSettings, nil, nil, nil},
+		{"usr_psc", domain.CapProjectSettings, nil, nil, nil},
 		{"usr_out", domain.CapRead, nil, nil, nil},
 		// The Edit folder rule reaches a key in svc/ where it did before: a's
 		// environments but dev, and nothing in b.
@@ -471,8 +506,39 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 			t.Errorf("disabled rule of %s reaches %v", p, got)
 		}
 	}
-	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 9 {
-		t.Errorf("%d migration audit events, want 9", n)
+	// The whole-project rules keep their one row, faulted and audited, and
+	// neither is split: no live rule over b appears.
+	for id, envIDs := range map[string][]string{"rul_ps": {"prj_a/env_a_prod"}, "rul_psc": {"prj_a/env_a_prod", "prj_b/env_b_prod"}} {
+		const fault = "Disabled by the upgrade to environment names: its permission needs whole projects but it names environments, so it reached nothing. It reaches no environment; revoke it and create it again."
+		principal := "usr_" + strings.TrimPrefix(id, "rul_")
+		if n := db.count(`SELECT COUNT(*) FROM rules WHERE principal_id = '` + principal + `'`); n != 1 {
+			t.Errorf("%s holds %d rules after 00102, want its one faulted rule", principal, n)
+		}
+		if got := db.text(`SELECT env_fault FROM rules WHERE id = '` + id + `' AND env_mode = 'only'`); got != fault {
+			t.Errorf("%s fault = %q, want %q", id, got, fault)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM rule_items WHERE rule_id = '` + id + `' AND axis = 'env'`); n != 0 {
+			t.Errorf("%s kept %d environment items", id, n)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.split' AND object_id = '` + id + `'`); n != 0 {
+			t.Errorf("%s was split", id)
+		}
+		var disabled struct {
+			EnvMode string   `json:"env_mode"`
+			EnvIDs  []string `json:"env_ids"`
+		}
+		if err := json.Unmarshal([]byte(db.text(`SELECT payload FROM audit_tenant_events WHERE type = 'rule.disabled' AND object_id = '`+id+`'`)), &disabled); err != nil {
+			t.Fatalf("%s rule.disabled payload: %v", id, err)
+		}
+		if disabled.EnvMode != "all" || !slices.Equal(disabled.EnvIDs, envIDs) {
+			t.Errorf("%s rule.disabled records %+v, want all except %v", id, disabled, envIDs)
+		}
+		if got := reached(domain.PrincipalID(principal), domain.CapProjectSettings, nil); len(got) != 0 {
+			t.Errorf("disabled rule of %s reaches %v", principal, got)
+		}
+	}
+	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 11 {
+		t.Errorf("%d migration audit events, want 11", n)
 	}
 	// Each migration event reads back as the store reads it and passes the
 	// closed registry, like any event the application writes.
