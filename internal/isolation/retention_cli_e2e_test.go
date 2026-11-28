@@ -3,6 +3,7 @@ package isolation
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,9 +62,9 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	cfg.BackupRecipients, cfg.BackupDir = []string{recipient}, t.TempDir()
 	cfg.BackupInterval, cfg.BackupRPO = config.DefaultBackupInterval, config.DefaultBackupRPO
 	cfg.BackupRetainCount, cfg.BackupRetainDays = config.DefaultBackupRetainCount, config.DefaultBackupRetainDays
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	firstJobs := newSchedulerLog()
 
-	first, err := app.Boot(t.Context(), cfg, log)
+	first, err := app.Boot(t.Context(), cfg, slog.New(firstJobs))
 	if err != nil {
 		t.Fatalf("first boot: %v", err)
 	}
@@ -77,7 +79,13 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	// The startup catch-up runs each job once and never retries before the next
+	// tick, so wait for that run's own completion record. A failed job then
+	// fails the test at once with its error instead of waiting for a row that
+	// will never appear.
+	firstJobs.wait(t, "payload_gc")
 	waitForCount(t, db, "SELECT COUNT(*) FROM retention_runtime WHERE id = 1 AND last_prune_success IS NOT NULL", 1)
+	firstJobs.wait(t, "backup_prune")
 	waitForCount(t, db, "SELECT COUNT(*) FROM backup_state WHERE id = 1 AND last_success_at IS NOT NULL AND last_artifact_sha256 <> '' AND last_prune_at IS NOT NULL AND prune_failure_reason = ''", 1)
 
 	rootKey, err := crypto.ReadRootKey(cfg.RootKeyFile, "")
@@ -187,7 +195,8 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	}
 	stopFirst()
 
-	second, err := app.Boot(t.Context(), cfg, log)
+	secondJobs := newSchedulerLog()
+	second, err := app.Boot(t.Context(), cfg, slog.New(secondJobs))
 	if err != nil {
 		t.Fatalf("restart boot: %v", err)
 	}
@@ -198,6 +207,7 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	defer stopSecond()
 	waitHTTP(t, "http://"+second.OperationalAddr+"/healthz")
 	waitForCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE collected_at IS NOT NULL", 3)
+	secondJobs.wait(t, "backup_prune")
 	// Payload GC precedes backup jobs. Require this startup's completed prune,
 	// not the old successful timestamp while a new attempt is in progress.
 	waitForCount(t, db, "SELECT COUNT(*) FROM backup_state WHERE id = 1 AND last_prune_attempt_id <> '"+beforeRestart.LastPruneAttemptID+"' AND last_prune_at IS NOT NULL AND prune_failure_reason = ''", 1)
@@ -262,7 +272,9 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 			t.Fatalf("doctor retention contract: %v (exit %d)", err, exit)
 		}
 	}
-	runDoctor("ok", "last_prune_success is 0s old")
+	// The age is wall clock since the startup prune, so it grows under load; the
+	// unit test in internal/cli pins the exact "0s old" rendering with a fixed now.
+	runDoctor("ok", "last_prune_success is ")
 	staleAt := time.Now().UTC().Add(-25 * time.Hour).Format(time.RFC3339Nano)
 	execRaw(t, db, "UPDATE retention_runtime SET last_prune_success = '"+staleAt+"' WHERE id = 1")
 	runDoctor("warn", "old (> 24h)")
@@ -496,11 +508,144 @@ func seedRetentionCLICorpus(t *testing.T, db *store.DB, principal domain.Princip
 		retentionCLIOrg, retentionCLIProject, retentionCLIEnv, principal, pinExpiry, ts, ts))
 }
 
+// retentionServerExits records a served app that stopped without being asked
+// to, keyed by test, so waits fail at once instead of outliving it.
+var retentionServerExits sync.Map
+
+// schedulerJobBound caps one wait for a startup job; a job still pending then
+// is named in the failure instead of leaving the test to the go test timeout.
+const schedulerJobBound = 5 * time.Minute
+
+// schedulerLog is the app logger for these tests. The scheduler logs "scheduler
+// job failed" with the error when a job errors, then one health record per job
+// that has a LastSuccess probe, so those records are the completion signal.
+type schedulerLog struct {
+	mu   sync.Mutex
+	jobs map[string]*schedulerJob
+}
+
+// schedulerJob is closed (done) by the first completion record for the job.
+type schedulerJob struct {
+	done   chan struct{}
+	failed bool // separate from text: an error with empty text is still a failure
+	text   string
+}
+
+func newSchedulerLog() *schedulerLog { return &schedulerLog{jobs: map[string]*schedulerJob{}} }
+
+// job returns the entry for name; the caller holds l.mu.
+func (l *schedulerLog) job(name string) *schedulerJob {
+	j := l.jobs[name]
+	if j == nil {
+		j = &schedulerJob{done: make(chan struct{})}
+		l.jobs[name] = j
+	}
+	return j
+}
+
+func (*schedulerLog) Enabled(context.Context, slog.Level) bool { return true }
+func (l *schedulerLog) WithAttrs([]slog.Attr) slog.Handler     { return l }
+func (l *schedulerLog) WithGroup(string) slog.Handler          { return l }
+
+func (l *schedulerLog) Handle(_ context.Context, r slog.Record) error {
+	var failed bool
+	switch r.Message {
+	case "scheduler job health":
+	case "scheduler job failed", "scheduler job health check failed", "last_prune_success has never been recorded":
+		failed = true
+	default:
+		return nil
+	}
+	var name, text string
+	r.Attrs(func(a slog.Attr) bool {
+		switch a.Key {
+		case "job":
+			name = a.Value.String()
+		case "err":
+			text = a.Value.String()
+		}
+		return true
+	})
+	if failed && text == "" {
+		text = r.Message
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	j := l.job(name)
+	select {
+	case <-j.done:
+		// The health record follows "scheduler job failed"; keep the first, real one.
+		return nil
+	default:
+	}
+	j.failed, j.text = failed, text
+	close(j.done)
+	return nil
+}
+
+// wait blocks until the startup run of job has finished. It fails promptly
+// when the job errors or the served app dies, and names the pending job when
+// schedulerJobBound or the test context ends first.
+func (l *schedulerLog) wait(t *testing.T, job string) {
+	t.Helper()
+	start := time.Now()
+	l.mu.Lock()
+	j := l.job(job)
+	exportJob := l.job("backup_export")
+	l.mu.Unlock()
+	bound := time.NewTimer(schedulerJobBound)
+	defer bound.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		l.mu.Lock()
+		// backup_prune cannot succeed after a failed export; surface that cause.
+		exportDone, exportFailed, exportText := false, exportJob.failed, exportJob.text
+		select {
+		case <-exportJob.done:
+			exportDone = true
+		default:
+		}
+		l.mu.Unlock()
+		if job == "backup_prune" && exportDone && exportFailed {
+			t.Fatalf("scheduler job backup_export failed: %s", exportText)
+		}
+		select {
+		case <-j.done:
+			l.mu.Lock()
+			failed, text := j.failed, j.text
+			l.mu.Unlock()
+			if failed {
+				t.Fatalf("scheduler job %s failed: %s", job, text)
+			}
+			t.Logf("scheduler job %s finished after %s", job, time.Since(start).Round(time.Millisecond))
+			return
+		case <-bound.C:
+			t.Fatalf("scheduler job %s still pending after %s", job, schedulerJobBound)
+		case <-t.Context().Done():
+			t.Fatalf("test ended while scheduler job %s was pending", job)
+		case <-poll.C:
+			if err, ok := retentionServerExits.Load(t); ok {
+				t.Fatalf("server exited while scheduler job %s was pending: %v", job, err)
+			}
+		}
+	}
+}
+
 func serveRetentionApp(t *testing.T, srv *app.Server) func() {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- srv.ServeWithReady(ctx, nil) }()
+	go func() {
+		err := srv.ServeWithReady(ctx, nil)
+		if ctx.Err() == nil {
+			if err == nil {
+				err = errors.New("server returned before shutdown was requested")
+			}
+			retentionServerExits.LoadOrStore(t, err)
+		}
+		done <- err
+	}()
 	stopped := false
 	stop := func() {
 		if stopped {
@@ -517,7 +662,7 @@ func serveRetentionApp(t *testing.T, srv *app.Server) func() {
 			t.Error("server did not shut down within 10s")
 		}
 	}
-	t.Cleanup(stop)
+	t.Cleanup(func() { stop(); retentionServerExits.Delete(t) })
 	return stop
 }
 

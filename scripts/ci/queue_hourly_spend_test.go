@@ -98,9 +98,10 @@ func maxParallelLanes(t *testing.T) int {
 }
 
 // TestReserveSizingIsPinnedAndDocumented pins the sizing behind the interim exception of
-// 2026-11-26 (#1598). The pinned worst case is 1,401 requests an hour (40.1% over
-// the window, above the 25% of Q2). Marc accepted 1,396 (39.6%) for the #1598 interim; on 2026-11-26
-// the coordinator accepted figures up to a ceiling of about 1,420 an hour (42%). The exception ends when #1598 lands.
+// 2026-11-26 (#1598). The pinned worst case on dev is 1,425 requests an hour (42.5% over
+// the window, above the 25% of Q2; main's is 1,401, 40.1%). Marc accepted 1,396 (39.6%) for the #1598 interim; on 2026-11-26
+// the coordinator accepted figures up to a ceiling of about 1,420 an hour (42%), and on 2026-11-27 the owner accepted
+// dev's figure as an interim exception with a ceiling of about 1,430 an hour. The exception ends when #1598 lands.
 // R = 480 is below the honest bound, so ungated spend can exceed it in a
 // busy hour while a group is in flight and a merge group can then be dequeued and
 // re-queued. Every figure is measured (M) or estimated (E); docs/development/ci.md must
@@ -186,9 +187,18 @@ func TestReserveSizingIsPinnedAndDocumented(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)", "https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "659", "947", "dequeued and re-queued", "1,425", "42.5%", "accepted this figure on 2026-11-26", "the owner accepted it on 2026-11-27 as an interim exception, ceiling ~1,430/h; the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598", "Dev's ~1,425/h (42.5%) exceeds that 1,420 ceiling", "dev-revoke"} {
-		if !strings.Contains(string(raw), want) {
-			t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", want)
+	// The figures must sit in the exception's own section: elsewhere in the file they would satisfy the pin by accident.
+	const heading = "#### Interim exception to the delay-only rule (2026-11-26, ends when #1598 lands)"
+	_, section, found := strings.Cut(string(raw), heading)
+	if !found {
+		t.Fatalf("docs/development/ci.md must state the interim exception sizing: missing %q", heading)
+	}
+	if end := regexp.MustCompile(`\n#{1,4} `).FindStringIndex(section); end != nil {
+		section = section[:end[0]]
+	}
+	for _, want := range []string{"https://github.com/Hikyo-Org/Hikyo/issues/1598", "R = 480", "659", "947", "dequeued and re-queued", "1,425", "42.5%", "accepted this figure on 2026-11-26", "the owner accepted it on 2026-11-27 as an interim exception, ceiling ~1,430/h; the extra 4 reads per pass come from dev's retarget feedback source; follow-up #1612; removed by #1598", "Dev's ~1,425/h (42.5%) exceeds that 1,420 ceiling", "dev-revoke", "With " + strconv.Itoa(gatedBound) + " allowed to gated work"} {
+		if !strings.Contains(section, want) {
+			t.Fatalf("the interim exception section of docs/development/ci.md must state the sizing: missing %q", want)
 		}
 	}
 }

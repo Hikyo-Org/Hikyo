@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -47,6 +49,9 @@ type ScheduledJob struct {
 	Name        string
 	Run         func(context.Context) error
 	LastSuccess func(context.Context) (time.Time, bool, error)
+	// OnRefused, when set, is called with the runtime-configuration gate's
+	// refusal instead of Run, and returns the job's error.
+	OnRefused func(context.Context, error) error
 }
 
 // Scheduler runs every registered job once on startup and then hourly. Jobs
@@ -209,6 +214,24 @@ func (s *Scheduler) runHA(ctx context.Context) {
 		}
 	}
 
+	// A serialization retry reuses the original now/expires, so a success can
+	// land after the lease already lapsed. Such a result confers no authority.
+	// Judge it by the datastore clock, never this node's local one.
+	fresh := func(expires time.Time) bool {
+		nowCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+		now, err := s.Lease.Now(nowCtx)
+		cancel()
+		if err != nil {
+			s.logger().Error("scheduler datastore clock unreachable; failing closed", "node", s.NodeID, "err", err)
+			return false
+		}
+		if now.Before(expires) {
+			return true
+		}
+		s.logger().Error("scheduler lease lapsed before its grant was observed; failing closed", "node", s.NodeID)
+		return false
+	}
+
 	startTerm := func(expires time.Time) {
 		unconfirmedClaim = false
 		expiresAt = expires
@@ -280,6 +303,11 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					dropLeadership()
 				case !held:
 					dropLeadership()
+				case !fresh(expires):
+					// The row may still be live under our fence (clock read failed):
+					// reconfirm through the provisional renewal instead of idling a TTL.
+					dropLeadership()
+					unconfirmedClaim = true
 				default:
 					expiresAt = expires
 				}
@@ -304,7 +332,7 @@ func (s *Scheduler) runHA(ctx context.Context) {
 						// took over. The provisional token confers no authority over it.
 						unconfirmedClaim = false
 						fence = 0
-					case ctx.Err() == nil:
+					case ctx.Err() == nil && fresh(expires):
 						startTerm(expires)
 					}
 				}
@@ -319,7 +347,7 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					switch {
 					case err != nil:
 						s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
-					case held && ctx.Err() == nil:
+					case held && ctx.Err() == nil && fresh(expires):
 						startTerm(expires)
 					}
 				}
@@ -368,4 +396,54 @@ func (s *Scheduler) checkHealth(ctx context.Context, job ScheduledJob) {
 	if age > pruneStaleAfter {
 		s.logger().Warn("last_prune_success is stale", "job", job.Name, "last_prune_success", at, "age", age)
 	}
+}
+
+// defaultCaptureGrace bounds how long a gated job waits for a replacement
+// generation to publish its runtime bundle.
+const defaultCaptureGrace = 3 * time.Second
+
+// A replacement generation starts its scheduler (startup catch-up) inside
+// installer activation, just before SelfConfig publishes the active bundle.
+// Wait up to grace (polling every grace/30) while capture reports that window:
+// not ready, or fenced only because publication is pending. A lasting fence
+// is final and never waits. grace <= 0 means a single attempt.
+func captureWithGrace(ctx context.Context, grace time.Duration, capture func(context.Context) error) error {
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	step := grace / 30
+	for {
+		err := capture(ctx)
+		transient := errors.Is(err, service.ErrSelfConfigUnavailable) &&
+			(!errors.Is(err, service.ErrSelfConfigFenced) || errors.Is(err, service.ErrSelfConfigPublicationPending))
+		if !transient || grace <= 0 {
+			return err
+		}
+		wait := time.NewTimer(step)
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+			return err
+		case <-timer.C:
+			wait.Stop()
+			return err
+		case <-wait.C:
+		}
+	}
+}
+
+// gateOnRuntimeConfig runs capture before every job run. A refused run never
+// reaches job.Run; a job with OnRefused records its own failure there so the
+// refusal is durable, not just a scheduler log line.
+func gateOnRuntimeConfig(job ScheduledJob, grace time.Duration, capture func(context.Context) error) ScheduledJob {
+	run, refused := job.Run, job.OnRefused
+	job.Run = func(ctx context.Context) error {
+		if err := captureWithGrace(ctx, grace, capture); err != nil {
+			if refused != nil {
+				return refused(ctx, err)
+			}
+			return err
+		}
+		return run(ctx)
+	}
+	return job
 }

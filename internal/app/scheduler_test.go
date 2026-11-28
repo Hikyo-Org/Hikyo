@@ -3,12 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 // fakeLease is a deterministic LeaseManager for the HA leadership tests: no
@@ -23,6 +27,11 @@ type fakeLease struct {
 	claims      int
 	renews      int
 	releases    int
+	afterClaim  func()
+	afterRenew  func()
+	dbSkew      atomic.Int64 // datastore clock offset in ns
+	lateOnce    atomic.Int64 // offset applied to the next Now read only
+	nowErr      atomic.Bool
 }
 
 func (f *fakeLease) set(fn func(*fakeLease)) {
@@ -31,7 +40,12 @@ func (f *fakeLease) set(fn func(*fakeLease)) {
 	fn(f)
 }
 
-func (f *fakeLease) Now(context.Context) (time.Time, error) { return time.Now().UTC(), nil }
+func (f *fakeLease) Now(context.Context) (time.Time, error) {
+	if f.nowErr.Load() {
+		return time.Time{}, errors.New("clock down")
+	}
+	return time.Now().UTC().Add(time.Duration(f.dbSkew.Load() + f.lateOnce.Swap(0))), nil
+}
 
 func (f *fakeLease) ClaimLease(_ context.Context, _, _ string, _, _ time.Time) (int64, bool, error) {
 	f.mu.Lock()
@@ -41,14 +55,20 @@ func (f *fakeLease) ClaimLease(_ context.Context, _, _ string, _, _ time.Time) (
 		return 0, false, nil
 	}
 	f.fence++
+	if f.afterClaim != nil {
+		f.afterClaim()
+	}
 	return f.fence, true, nil
 }
 
 func (f *fakeLease) RenewLease(ctx context.Context, _, _ string, _ int64, _, _ time.Time) (bool, error) {
 	f.mu.Lock()
-	blocks, err, held := f.renewBlocks, f.renewErr, f.renewHeld
+	blocks, err, held, after := f.renewBlocks, f.renewErr, f.renewHeld, f.afterRenew
 	f.renews++
 	f.mu.Unlock()
+	if after != nil {
+		after()
+	}
 	if blocks {
 		<-ctx.Done()
 		return false, ctx.Err()
@@ -311,3 +331,168 @@ func TestSchedulerHAReleasesProvisionalClaimOnStop(t *testing.T) {
 		t.Fatalf("shutdown attempted %d claims, want1", lease.claims)
 	}
 }
+
+func haScheduler(lease *fakeLease, now func() time.Time, runs *atomic.Int64) *Scheduler {
+	return &Scheduler{
+		Interval: time.Hour, Deadline: time.Second, Log: testLogger(), Now: now,
+		Lease: lease, NodeID: "node-a", LeaseTTL: 40 * time.Millisecond, Heartbeat: 10 * time.Millisecond,
+		Jobs: []ScheduledJob{{Name: "gc", Run: func(context.Context) error { runs.Add(1); return nil }}},
+	}
+}
+
+func claims(l *fakeLease) int { l.mu.Lock(); defer l.mu.Unlock(); return l.claims }
+
+func TestSchedulerHAClaimLandingAfterExpiryStartsNoTerm(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	lease.afterClaim = func() { lease.lateOnce.Store(int64(time.Hour)); lease.claimHeld, lease.renewHeld = false, false }
+	s := haScheduler(lease, nil, &runs)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "claim", func() bool { return claims(lease) >= 1 })
+	time.Sleep(80 * time.Millisecond)
+	if s.IsLeader() || runs.Load() != 0 {
+		t.Fatalf("expired claim started a term: leader=%v runs=%d", s.IsLeader(), runs.Load())
+	}
+	cancel()
+	<-done
+}
+
+func TestSchedulerHARenewLandingAfterExpiryDropsLeadership(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	s := haScheduler(lease, nil, &runs)
+	var logged syncBuf
+	s.Log = slog.New(slog.NewTextHandler(&logged, nil))
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "leadership", s.IsLeader)
+	var once atomic.Bool
+	lease.set(func(f *fakeLease) {
+		f.afterRenew = func() {
+			if once.CompareAndSwap(false, true) {
+				f.dbSkew.Add(int64(time.Hour))
+			}
+		}
+	})
+	waitFor(t, "expired renewal to be rejected in-tick", func() bool { return strings.Contains(logged.String(), "lapsed before its grant") })
+	cancel()
+	<-done
+}
+
+func TestSchedulerHAClockErrorAfterClaimStartsNoTerm(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	lease.afterClaim = func() { lease.nowErr.Store(true) }
+	s := haScheduler(lease, nil, &runs)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "claim", func() bool { return claims(lease) >= 1 })
+	time.Sleep(80 * time.Millisecond)
+	if s.IsLeader() || runs.Load() != 0 {
+		t.Fatalf("claim with unreadable clock started a term: leader=%v runs=%d", s.IsLeader(), runs.Load())
+	}
+	cancel()
+	<-done
+}
+
+func TestSchedulerHALocalClockSkewDoesNotBlockLeadership(t *testing.T) {
+	var runs atomic.Int64
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	s := haScheduler(lease, func() time.Time { return time.Now().Add(24 * time.Hour) }, &runs)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "leadership under local clock skew", s.IsLeader)
+	cancel()
+	<-done
+}
+
+func TestGateWaitsForRuntimeConfigPublication(t *testing.T) {
+	pending := fmt.Errorf("window: %w", service.ErrSelfConfigPublicationPending)
+	for name, transient := range map[string]error{
+		"not ready":           service.ErrSelfConfigUnavailable,
+		"previous generation": pending,
+	} {
+		var calls, runs, refusals atomic.Int64
+		job := gateOnRuntimeConfig(ScheduledJob{
+			Name:      "gc",
+			Run:       func(context.Context) error { runs.Add(1); return nil },
+			OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
+		}, 300*time.Millisecond, func(context.Context) error {
+			if calls.Add(1) < 3 {
+				return transient
+			}
+			return nil
+		})
+		if err := job.Run(t.Context()); err != nil || runs.Load() != 1 || refusals.Load() != 0 {
+			t.Fatalf("%s: err=%v runs=%d refusals=%d", name, err, runs.Load(), refusals.Load())
+		}
+	}
+}
+
+func TestGateNeverRetriesFencedAndRefusesOnceAfterGrace(t *testing.T) {
+	for name, refusal := range map[string]error{
+		"fenced":  fmt.Errorf("wrapped: %w", service.ErrSelfConfigFenced),
+		"timeout": service.ErrSelfConfigUnavailable,
+		"pending": service.ErrSelfConfigPublicationPending,
+	} {
+		var calls, refusals atomic.Int64
+		job := gateOnRuntimeConfig(ScheduledJob{
+			Name:      "gc",
+			Run:       func(context.Context) error { t.Fatal("refused job ran"); return nil },
+			OnRefused: func(_ context.Context, err error) error { refusals.Add(1); return err },
+		}, 30*time.Millisecond, func(context.Context) error { calls.Add(1); return refusal })
+		if err := job.Run(t.Context()); !errors.Is(err, refusal) || refusals.Load() != 1 {
+			t.Fatalf("%s: err=%v refusals=%d", name, err, refusals.Load())
+		}
+		if name == "fenced" && calls.Load() != 1 {
+			t.Fatalf("fenced capture retried %d times", calls.Load())
+		}
+		if name != "fenced" && calls.Load() < 2 {
+			t.Fatalf("%s capture not retried: %d", name, calls.Load())
+		}
+	}
+}
+
+func TestSchedulerHARenewClockErrorReconfirmsWithoutWaitingATTL(t *testing.T) {
+	var runs atomic.Int64
+	// A TTL far beyond the test: leadership must return by reconfirmation.
+	lease := &fakeLease{claimHeld: true, renewHeld: true}
+	s := haScheduler(lease, nil, &runs)
+	s.LeaseTTL = time.Hour
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	waitFor(t, "leadership", s.IsLeader)
+	var once atomic.Bool
+	lease.set(func(f *fakeLease) {
+		f.afterRenew = func() {
+			if once.CompareAndSwap(false, true) {
+				f.nowErr.Store(true)
+				go func() { time.Sleep(15 * time.Millisecond); f.nowErr.Store(false) }()
+			}
+		}
+	})
+	waitFor(t, "term restarted after clock error", func() bool { return runs.Load() >= 2 })
+	waitFor(t, "leadership again", s.IsLeader)
+	lease.mu.Lock()
+	claims := lease.claims
+	lease.mu.Unlock()
+	if claims != 1 {
+		t.Fatalf("node reclaimed (%d claims) instead of reconfirming its live lease", claims)
+	}
+	cancel()
+	<-done
+}
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
+func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
