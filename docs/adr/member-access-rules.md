@@ -372,8 +372,11 @@ apply when the implementing pull request merges.
   - A rule that cannot be split deterministically fails closed. It loses its environment items and
     reaches no environment. It carries a manager-facing `fault` naming the reason, and is audited as
     `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or
-    the same name twice in a project, and an all-projects rule with environment items. Only a
-    corrupted database holds such a rule.
+    the same name twice in a project, and an all-projects rule with environment items. It also
+    covers a rule whose capability needs a whole project (`project-settings`, `manage-identities`,
+    `manage-adapters`) that holds environment items. Such a rule never validated and reached
+    nothing; split, a project without items would get a valid whole-project rule, so it fails
+    closed before the split or the conversion. Only a corrupted database holds such a rule.
     A rule carrying a `fault` is treated as invalid whatever its selector, so revoking it takes the
     invalid-rule path: `OpRuleRevoke` on every project of the rule (the organization's current
     projects, for an all-projects rule), plus, for an all-projects rule, a `manage-members` grant at
