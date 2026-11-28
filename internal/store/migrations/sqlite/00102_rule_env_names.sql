@@ -31,8 +31,11 @@
 --     name twice in a project, an all-projects rule (which could not hold
 --     environment items before), or a permission needing whole projects
 --     (project settings, identities, adapters) that names environments,
---     which never validated and reached nothing. Only a corrupted database
---     can hold them.
+--     which never validated and reached nothing. So do rules that did not
+--     validate before the upgrade for any reason a split could lift (more
+--     than 500 items, among others): they reached nothing, and a split part
+--     could validate. Only a corrupted database, or a row written past
+--     validation, can hold them.
 --
 -- Afterwards rule_items has no env_id: nothing matches environments by id.
 -- env_split_from, env_split_project and env_migration are scratch columns of
@@ -95,6 +98,29 @@ UPDATE rules AS r SET env_fault = 'Disabled by the upgrade to environment names:
 WHERE r.env_fault IS NULL
   AND r.capability IN ('manage-adapters', 'manage-identities', 'project-settings')
   AND EXISTS (SELECT 1 FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'env');
+-- Rules that did not validate before this upgrade (domain.Rule.Validate,
+-- and domain.CheckMachineRule for a machine's) reached nothing. A split part
+-- keeps only its own project's items and could validate, granting what the
+-- old rule did not, so these fail closed before either predicate runs too:
+-- more than 500 items (domain.MaxRuleItems, pinned with the capability lists
+-- by TestRuleEnvNamesMigrationShapeProjectList), a project named twice, a key
+-- or folder item outside the rule's projects, only-keys with no key item,
+-- Pin narrowed by keys, a whole-project permission narrowed by keys, and a
+-- machine's rule over more than one project.
+UPDATE rules AS r SET env_fault = 'Disabled by the upgrade to environment names: it did not form a valid rule before the upgrade, so it reached nothing. It reaches no environment; revoke it and create it again.'
+WHERE r.env_fault IS NULL AND r.project_mode = 'only'
+  AND ((SELECT COUNT(*) FROM rule_items AS c WHERE c.rule_id = r.id) > 500
+    OR EXISTS (SELECT 1 FROM rule_items AS a JOIN rule_items AS b
+        ON b.rule_id = a.rule_id AND b.axis = 'project' AND b.project_id = a.project_id AND b.id <> a.id
+      WHERE a.rule_id = r.id AND a.axis = 'project')
+    OR EXISTS (SELECT 1 FROM rule_items AS k WHERE k.rule_id = r.id AND k.axis IN ('key', 'folder')
+      AND NOT EXISTS (SELECT 1 FROM rule_items AS p
+        WHERE p.rule_id = r.id AND p.axis = 'project' AND p.project_id = k.project_id))
+    OR (r.key_mode = 'only' AND NOT EXISTS (SELECT 1 FROM rule_items AS k WHERE k.rule_id = r.id AND k.axis IN ('key', 'folder')))
+    OR ((r.capability IN ('pin') OR r.capability IN ('manage-adapters', 'manage-identities', 'project-settings'))
+      AND (r.key_mode = 'only' OR EXISTS (SELECT 1 FROM rule_items AS k WHERE k.rule_id = r.id AND k.axis IN ('key', 'folder'))))
+    OR (EXISTS (SELECT 1 FROM principals AS m WHERE m.id = r.principal_id AND m.kind = 'machine')
+      AND (SELECT COUNT(*) FROM rule_items AS p WHERE p.rule_id = r.id AND p.axis = 'project') > 1));
 
 -- Inconsistent rules: some project of the rule holds an environment carrying
 -- one of the rule's names that is not one of its items there.
@@ -120,19 +146,6 @@ WHERE r.env_fault IS NULL AND r.project_mode = 'only' AND r.env_migration IS NUL
     WHERE p.rule_id = r.id AND p.axis = 'project'
       AND NOT EXISTS (SELECT 1 FROM rule_items AS x
         WHERE x.rule_id = r.id AND x.axis = 'env' AND x.project_id = p.project_id AND x.env_name = n.env_name));
-
--- Consistent rules that could not be saved again once converted: a rule lists
--- one environment item per name in each project it covers, so projects x
--- (1 + names) + key items must stay within the 500 a rule carries
--- (domain.MaxRuleItems). Such a rule is split per project instead, where each
--- part lists at most what the rule listed there before.
--- A guard for rows that bypassed the item cap: with equal name sets, a saved
--- rule lists as many items by name as by id.
-UPDATE rules AS r SET env_migration = 'split'
-WHERE r.env_fault IS NULL AND r.project_mode = 'only' AND r.env_migration IS NULL
-  AND (SELECT COUNT(*) FROM rule_items AS p WHERE p.rule_id = r.id AND p.axis = 'project')
-      * (1 + (SELECT COUNT(DISTINCT n.env_name) FROM rule_items AS n WHERE n.rule_id = r.id AND n.axis = 'env'))
-    + (SELECT COUNT(*) FROM rule_items AS k WHERE k.rule_id = r.id AND k.axis IN ('key', 'folder')) > 500;
 
 INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at, env_split_from, env_split_project)
 SELECT 'rul_' || lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-7' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + abs(random()) % 4, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))), r.principal_id, r.capability, r.org_id, 'only', r.env_mode,

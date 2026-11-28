@@ -3,6 +3,7 @@ package isolation
 import (
 	"encoding/json/v2"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -60,24 +61,41 @@ func TestRuleEnvNamesMigrationPostgres(t *testing.T) {
 	testRuleEnvNamesMigration(t, envNamesMigrationDB(t, store.EnginePostgres))
 }
 
-// TestRuleEnvNamesMigrationShapeProjectList pins the whole-project
-// capabilities 00102 faults to domain.ShapeProject on both engines, so a
-// capability gaining that shape cannot be split into a live rule.
+// TestRuleEnvNamesMigrationShapeProjectList pins the Go constants 00102
+// hard-codes on both engines: the whole-project capabilities
+// (domain.ShapeProject), the capabilities other than See that keys may not
+// narrow (domain.ShapeEnv), and domain.MaxRuleItems. A capability gaining a
+// shape, or a changed cap, cannot then be split into a live rule.
 func TestRuleEnvNamesMigrationShapeProjectList(t *testing.T) {
-	var quoted []string
-	for _, c := range domain.RuleCapabilities() {
-		if shape, _ := domain.RuleShapeOf(c); shape == domain.ShapeProject {
-			quoted = append(quoted, "'"+string(c)+"'")
+	list := func(want domain.RuleShape) string {
+		var quoted []string
+		for _, c := range domain.RuleCapabilities() {
+			if shape, _ := domain.RuleShapeOf(c); shape == want && c != domain.CapRead {
+				quoted = append(quoted, "'"+string(c)+"'")
+			}
 		}
+		return "r.capability IN (" + strings.Join(quoted, ", ") + ")"
 	}
-	want := "r.capability IN (" + strings.Join(quoted, ", ") + ")"
+	whole, envOnly := list(domain.ShapeProject), list(domain.ShapeEnv)
+	capLists := regexp.MustCompile(`r\.capability IN \([^)]*\)`)
+	itemCap := regexp.MustCompile(`FROM rule_items AS c WHERE c\.rule_id = r\.id\) > (\d+)`)
 	for _, engine := range []string{"postgres", "sqlite"} {
-		sql, err := store.MigrationsFS.ReadFile("migrations/" + engine + "/00102_rule_env_names.sql")
+		raw, err := store.MigrationsFS.ReadFile("migrations/" + engine + "/00102_rule_env_names.sql")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if n := strings.Count(string(sql), "r.capability IN ("); n != 1 || !strings.Contains(string(sql), want) {
-			t.Errorf("%s 00102 lists the whole-project capabilities other than %s (%d lists)", engine, want, n)
+		sql := string(raw)
+		got := capLists.FindAllString(sql, -1)
+		if !slices.Contains(got, whole) || !slices.Contains(got, envOnly) {
+			t.Errorf("%s 00102 capability lists %v, want %s and %s", engine, got, whole, envOnly)
+		}
+		for _, l := range got {
+			if l != whole && l != envOnly {
+				t.Errorf("%s 00102 lists %s, neither %s nor %s", engine, l, whole, envOnly)
+			}
+		}
+		if m := itemCap.FindAllStringSubmatch(sql, -1); len(m) != 1 || m[0][1] != fmt.Sprint(domain.MaxRuleItems) {
+			t.Errorf("%s 00102 item caps %v, want one of %d (domain.MaxRuleItems)", engine, m, domain.MaxRuleItems)
 		}
 	}
 }
@@ -266,12 +284,10 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	stmts = append(stmts, rule("rul_twice", "usr_twice", "read", "only", "only", "all")...)
 	stmts = append(stmts, item("rul_twice_pa", "rul_twice", "project", "prj_a", "", ""),
 		item("rul_twice_e1", "rul_twice", "env", "prj_a", "env_a_prod", ""), item("rul_twice_e2", "rul_twice", "env", "prj_a", "env_a_prod", ""))
-	// The size guard: a consistent rule whose projects select the same names
-	// lists as many items by name as it did by id, so Validate's cap kept
-	// every saved one within MaxRuleItems. This one was written past it (raw
-	// SQL, as a row bypassing Validate): c and d each select the same 250
-	// names, 2 + 500 items by id and 2 * (1 + 250) by name. It splits so
-	// every part can be saved again.
+	// Fail closed: a rule written past MaxRuleItems (raw SQL, as a row
+	// bypassing Validate) never validated and reached nothing. c and d each
+	// select the same 250 names, 2 + 500 items by id; converted, 2 + 250
+	// names would validate and go live.
 	stmts = append(stmts, `INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_c', 'org_en', 'c', `+at+`)`,
 		`INSERT INTO projects (id, org_id, name, created_at) VALUES ('prj_d', 'org_en', 'd', `+at+`)`)
 	stmts = append(stmts, rule("rul_big", "usr_big", "read", "only", "only", "all")...)
@@ -286,6 +302,38 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 				item("rul_big_"+id, "rul_big", "env", project, id, ""))
 		}
 	}
+	// Fail closed: rules that did not validate before 00102 for a reason a
+	// split lifts. Each names a/prod only (except or only), so it splits, and
+	// a part without the fault would validate and go live:
+	//   rul_dupp names a twice (two live a parts);
+	//   rul_kout and rul_knull hold a folder outside their projects (in c, and
+	//   in none, which no project item matches either), and rul_konly is only-keys with no key item (See parts keep
+	//   every key);
+	//   rul_pin is Pin narrowed by a folder in a (b's part holds every key);
+	//   rul_mch is a workload's rule over two projects (a's part names one).
+	// rul_psk is project settings narrowed by a folder, with no environment
+	// item: nothing splits it, and it is faulted all the same.
+	stmts = append(stmts, rule("rul_dupp", "usr_dupp", "read", "only", "only", "all")...)
+	stmts = append(stmts, projects("rul_dupp")...)
+	stmts = append(stmts, item("rul_dupp_pa2", "rul_dupp", "project", "prj_a", "", ""), item("rul_dupp_e1", "rul_dupp", "env", "prj_a", "env_a_prod", ""))
+	for _, c := range []struct{ id, keyMode, folderProject string }{{"rul_kout", "only", "prj_c"}, {"rul_knull", "only", ""}, {"rul_konly", "only", "-"}} {
+		stmts = append(stmts, rule(c.id, "usr_"+strings.TrimPrefix(c.id, "rul_"), "read", "only", "all", c.keyMode)...)
+		stmts = append(stmts, projects(c.id)...)
+		stmts = append(stmts, item(c.id+"_e1", c.id, "env", "prj_a", "env_a_prod", ""))
+		if c.folderProject != "-" {
+			stmts = append(stmts, item(c.id+"_f1", c.id, "folder", c.folderProject, "", "svc/"))
+		}
+	}
+	stmts = append(stmts, rule("rul_pin", "usr_pin", "pin", "only", "all", "all")...)
+	stmts = append(stmts, projects("rul_pin")...)
+	stmts = append(stmts, item("rul_pin_e1", "rul_pin", "env", "prj_a", "env_a_prod", ""), item("rul_pin_f1", "rul_pin", "folder", "prj_a", "", "svc/"))
+	stmts = append(stmts, rule("rul_psk", "usr_psk", "project-settings", "only", "all", "all")...)
+	stmts = append(stmts, projects("rul_psk")...)
+	stmts = append(stmts, item("rul_psk_f1", "rul_psk", "folder", "prj_a", "", "svc/"))
+	stmts = append(stmts, `INSERT INTO principals (id, kind, class, created_at) VALUES ('mch_split', 'machine', 'workload', `+at+`)`,
+		`INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('rul_mch', 'mch_split', 'read', 'org_en', 'only', 'only', 'all', 'usr_admin', `+at+`)`)
+	stmts = append(stmts, projects("rul_mch")...)
+	stmts = append(stmts, item("rul_mch_e1", "rul_mch", "env", "prj_a", "env_a_prod", ""))
 	for i, stmt := range stmts {
 		if err := db.exec(stmt); err != nil {
 			t.Fatalf("seed %d %s: %v", i, stmt, err)
@@ -399,15 +447,56 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range bigRules {
-		if n := r.Where.ListedItems(); n > domain.MaxRuleItems {
-			t.Errorf("rul_big part %s lists %d items, above %d", r.ID, n, domain.MaxRuleItems)
-		}
-	}
 	for _, e := range bigEnvs {
 		scope := domain.Scope{Org: "org_en", Project: e.Project, Env: e.ID}
-		if !slices.ContainsFunc(bigRules, func(r domain.Rule) bool { return r.Reaches(domain.CapRead, domain.LevelEnv, scope, nil) }) {
-			t.Errorf("usr_big lost %s after 00102", e.ID)
+		if slices.ContainsFunc(bigRules, func(r domain.Rule) bool { return r.Reaches(domain.CapRead, domain.LevelEnv, scope, nil) }) {
+			t.Errorf("usr_big reaches %s after 00102; it reached nothing before", e.ID)
+		}
+	}
+	// The rules that did not validate before 00102: one faulted row each,
+	// no split, audited, reaching nothing.
+	const invalid = "Disabled by the upgrade to environment names: it did not form a valid rule before the upgrade, so it reached nothing. It reaches no environment; revoke it and create it again."
+	for _, c := range []struct {
+		id, principal string
+		capability    domain.Capability
+	}{
+		{"rul_big", "usr_big", domain.CapRead}, {"rul_dupp", "usr_dupp", domain.CapRead}, {"rul_kout", "usr_kout", domain.CapRead},
+		{"rul_knull", "usr_knull", domain.CapRead}, {"rul_konly", "usr_konly", domain.CapRead}, {"rul_pin", "usr_pin", domain.CapPin},
+		{"rul_psk", "usr_psk", domain.CapProjectSettings}, {"rul_mch", "mch_split", domain.CapRead},
+	} {
+		if n := db.count(`SELECT COUNT(*) FROM rules WHERE principal_id = '` + c.principal + `'`); n != 1 {
+			t.Errorf("%s holds %d rules after 00102, want its one faulted rule", c.principal, n)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM rules WHERE id = '` + c.id + `' AND env_mode = 'only' AND env_fault = '` + invalid + `'`); n != 1 {
+			t.Errorf("%s is not faulted as invalid before the upgrade", c.id)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM rule_items WHERE rule_id = '` + c.id + `' AND axis = 'env'`); n != 0 {
+			t.Errorf("%s kept %d environment items", c.id, n)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.disabled' AND object_id = '` + c.id + `'`); n != 1 {
+			t.Errorf("%s has %d rule.disabled events, want 1", c.id, n)
+		}
+		if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.split' AND object_id = '` + c.id + `'`); n != 0 {
+			t.Errorf("%s was split", c.id)
+		}
+		rules, err := db.rules.Rules(ctx, domain.PrincipalID(c.principal))
+		if err != nil {
+			t.Fatal(err)
+		}
+		machine, err := db.rules.MachineRules(ctx, domain.PrincipalID(c.principal))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range machine {
+			if domain.CheckMachineRule(domain.ClassWorkload, r) == domain.MachineRuleOK {
+				rules = append(rules, r)
+			}
+		}
+		for _, e := range envs {
+			scope := domain.Scope{Org: "org_en", Project: e.Project, Env: e.ID}
+			if slices.ContainsFunc(rules, func(r domain.Rule) bool { return r.Reaches(c.capability, domain.LevelEnv, scope, nil) }) {
+				t.Errorf("%s reaches %s after 00102; it reached nothing before", c.id, e.ID)
+			}
 		}
 	}
 
@@ -419,7 +508,7 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 	splits := map[string]struct {
 		principal string
 		projects  int
-	}{"rul_only": {"usr_only", 1}, "rul_exc": {"usr_exc", 2}, "rul_fe": {"usr_fe", 1}, "rul_fr": {"usr_fr", 2}, "rul_big": {"usr_big", 2}}
+	}{"rul_only": {"usr_only", 1}, "rul_exc": {"usr_exc", 2}, "rul_fe": {"usr_fe", 1}, "rul_fr": {"usr_fr", 2}}
 	for old, want := range splits {
 		if n := db.count(`SELECT COUNT(*) FROM rules WHERE id = '` + old + `'`); n != 0 {
 			t.Errorf("split rule %s survived", old)
@@ -537,8 +626,8 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 			t.Errorf("disabled rule of %s reaches %v", principal, got)
 		}
 	}
-	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 11 {
-		t.Errorf("%d migration audit events, want 11", n)
+	if n := db.count(`SELECT COUNT(*) FROM audit_tenant_events WHERE type IN ('rule.split', 'rule.disabled')`); n != 18 {
+		t.Errorf("%d migration audit events, want 18", n)
 	}
 	// Each migration event reads back as the store reads it and passes the
 	// closed registry, like any event the application writes.
