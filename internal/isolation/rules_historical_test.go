@@ -75,13 +75,18 @@ func assertBeforeAllProjectsReads(t *testing.T, r *authn.Resolver) {
 
 // peopleInCensus is a project census without its machine rules.
 func peopleInCensus(census []authn.CensusRule, err error) ([]domain.Rule, error) {
+	return people(census), err
+}
+
+// people is the census's person rules.
+func people(census []authn.CensusRule) []domain.Rule {
 	var rules []domain.Rule
 	for _, c := range census {
 		if !c.Machine {
 			rules = append(rules, c.Rule)
 		}
 	}
-	return rules, err
+	return rules
 }
 
 func wantRule(t *testing.T, what, id string, rules []domain.Rule, err error) {
@@ -152,7 +157,7 @@ func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
 			!slices.ContainsFunc(gotCensus, func(c authn.CensusRule) bool { return c.Machine && c.Rule.ID == "rul_hist_mch" }) {
 			t.Fatalf("project census at schema 102 = %+v, want the current resolver's 3 rules with machine rul_hist_mch %+v", gotCensus, wantCensus)
 		}
-		census, _ := peopleInCensus(gotCensus, nil)
+		census := people(gotCensus)
 		same("machine rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.MachineRules(ctx, "mch_ap") }, 1)
 		for what, rules := range map[string][]domain.Rule{"rules": human, "project census": census} {
 			i := slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == all.ID })

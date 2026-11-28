@@ -301,17 +301,21 @@ const KEY_AWARE: ReadonlySet<PermId> = new Set(['edit', 'publish', 'reveal', 're
 /** The resolver asks about one environment; only project permissions need every environment. */
 const atProject = (id: PermId) => perm(id).shape === 'project';
 
+/** The ids of a project's environments carrying these names now, as the server binds them (#1447); undefined for a project unknown here. */
+const envIdsNamed = (world: World, project: string, names: readonly string[]): string[] | undefined =>
+  projectById(world, project)
+    ?.envs.filter((e) => names.includes(e.name))
+    .map((e) => e.id);
+
 /**
  * The environment ids a rule's environment axis lists in one project: those
- * carrying its names now, as the server binds them (#1447), whatever part
- * of the rule a listing returned. Without names (a legacy grant) or with the
- * project unknown here, its items.
+ * its names match, whatever part of the rule a listing returned. A legacy
+ * grant, with no names, keeps its items, as does a project unknown here.
  */
 function envsIn(world: World, rule: Pick<Rule, 'envs'>, project: string): string[] {
+  const items = () => rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
   const { names } = rule.envs;
-  const known = projectById(world, project);
-  if (names === undefined || known === undefined) return rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
-  return known.envs.filter((e) => names.includes(e.name)).map((e) => e.id);
+  return names === undefined ? items() : (envIdsNamed(world, project, names) ?? items());
 }
 
 export type Reach = { hit: false } | { hit: true; ok: true } | { hit: true; ok: false; why: string };
@@ -405,6 +409,22 @@ export function resolve(world: World, member: string, id: PermId, project: strin
   return { state: 'no' };
 }
 
+/** What a rule picks up when created later: projects, and every environment or those with its names. */
+type Growth = { readonly projects: boolean; readonly environments: 'any' | readonly string[] | null };
+
+function growthOf(rule: Rule): Growth | null {
+  // An only list's names also match environments created or renamed to them later.
+  const names = rule.envs.names ?? [];
+  const environments = rule.envs.mode === 'all' ? 'any' : names.length > 0 ? [...names].sort() : null;
+  const projects = rule.projects === '*';
+  return projects || environments !== null ? { projects, environments } : null;
+}
+
+function growthText(g: Growth): string {
+  const envs = g.environments === null ? [] : g.environments === 'any' ? ['environments'] : [`environments named ${g.environments.join(', ')}`];
+  return `new ${[...(g.projects ? ['projects'] : []), ...envs].join(' and ')} included`;
+}
+
 type ReachSummary = {
   environments: number;
   /** Keys the rule reaches, or null when a key catalogue it names cannot be read. */
@@ -413,7 +433,7 @@ type ReachSummary = {
   secrets: number | null;
   protectedEnvs: number;
   /** Things created later that the rule picks up. */
-  grows: 'projects' | 'environments' | 'named environments' | null;
+  grows: Growth | null;
 };
 
 /** What a rule covers, counted. */
@@ -441,8 +461,7 @@ export function reachOf(world: World, rule: Rule): ReachSummary {
     keys: readable ? keys.size : null,
     secrets: readable && effective(rule).includes('reveal') ? secrets : null,
     protectedEnvs: pairs.filter((pair) => pair.env.protected === true).length,
-    // An only list's names also match environments created or renamed to them later.
-    grows: rule.projects === '*' ? 'projects' : rule.envs.mode === 'all' ? 'environments' : (rule.envs.names?.length ?? 0) > 0 ? 'named environments' : null,
+    grows: growthOf(rule),
   };
 }
 
@@ -454,7 +473,7 @@ export function reachText(r: ReachSummary): string {
     r.keys === null ? 'keys not readable' : plural(r.keys, 'key'),
     ...(r.secrets === null ? [] : [`can reveal ${r.secrets} secret values`]),
     r.protectedEnvs > 0 ? `${r.protectedEnvs} protected` : 'no protected environment',
-    ...(r.grows === null ? [] : [`new ${r.grows} included`]),
+    ...(r.grows === null ? [] : [growthText(r.grows)]),
   ].join(' · ');
 }
 
@@ -671,9 +690,7 @@ export function unmatchedEnvNames(world: World, rule: Pick<Rule, 'projects' | 'e
  */
 export function bindEnvNames(world: World, rule: Rule): Rule {
   const names = envNamesOf(world, rule);
-  const items = projectsOf(world, rule).flatMap((project) =>
-    (projectById(world, project)?.envs ?? []).filter((e) => names.includes(e.name)).map((e) => ({ project, environment: e.id })),
-  );
+  const items = projectsOf(world, rule).flatMap((project) => (envIdsNamed(world, project, names) ?? []).map((environment) => ({ project, environment })));
   return { ...rule, envs: { mode: rule.envs.mode, items, names } };
 }
 

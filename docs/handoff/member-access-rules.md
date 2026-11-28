@@ -294,12 +294,16 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   new environment by default, which needs no confirmation and no workaround.
   The gate's reauthentication covers secret plaintext only (`read` with
   `reveal` or `reveal-history`); a machine gaining `edit`, or `read` alone,
-  needs the confirmation and no window. A machine rule create racing a rename
-  into its name takes no project lock: on PostgreSQL the SERIALIZABLE write
-  transactions abort one side (each reads what the other writes), and the
-  retry asks for the ceremony; a row lock taken after the first statement
-  would not change that. `TestMachineRuleCreateRacingEnvironmentRenameFailsClosed`
-  pins it and fails under REPEATABLE READ.
+  needs the confirmation and no window. That config-plaintext gap is the
+  follow-up [#1630](https://github.com/Hikyo-Org/Hikyo/issues/1630). A machine
+  rule create racing a rename into its name takes no project lock: on
+  PostgreSQL the SERIALIZABLE write transactions abort one side (each reads
+  what the other writes), and the retry meets its gate; a row lock taken after
+  the first statement would not change that.
+  `TestMachineRuleCreateRacingEnvironmentRenameFailsClosed` holds the create
+  after its name binding, and the rename after its census, with two serial
+  controls. With `writePostgresOnce` at REPEATABLE READ or READ COMMITTED,
+  both held subtests fail with the create and the rename committed.
 - **Deletion (owner decision 2026-11-27).** Deleting an environment an `all`
   rule excepts widens that rule to the project's other atoms, so it fails
   closed: the service delete and a definitions apply delete are refused like a

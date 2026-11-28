@@ -450,58 +450,174 @@ func TestEnvironmentNameWideningGatesMachines(t *testing.T) {
 	})
 }
 
-// A machine rule create that has bound its names when a rename gives one of
-// them to an environment cannot commit alongside that rename (#1447): each
-// side's widening check reads what the other writes, so on PostgreSQL the
-// SERIALIZABLE write transaction aborts the create, and its retry sees the
-// renamed environment and asks for the reauthentication the caller lacks.
-// The create is held after its name binding by the machine's principal row
-// lock, which the rename does not take. SQLite admits one writer at a time,
-// so a held create cannot interleave with a rename there.
-func TestMachineRuleCreateRacingEnvironmentRenameFailsClosed(t *testing.T) {
-	forEngines(t, func(t *testing.T, db *store.DB) {
-		if db.Engine() != store.EnginePostgres {
-			t.Skip("SQLite serializes whole write transactions, so a create held after its name binding blocks the rename too")
-		}
-		identityFixtures(t, db)
-		ctx := t.Context()
-		execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
-		for _, c := range []string{"definitions-edit", "read", "edit", "publish"} {
-			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
-		}
-		sa, err := identitySvc(db).CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), "racing-reader", domain.ClassAutomation)
-		if err != nil {
-			t.Fatal(err)
-		}
-		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_race_reveal', '"+string(sa.Principal)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
-		// The creator may disclose project-wide and holds no window, so only
-		// reauthentication refuses a create that sees a staging.
-		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_ida_reveal_prj', '"+string(identAdmin)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
-		seedOrigins(t, db)
-		rules := &service.Rules{DB: db, Auth: authWithWindow(db)}
-		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
-		dev := envScope(envA1)
-		hold := func(ctx context.Context, az *authz.TxAuthorizer) error {
-			return az.LockTargetPrincipal(ctx, sa.Principal)
-		}
-		var renamed error
-		created := runBehindHolderThen(t, db, hold, func() {
-			_, renamed = envs.RenameConfirming(ctx, service.LocalPrincipal(identRevatr), dev, "staging", nil, nil)
-		}, func() error {
+// machineRace is a machine holding project-wide reveal, a create giving it
+// read over the name staging, and a rename of dev to staging: run one after
+// the other, the second is refused, since the creator holds no window and
+// the renamer confirms no one.
+type machineRace struct {
+	db      *store.DB
+	machine domain.PrincipalID
+	dev     domain.Scope
+	create  func() error
+	rename  func() error
+}
+
+func newMachineRace(t *testing.T) machineRace {
+	t.Helper()
+	db := seededDB(t, openPostgres)
+	identityFixtures(t, db)
+	ctx := t.Context()
+	execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
+	for _, c := range []string{"definitions-edit", "read", "edit", "publish"} {
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+	}
+	sa, err := identitySvc(db).CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), "racing-reader", domain.ClassAutomation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_race_reveal', '"+string(sa.Principal)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+	// The creator may disclose project-wide and holds no window, so only
+	// reauthentication refuses a create that sees a staging.
+	execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_ida_reveal_prj', '"+string(identAdmin)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+	seedOrigins(t, db)
+	rules := &service.Rules{DB: db, Auth: authWithWindow(db)}
+	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+	dev := envScope(envA1)
+	return machineRace{
+		db: db, machine: sa.Principal, dev: dev,
+		create: func() error {
 			_, err := rules.Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
 				Target: sa.Principal, Capability: domain.CapRead, Org: orgA,
 				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"staging"}, KeyMode: domain.AxisAll}})
 			return err
-		})
-		if renamed != nil {
-			t.Fatalf("the rename, committed before the held create: %v", renamed)
+		},
+		rename: func() error {
+			_, err := envs.RenameConfirming(ctx, service.LocalPrincipal(identRevatr), dev, "staging", nil, nil)
+			return err
+		},
+	}
+}
+
+// rules counts the machine's rules.
+func (m machineRace) rules(t *testing.T) int64 {
+	t.Helper()
+	return queryInt(t, m.db, "SELECT COUNT(*) FROM rules WHERE principal_id = '"+string(m.machine)+"'")
+}
+
+// failedClosed fails t unless exactly one side committed and the other was
+// refused by its own gate: the rename for want of confirmation, or the
+// create for want of reauthentication.
+func (m machineRace) failedClosed(t *testing.T, created, renamed error) {
+	t.Helper()
+	var widening *service.EnvWideningError
+	switch {
+	case created == nil && renamed == nil:
+		t.Fatal("the create and the rename both committed: the machine gained the renamed environment with neither gate asked")
+	case created == nil:
+		if !errors.As(renamed, &widening) || !slices.Equal(widening.Principals, []domain.PrincipalID{m.machine}) {
+			t.Fatalf("rename after the create = %v, want a widening refusal naming the machine", renamed)
 		}
+		if n := m.rules(t); n != 1 || reachesEnv(t, m.db, m.machine, m.dev) {
+			t.Fatalf("after a refused rename the machine holds %d rules, or reaches dev", n)
+		}
+	case renamed == nil:
 		if !errors.Is(created, service.ErrReauthRequired) {
-			t.Fatalf("a machine rule create racing a rename into its name = %v, want ErrReauthRequired", created)
+			t.Fatalf("create after the rename = %v, want ErrReauthRequired", created)
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE principal_id = '"+string(sa.Principal)+"'"); n != 0 || reachesEnv(t, db, sa.Principal, dev) {
-			t.Fatalf("the refused create left %d rules for the machine, or it reaches the renamed environment", n)
+		if n := m.rules(t); n != 0 || reachesEnv(t, m.db, m.machine, m.dev) {
+			t.Fatalf("after a refused create the machine holds %d rules, or reaches the renamed environment", n)
 		}
+	default:
+		t.Fatalf("both refused: create %v, rename %v", created, renamed)
+	}
+}
+
+// blockedOrDone waits until result delivers or one more postgres session
+// than base waits on a lock, and reports whether it delivered.
+func blockedOrDone(t *testing.T, db *store.DB, base int64, result <-chan error) (error, bool) {
+	t.Helper()
+	deadline := time.After(30 * time.Second)
+	for writerWaiters(t, db) <= base {
+		select {
+		case err := <-result:
+			return err, true
+		case <-deadline:
+			t.Fatal("neither finished nor blocked within 30s")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	return nil, false
+}
+
+// A machine rule create and a rename into its name cannot both commit
+// (#1447): each side's widening check reads what the other writes, so on
+// PostgreSQL the SERIALIZABLE write transactions abort one of them, and its
+// retry meets its gate. No lock orders them. SQLite admits one writer at a
+// time, so neither can be held mid-transaction while the other runs there.
+func TestMachineRuleCreateRacingEnvironmentRenameFailsClosed(t *testing.T) {
+	postgresTestDSN(t) // PostgreSQL only: it skips when no server is configured
+	// The same create and rename, one after the other: the create alone
+	// commits with no window, so a gate always asking for one fails here.
+	t.Run("control_create_then_rename", func(t *testing.T) {
+		m := newMachineRace(t)
+		created := m.create()
+		if created != nil {
+			t.Fatalf("the create alone, with no staging = %v, want it committed without a window", created)
+		}
+		m.failedClosed(t, created, m.rename())
+	})
+	t.Run("control_rename_then_create", func(t *testing.T) {
+		m := newMachineRace(t)
+		renamed := m.rename()
+		if renamed != nil {
+			t.Fatalf("the rename alone, with no rule = %v, want it committed unconfirmed", renamed)
+		}
+		m.failedClosed(t, m.create(), renamed)
+	})
+	// The create binds its names, then waits on the machine's principal row
+	// lock, which the rename does not take, while the rename commits.
+	t.Run("create_held_after_binding", func(t *testing.T) {
+		m := newMachineRace(t)
+		hold := func(ctx context.Context, az *authz.TxAuthorizer) error {
+			return az.LockTargetPrincipal(ctx, m.machine)
+		}
+		var renamed error
+		created := runBehindHolderThen(t, m.db, hold, func() { renamed = m.rename() }, m.create)
+		if renamed != nil {
+			t.Fatalf("the rename, run while the create was held: %v", renamed)
+		}
+		m.failedClosed(t, created, renamed)
+	})
+	// The rename reads its census, then waits to write the environment row,
+	// locked here, while the create runs to its end or blocks on the rename.
+	t.Run("rename_held_after_census", func(t *testing.T) {
+		m := newMachineRace(t)
+		ctx := t.Context()
+		holder, err := m.db.PG().Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = holder.Rollback(ctx) }()
+		if _, err := holder.Exec(ctx, "SELECT id FROM environments WHERE id = $1 FOR UPDATE", string(envA1)); err != nil {
+			t.Fatal(err)
+		}
+		base := writerWaiters(t, m.db)
+		renames, creates := make(chan error, 1), make(chan error, 1)
+		go func() { renames <- m.rename() }()
+		if err, done := blockedOrDone(t, m.db, base, renames); done {
+			t.Fatalf("the rename finished (%v) without waiting on the environment row: the interleaving did not occur", err)
+		}
+		go func() { creates <- m.create() }()
+		created, createdFirst := blockedOrDone(t, m.db, base+1, creates)
+		if err := holder.Rollback(ctx); err != nil {
+			t.Fatal(err)
+		}
+		renamed := <-renames
+		if !createdFirst {
+			created = <-creates
+		}
+		t.Logf("the create ended before the rename resumed: %v", createdFirst)
+		m.failedClosed(t, created, renamed)
 	})
 }
 

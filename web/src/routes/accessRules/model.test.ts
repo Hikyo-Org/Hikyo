@@ -23,6 +23,7 @@ import {
   presetOf,
   reach,
   reachOf,
+  reachText,
   resolve,
   ruleHolders,
   rulesFromGrants,
@@ -375,7 +376,7 @@ describe('reach and saving', () => {
     const aliceFolder = rulesOf(world, IDS.alice)[1];
     if (aliceFolder === undefined) throw new Error('no rule');
     // Its only list is the names staging and prod, which a later environment can carry.
-    expect(reachOf(world, aliceFolder)).toEqual({ environments: 2, keys: 3, secrets: 2, protectedEnvs: 1, grows: 'named environments' });
+    expect(reachOf(world, aliceFolder)).toEqual({ environments: 2, keys: 3, secrets: 2, protectedEnvs: 1, grows: { projects: false, environments: ['prod', 'staging'] } });
     expect(reachOf(makeWorld({ readable: false }), aliceFolder)).toMatchObject({ environments: 2, keys: null, secrets: null });
   });
 
@@ -400,10 +401,19 @@ describe('reach and saving', () => {
   it('says an only list of names includes environments named so later', () => {
     const world = makeWorld();
     const rule = (envs: Rule['envs']): Rule => ({ ...newRule(IDS.chen), perms: ['read'], projects: [PAY, IDS.web], envs });
-    expect(reachOf(world, rule({ mode: 'only', names: ['staging'], items: [{ project: PAY, environment: STAGING }] })).grows).toBe('named environments');
+    const text = (r: Rule) => reachText(reachOf(world, r));
+    const named = rule({ mode: 'only', names: ['staging'], items: [{ project: PAY, environment: STAGING }] });
+    expect(reachOf(world, named).grows).toEqual({ projects: false, environments: ['staging'] });
+    expect(text(named)).toContain('new environments named staging included');
     expect(reachOf(world, rule({ mode: 'only', names: [], items: [] })).grows).toBeNull();
     expect(reachOf(world, rule({ mode: 'only', items: [{ project: PAY, environment: STAGING }] })).grows).toBeNull();
-    expect(reachOf(world, rule({ mode: 'all', names: ['prod'], items: [] })).grows).toBe('environments');
+    expect(text(rule({ mode: 'all', names: ['prod'], items: [] }))).toContain('new environments included');
+    // Over all projects it grows both ways: by later projects and by later environments it names.
+    const everywhere = { ...named, projects: '*' as const };
+    expect(reachOf(world, everywhere).grows).toEqual({ projects: true, environments: ['staging'] });
+    expect(text(everywhere)).toContain('new projects and environments named staging included');
+    expect(text({ ...everywhere, envs: ALL })).toContain('new projects and environments included');
+    expect(text({ ...everywhere, envs: { mode: 'only', names: [], items: [] } })).toContain('new projects included');
   });
 
   it('with the Where unchanged, a save moves only the permissions that changed', () => {
