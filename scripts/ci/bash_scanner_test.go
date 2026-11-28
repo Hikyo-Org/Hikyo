@@ -246,26 +246,9 @@ prefixes:
 					if !hasValue && len(rest) > 0 {
 						split, rest = codeText(rest[0]), rest[1:]
 					}
-					for _, arg := range rest {
-						quoted, _ := syntax.Quote(codeText(arg), syntax.LangBash)
-						split += " " + quoted
-					}
-					if f, perr := syntax.NewParser().Parse(strings.NewReader(split), ""); perr == nil && len(f.Stmts) == 1 {
-						if inner, ok := f.Stmts[0].Cmd.(*syntax.CallExpr); ok {
-							// env performs no redirection: what parses as a redirect is a word it
-							// passes on, in its place among the arguments.
-							passed := &syntax.CallExpr{Args: slices.Clone(inner.Args)}
-							for _, redirect := range f.Stmts[0].Redirs {
-								text := redirect.Op.String() + codeText(redirect.Word) // a descriptor digit never changes how bash reads it
-								passed.Args = append(passed.Args, &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{ValuePos: redirect.OpPos, Value: text}}})
-							}
-							slices.SortFunc(passed.Args, func(a, b *syntax.Word) int { return int(a.Pos().Offset()) - int(b.Pos().Offset()) })
-							if innerName, _, _, innerStdin := handedCode(passed); innerStdin != noStdin {
-								return innerName, "", nil, innerStdin // the heredoc env is fed goes to this shell
-							}
-						}
-					}
-					return "env", split, words[0], noStdin
+					// env runs the command its own splitting gives, with no shell between.
+					passed := &syntax.CallExpr{Args: append(envSplitWords(split, words[0].Pos()), rest...)}
+					return handedCode(passed)
 				case envValued.MatchString(option) || envLongValued[long] && hasValue:
 					words = words[1:] // -uNAME, -CDIR, -aNAME, --unset=NAME, --chdir=DIR, --argv0=NAME
 				case (envValueNext.MatchString(option) || envLongValued[option]) && len(words) > 2:
@@ -381,11 +364,76 @@ const (
 	readsStdin
 )
 
+// envSplitWords splits text as GNU env -S does: on unquoted whitespace, with '...' and "..."
+// quotes, backslash escapes (\_ separates outside quotes and is a space inside them, \c ends
+// the text) and a # comment. A word holding ${VAR} reads as an expansion. Each word is placed
+// at pos. Text env would reject splits to nothing.
+func envSplitWords(text string, pos syntax.Pos) []*syntax.Word {
+	var words []*syntax.Word
+	var word strings.Builder
+	inWord, expanded, quote := false, false, byte(0)
+	flush := func() {
+		if inWord {
+			part := syntax.WordPart(&syntax.SglQuoted{Left: pos, Value: word.String()})
+			if expanded {
+				part = &syntax.ParamExp{Dollar: pos}
+			}
+			words = append(words, &syntax.Word{Parts: []syntax.WordPart{part}})
+		}
+		word.Reset()
+		inWord, expanded = false, false
+	}
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case quote == 0 && strings.IndexByte(" \t\n\v\f\r", c) >= 0:
+			flush()
+		case quote == 0 && c == '#' && !inWord:
+			flush()
+			return words
+		case quote == 0 && (c == '\'' || c == '"'):
+			quote, inWord = c, true
+		case quote != 0 && c == quote:
+			quote = 0
+		case c == '\\' && i+1 < len(text) && (quote != '\'' || text[i+1] == '\\' || text[i+1] == '\''):
+			i++
+			inWord = true
+			switch next := text[i]; {
+			case next == 'c' && quote == 0:
+				flush()
+				return words
+			case next == '_' && quote == 0:
+				flush()
+			case next == '_':
+				word.WriteByte(' ')
+			case envEscapes[next] != "":
+				word.WriteString(envEscapes[next])
+			default:
+				word.WriteByte(next)
+			}
+		case c == '$' && quote != '\'' && strings.HasPrefix(text[i:], "${"):
+			expanded, inWord = true, true
+		default:
+			word.WriteByte(c)
+			inWord = true
+		}
+	}
+	if quote != 0 {
+		return nil
+	}
+	flush()
+	return words
+}
+
+var envLongNames = slices.Concat(slices.Collect(maps.Keys(envLongFlags)), slices.Collect(maps.Keys(envLongValued)), []string{"--split-string"})
+
+var envEscapes = map[byte]string{'n': "\n", 't': "\t", 'r': "\r", 'f': "\f", 'v': "\v"}
+
 // envLongOption expands name to the GNU env long option it is a unique prefix of; otherwise
 // it returns name. No option is a prefix of another, so a full name expands to itself.
 func envLongOption(name string) string {
 	var match []string
-	for _, known := range slices.Concat(slices.Collect(maps.Keys(envLongFlags)), slices.Collect(maps.Keys(envLongValued)), []string{"--split-string"}) {
+	for _, known := range envLongNames {
 		if strings.HasPrefix(known, name) {
 			match = append(match, known)
 		}
@@ -547,6 +595,12 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env -S < as argument":               "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"env --e prefix":                     "env --e f bash -c '[[ a == b ]]'\n",
 		"env --n prefix":                     "env --n bash -c '[[ a == b ]]'\n",
+		"env -S space-separated redirect":    "env -S 'bash -e --rcfile < -c \"[[ a == b ]]\"'\n",
+		"env -S redirect-like option value":  "env -S 'bash --rcfile <f -c \"[[ a == b ]]\"'\n",
+		"env -S \\_ separator":               "env -S 'bash\\_-c\\_\"[[ a == b ]]\"'\n",
+		"env -S expanded option":             "env -S 'bash ${OPT} -c \"[[ a == b ]]\"'\n",
+		"env -S \\\" in double quotes":       "env -S 'bash -c \"echo \\\"x\\\"; [[ a == b ]]\"'\n",
+		"env -S single-quoted backslash":     "env -S \"bash -c 'echo \\\\#; [[ a == b ]]'\"\n",
 		"env -aNAME":                         "env -an bash -c '[[ a == b ]]'\n",
 		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
 		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
@@ -667,6 +721,10 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"bash --version":                "bash --version\nsh --help\n",
 		"expanded script, flag, data":   "bash \"$script\" -e <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script, here-string":  "bash \"$script\" <<<'not ( shell'\n",
+		"env -S comment":                "env -S 'true #bash -c \"[[ a == b ]]\"'\n",
+		"env -S \\c ends":               "env -S 'true \\c bash -c \"[[ a == b ]]\"'\n",
+		"env -S unterminated quote":     "env -S 'bash -c \"[[ a == b ]]'\n",
+		"env -S redirect-like words":    "env -S 'bash <-s'\nenv -S 'bash {fd}<f'\nenv -S 'bash &>f'\nenv -S 'bash >&0'\nenv -S 'bash <<EOF'\n",
 		"env -S < script file":          "env -S 'bash <f' <<'EOF'\n[[ a == b ]]\nEOF\n", // bash runs the file <f
 		"env --i ambiguous":             "env --i bash -c '[[ a == b ]]'\n",              // env refuses an ambiguous prefix
 		"expanded script, no stdin":     "bash \"$script\"\necho x | bash \"$script\"\n",
