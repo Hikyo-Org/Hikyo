@@ -141,7 +141,8 @@ jobs:
           set -euo pipefail
           fetch() { gh api -H 'Accept: application/vnd.github.raw' "repos/$GH_REPO/contents/$1?ref=$2"; }
           # A registry without a jobs object is unreadable policy, not "desktop is gone".
-          has_desktop() { jq 'if (.jobs | type) == "object" then .jobs | has("desktop") else error("the registry has no jobs") end' <<<"$1"; }
+          # Exactly one document: jq prints nothing for an empty body and exits 0, which must not read as "no desktop".
+          has_desktop() { jq -n '[inputs] | if length != 1 then error("expected one registry document") else .[0] | if (.jobs | type) == "object" then .jobs | has("desktop") else error("the registry has no jobs") end end' <<<"$1"; }
           state=gone
           ci=$(fetch .github/workflows/ci.yml "$MAIN_SHA")
           if grep -qF ci-job-registry.without-desktop.json <<<"$ci"; then
@@ -166,6 +167,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      # actions: read only for the newest-run check before a close.
+      actions: read
       issues: write
     steps:
       - name: Open, update or close the tracking issues
@@ -184,7 +187,7 @@ jobs:
           # sync_issue TITLE MARKER LABEL DESCRIPTION FAILING DETAIL CLOSING_COMMENT: keeps one open
           # issue per title while FAILING is true and closes it once it is false.
           sync_issue() {
-            local title=$1 marker=$2 label=$3 description=$4 failing=$5 detail=$6 closing=$7 issue_number
+            local title=$1 marker=$2 label=$3 description=$4 failing=$5 detail=$6 closing=$7 issue_number latest
             export TITLE=$title MARKER=$marker
             # The label narrows the list on the server; the exact match below stays the check.
             issue_number=$(gh issue list --state open --label "$label" --limit 100 \
@@ -192,6 +195,12 @@ jobs:
               --jq '.[] | select(.title == env.TITLE and (.author.login == "github-actions[bot]" or .author.login == "app/github-actions") and (.body | contains(env.MARKER))) | .number' | head -n 1)
             if [ "$failing" = false ]; then
               if [ -n "$issue_number" ]; then
+                # A re-run of an older run reuses its attempt's results: only the newest run may close, or it would hide a newer red night.
+                latest=$(gh run list --workflow nightly-desktop.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId')
+                if [ "$latest" != "$GITHUB_RUN_ID" ]; then
+                  echo "Not the newest run; leaving #$issue_number open."
+                  return 0
+                fi
                 gh issue close "$issue_number" --comment "$closing"
               fi
             elif [ -n "$issue_number" ]; then
@@ -205,19 +214,31 @@ jobs:
           if [ "$DEV_RESULT" = success ] && [ "$MAIN_RESULT" = success ]; then desktop_failing=false; fi
           shim_failing=true
           if [ "$SHIM_RESULT" = success ] && [ "$SHIM_STATE" != dead ]; then shim_failing=false; fi
-          sync_issue 'ci: nightly desktop validation failing' '<!-- hikyo-nightly-desktop -->' ci-nightly-desktop 'Automation-owned nightly desktop validation failure' "$desktop_failing" \
+          set +e
+          (
+            set -e
+            sync_issue 'ci: nightly desktop validation failing' '<!-- hikyo-nightly-desktop -->' ci-nightly-desktop 'Automation-owned nightly desktop validation failure' "$desktop_failing" \
             "$(printf '%s\n' \
               "Nightly desktop validation did not pass: $RUN_URL" \
               "" \
               "- branch dev, head \`$DEV_SHA\`: ${DEV_RESULT:-not run}" \
               "- branch main, head \`$MAIN_SHA\`: ${MAIN_RESULT:-not run}")" \
             "Nightly desktop validation passed on dev (\`$DEV_SHA\`) and main (\`$MAIN_SHA\`): $RUN_URL"
+          )
+          desktop_rc=$?
           if [ "$SHIM_STATE" = dead ]; then
             shim_detail="The desktop-removal shim in ci.yml is dead: neither head registers desktop any more. Remove the shim and its migration tests (#1595). Seen: $RUN_URL"
           else
             shim_detail="The desktop-removal shim check did not complete (${SHIM_RESULT:-not run}): $RUN_URL"
           fi
-          sync_issue 'ci: desktop-removal shim check (#1595)' '<!-- hikyo-nightly-desktop-shim -->' ci-desktop-removal-shim 'Automation-owned desktop-removal shim check' "$shim_failing" \
+          (
+            set -e
+            sync_issue 'ci: desktop-removal shim check (#1595)' '<!-- hikyo-nightly-desktop-shim -->' ci-desktop-removal-shim 'Automation-owned desktop-removal shim check' "$shim_failing" \
             "$shim_detail" "The desktop-removal shim check is healthy again: $RUN_URL"
+          )
+          shim_rc=$?
+          set -e
+          # Each reconciliation runs in its own errexit subshell, so a failed desktop issue write cannot hide a dead shim.
+          [ "$desktop_rc$shim_rc" = 00 ] || exit 1
           [ "$desktop_failing$shim_failing" = falsefalse ] && exit 0
           exit 1

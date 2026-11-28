@@ -134,7 +134,7 @@ printf '%s\n' "$CLOCK_NOW"
 set -eu
 printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$*" "${GOTOOLCHAIN-}" "${GOENV-}" "${GOWORK-}" "${GOSUMDB-}" "${GOPROXY-}" "${GOFLAGS-}" "${GONOSUMDB-}" "${GOPRIVATE-}" >> "$TRACE"
 if [[ "$*" == 'env GOVERSION GOHOSTARCH' ]]; then
- [[ "$GOTOOLCHAIN" == local ]]
+ [[ "$GOTOOLCHAIN" == local ]] || exit 1
  printf '%s\n%s\n' "$BOOT" "$BOOT_ARCH"
 elif [[ "$*" == 'env GOVERSION' ]]; then
  case "$SELECTED" in failure) exit 1;; hang) exec sleep 10;; *) printf '%s\n' "$SELECTED";; esac

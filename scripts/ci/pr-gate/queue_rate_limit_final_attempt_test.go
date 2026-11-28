@@ -46,6 +46,7 @@ func TestRateLimitedFailureWalksEveryBranchOfAJoinedError(t *testing.T) {
 		"limited under a wrapper in a join":    errors.Join(errors.New("work"), fmt.Errorf("verify: %w", limited)),
 		"limited beside an ordinary one in %w": fmt.Errorf("%w: %w", ordinary, limited),
 		"nested joins":                         errors.Join(errors.Join(ordinary, errors.New("x")), errors.Join(errors.New("y"), limited)),
+		"single %w around a join":              errors.Join(fmt.Errorf("queue PR #1: %w", errors.Join(ordinary, limited))),
 	} {
 		if !rateLimitedFailure(err) {
 			t.Errorf("%s: a rate-limited branch was missed", name)

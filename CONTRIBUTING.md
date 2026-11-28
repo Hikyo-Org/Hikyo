@@ -198,6 +198,11 @@ Before you request review, run the checks for what you touched:
   anything cross-cutting. Add or update tests for the behaviour you change.
   There is no numeric coverage gate, so reviewers, not an automated threshold,
   judge whether the tests cover the change.
+- `scripts/ci` tests and workflow changes: the tests run the workflow shell
+  guards with the `bash` on your `PATH` and refuse to start when it is older
+  than 4.1. macOS ships bash 3.2, which ignores `set -e` for a failed bare
+  `[[ ]]` or `(( ))`; run `brew install bash` and put it first on `PATH`.
+  Write such guards as `[[ ... ]] || exit 1` so they fail closed on any bash.
 - `web/` changes: `node --run typecheck` and `node --run test` in `web/`. Also
   run the affected Playwright flow specs (`web/e2e/flows/*.spec.ts`, see the
   browser flow tests below) and list them in the PR Evidence. The pre-push hook
