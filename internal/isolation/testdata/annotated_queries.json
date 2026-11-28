@@ -2368,14 +2368,14 @@
     "name": "ListRuleEnvRefsInOrg",
     "annotation": "authn-resolution",
     "hash": "8131753e024283485f970ef327ca6e3994503774b985be3bce0af810da9e4c64",
-    "reason": "authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof; ids and names only, scoped to the org."
+    "reason": "authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof, and a rule create binds the names it was sent before it authorizes the caller, returning nothing of them until the caller is proved; ids and names only, scoped to the org."
   },
   {
     "engine": "postgres",
     "name": "ListRuleEnvRefsInProject",
     "annotation": "authn-resolution",
     "hash": "8e00c4d7e08da0b73665f45bc98be465ec286df51ddba5133922cac4af0e95f0",
-    "reason": "The rule listing and the widening censuses bind environment-name rule items to one project's environments after the caller was authorized in that project; ids and names only, scoped to the project."
+    "reason": "authorize() binds the caller's own environment-name rule items, and a rule target's selector, to the chain project's environments before it decides whether to mint a proof, so it runs even when authorization is then refused and returns nothing beyond that decision; the rule listing and the widening censuses bind rule items to one project's environments after the caller was authorized in that project. Ids and names only, scoped to the org and project."
   },
   {
     "engine": "postgres",
@@ -6287,14 +6287,14 @@
     "name": "ListRuleEnvRefsInOrg",
     "annotation": "authn-resolution",
     "hash": "8131753e024283485f970ef327ca6e3994503774b985be3bce0af810da9e4c64",
-    "reason": "authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof; ids and names only, scoped to the org."
+    "reason": "authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof, and a rule create binds the names it was sent before it authorizes the caller, returning nothing of them until the caller is proved; ids and names only, scoped to the org."
   },
   {
     "engine": "sqlite",
     "name": "ListRuleEnvRefsInProject",
     "annotation": "authn-resolution",
     "hash": "8e00c4d7e08da0b73665f45bc98be465ec286df51ddba5133922cac4af0e95f0",
-    "reason": "The rule listing and the widening censuses bind environment-name rule items to one project's environments after the caller was authorized in that project; ids and names only, scoped to the project."
+    "reason": "authorize() binds the caller's own environment-name rule items, and a rule target's selector, to the chain project's environments before it decides whether to mint a proof, so it runs even when authorization is then refused and returns nothing beyond that decision; the rule listing and the widening censuses bind rule items to one project's environments after the caller was authorized in that project. Ids and names only, scoped to the org and project."
   },
   {
     "engine": "sqlite",

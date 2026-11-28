@@ -317,7 +317,7 @@ type ListRuleEnvRefsInOrgRow struct {
 // environment items are names (#1447), bound to the environments carrying
 // them in each project the rule covers at every read, so an environment
 // created or renamed later is matched with no rule rewrite.
-// hikyo:reason authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof; ids and names only, scoped to the org.
+// hikyo:reason authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof, and a rule create binds the names it was sent before it authorizes the caller, returning nothing of them until the caller is proved; ids and names only, scoped to the org.
 // hikyo:authn-resolution
 func (q *Queries) ListRuleEnvRefsInOrg(ctx context.Context, orgID string) ([]ListRuleEnvRefsInOrgRow, error) {
 	rows, err := q.db.Query(ctx, listRuleEnvRefsInOrg, orgID)
@@ -354,7 +354,7 @@ type ListRuleEnvRefsInProjectRow struct {
 	Name      string
 }
 
-// hikyo:reason The rule listing and the widening censuses bind environment-name rule items to one project's environments after the caller was authorized in that project; ids and names only, scoped to the project.
+// hikyo:reason authorize() binds the caller's own environment-name rule items, and a rule target's selector, to the chain project's environments before it decides whether to mint a proof, so it runs even when authorization is then refused and returns nothing beyond that decision; the rule listing and the widening censuses bind rule items to one project's environments after the caller was authorized in that project. Ids and names only, scoped to the org and project.
 // hikyo:authn-resolution
 func (q *Queries) ListRuleEnvRefsInProject(ctx context.Context, arg ListRuleEnvRefsInProjectParams) ([]ListRuleEnvRefsInProjectRow, error) {
 	rows, err := q.db.Query(ctx, listRuleEnvRefsInProject, arg.OrgID, arg.ProjectID)

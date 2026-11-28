@@ -21,6 +21,7 @@ import {
   PERMS,
   PRESETS,
   presetOf,
+  reach,
   reachOf,
   resolve,
   ruleHolders,
@@ -373,8 +374,36 @@ describe('reach and saving', () => {
     const world = makeWorld();
     const aliceFolder = rulesOf(world, IDS.alice)[1];
     if (aliceFolder === undefined) throw new Error('no rule');
-    expect(reachOf(world, aliceFolder)).toEqual({ environments: 2, keys: 3, secrets: 2, protectedEnvs: 1, grows: null });
+    // Its only list is the names staging and prod, which a later environment can carry.
+    expect(reachOf(world, aliceFolder)).toEqual({ environments: 2, keys: 3, secrets: 2, protectedEnvs: 1, grows: 'named environments' });
     expect(reachOf(makeWorld({ readable: false }), aliceFolder)).toMatchObject({ environments: 2, keys: null, secrets: null });
+  });
+
+  it('binds a listed rule by its names in every project, not by the items one listing returned', () => {
+    const world = makeWorld();
+    // An all-projects rule read from the payments listing carries only payments' prod.
+    const listed = (mode: 'all' | 'only'): Rule => ({
+      ...newRule(IDS.chen),
+      perms: ['read'],
+      projects: '*',
+      envs: { mode, names: ['prod'], items: [{ project: PAY, environment: PROD }] },
+    });
+    expect(reach(world, listed('all'), 'read', IDS.web, IDS.webProd, undefined)).toMatchObject({ hit: true, ok: false });
+    expect(reach(world, listed('all'), 'read', IDS.web, IDS.webDev, undefined)).toEqual({ hit: true, ok: true });
+    expect(reach(world, listed('only'), 'read', IDS.web, IDS.webProd, undefined)).toEqual({ hit: true, ok: true });
+    expect(reachOf(world, listed('only')).environments).toBe(2);
+    // A legacy grant has no names: its items alone, so web's prod stays out.
+    const legacy: Rule = { ...listed('only'), envs: { mode: 'only', items: [{ project: PAY, environment: PROD }] } };
+    expect(reach(world, legacy, 'read', IDS.web, IDS.webProd, undefined)).toEqual({ hit: false });
+  });
+
+  it('says an only list of names includes environments named so later', () => {
+    const world = makeWorld();
+    const rule = (envs: Rule['envs']): Rule => ({ ...newRule(IDS.chen), perms: ['read'], projects: [PAY, IDS.web], envs });
+    expect(reachOf(world, rule({ mode: 'only', names: ['staging'], items: [{ project: PAY, environment: STAGING }] })).grows).toBe('named environments');
+    expect(reachOf(world, rule({ mode: 'only', names: [], items: [] })).grows).toBeNull();
+    expect(reachOf(world, rule({ mode: 'only', items: [{ project: PAY, environment: STAGING }] })).grows).toBeNull();
+    expect(reachOf(world, rule({ mode: 'all', names: ['prod'], items: [] })).grows).toBe('environments');
   });
 
   it('with the Where unchanged, a save moves only the permissions that changed', () => {

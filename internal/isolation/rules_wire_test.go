@@ -205,13 +205,18 @@ func TestRuleWireWideningNamesKeySelector(t *testing.T) {
 		if code != http.StatusConflict || json.Unmarshal(raw, &body) != nil || body.Error.Widening == nil || body.Error.Widening.Gainers == nil {
 			t.Fatalf("create qa = %d %s, want a widening refusal naming the gainers", code, raw)
 		}
-		var edit *apigen.WideningGainer
-		for i, g := range *body.Error.Widening.Gainers {
+		var edits []apigen.WideningGainer
+		for _, g := range *body.Error.Widening.Gainers {
 			if g.PrincipalId == holder && g.Capability == apigen.RuleCapabilityEdit {
-				edit = &(*body.Error.Widening.Gainers)[i]
+				edits = append(edits, g)
 			}
 		}
-		if edit == nil || len(edit.Environments) != 1 || edit.Keys == nil || edit.Keys.Mode != apigen.RuleAxisModeOnly ||
+		// Exactly one: a second, whole-environment Edit gain would be wrong.
+		if len(edits) != 1 {
+			t.Fatalf("edit gainers for the holder = %d, want 1: %s", len(edits), raw)
+		}
+		edit := edits[0]
+		if len(edit.Environments) != 1 || edit.Keys == nil || edit.Keys.Mode != apigen.RuleAxisModeOnly ||
 			len(edit.Keys.Items) != 1 || edit.Keys.Items[0].Project != e.project || edit.Keys.Items[0].Folder == nil ||
 			*edit.Keys.Items[0].Folder != folder || edit.Keys.Items[0].Key != nil {
 			t.Fatalf("edit gainer = %s, want the new environment over folder db only", raw)

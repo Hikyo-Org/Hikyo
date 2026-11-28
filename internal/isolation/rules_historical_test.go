@@ -138,9 +138,21 @@ func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
 			return got
 		}
 		human := same("rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.Rules(ctx, apHolder) }, 2)
-		census := same("project census", func(r *authn.Resolver) ([]domain.Rule, error) {
-			return peopleInCensus(r.RulesForProject(ctx, string(orgAP), string(p1)))
-		}, 2)
+		// The whole census, machines included: a projection could hide a
+		// machine rule only one of the two resolvers returns.
+		gotCensus, err := historical.RulesForProject(ctx, string(orgAP), string(p1))
+		if err != nil {
+			t.Fatalf("historical project census at schema 102: %v", err)
+		}
+		wantCensus, err := current.RulesForProject(ctx, string(orgAP), string(p1))
+		if err != nil {
+			t.Fatalf("current project census: %v", err)
+		}
+		if len(wantCensus) != 3 || !reflectx.Equal(gotCensus, wantCensus) ||
+			!slices.ContainsFunc(gotCensus, func(c authn.CensusRule) bool { return c.Machine && c.Rule.ID == "rul_hist_mch" }) {
+			t.Fatalf("project census at schema 102 = %+v, want the current resolver's 3 rules with machine rul_hist_mch %+v", gotCensus, wantCensus)
+		}
+		census, _ := peopleInCensus(gotCensus, nil)
 		same("machine rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.MachineRules(ctx, "mch_ap") }, 1)
 		for what, rules := range map[string][]domain.Rule{"rules": human, "project census": census} {
 			i := slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == all.ID })

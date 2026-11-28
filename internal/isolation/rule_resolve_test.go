@@ -335,8 +335,6 @@ func TestRuleResolveMatchesNamesAcrossProjects(t *testing.T) {
 		f := seedRulesFixture(t, db)
 		rule := f.create(t, orgAdmin, service.RuleSpec{Target: ivan, Capability: domain.CapRead, Org: orgA,
 			Where: domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisAll, EnvNames: []string{"prod"}, KeyMode: domain.AxisAll}})
-		const laterProd = domain.EnvID("env_a2_laterprod")
-		execRaw(t, db, "INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('"+string(laterProd)+"', 'org_a', 'prj_a2', 'prod', '', "+ts+", 1)")
 		ivanAt := func(s domain.Scope) service.AccessView {
 			t.Helper()
 			views, err := f.rules.Resolve(t.Context(), service.LocalPrincipal(orgAdmin), s, domain.CapRead, "")
@@ -349,6 +347,13 @@ func TestRuleResolveMatchesNamesAcrossProjects(t *testing.T) {
 			}
 			return views[i]
 		}
+		// Resolved once before the second prod exists, on the same service,
+		// so a binding kept from this answer would miss it below.
+		if v := ivanAt(scopeEnv(orgA, prjA2, envA2)); v.State != authz.AccessCan || !slices.Equal(v.Rules, []string{rule}) {
+			t.Fatalf("ivan at %s before the second prod = %+v, want can through %s", envA2, v, rule)
+		}
+		const laterProd = domain.EnvID("env_a2_laterprod")
+		execRaw(t, db, "INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('"+string(laterProd)+"', 'org_a', 'prj_a2', 'prod', '', "+ts+", 1)")
 		for _, s := range []domain.Scope{scopeEnv(orgA, prjA1, envProd), scopeEnv(orgA, prjA2, laterProd)} {
 			if v := ivanAt(s); v.State != authz.AccessExcepted || len(v.Excepts) != 1 || v.Excepts[0].RuleID != rule || !slices.Equal(v.Excepts[0].Envs, []domain.EnvID{s.Env}) {
 				t.Fatalf("ivan at %s = %+v, want excepted by name through %s", s.Env, v, rule)

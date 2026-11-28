@@ -301,6 +301,19 @@ const KEY_AWARE: ReadonlySet<PermId> = new Set(['edit', 'publish', 'reveal', 're
 /** The resolver asks about one environment; only project permissions need every environment. */
 const atProject = (id: PermId) => perm(id).shape === 'project';
 
+/**
+ * The environment ids a rule's environment axis lists in one project: those
+ * carrying its names now, as the server binds them (#1447), whatever part
+ * of the rule a listing returned. Without names (a legacy grant) or with the
+ * project unknown here, its items.
+ */
+function envsIn(world: World, rule: Pick<Rule, 'envs'>, project: string): string[] {
+  const { names } = rule.envs;
+  const known = projectById(world, project);
+  if (names === undefined || known === undefined) return rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
+  return known.envs.filter((e) => names.includes(e.name)).map((e) => e.id);
+}
+
 export type Reach = { hit: false } | { hit: true; ok: true } | { hit: true; ok: false; why: string };
 
 const MISS: Reach = { hit: false };
@@ -316,7 +329,7 @@ const OK: Reach = { hit: true, ok: true };
 export function reach(world: World, rule: Rule, id: PermId, project: string, env: string, key: Key | undefined): Reach {
   if (!effective(rule).includes(id)) return MISS;
   if (!projectsOf(world, rule).includes(project)) return MISS;
-  const envs = rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
+  const envs = envsIn(world, rule, project);
   if (atProject(id)) {
     if (rule.envs.mode === 'only') return MISS;
     if (envs.length > 0) return { hit: true, ok: false, why: `except ${envs.map((e) => envName(world, e)).join(', ')}` };
@@ -400,13 +413,13 @@ type ReachSummary = {
   secrets: number | null;
   protectedEnvs: number;
   /** Things created later that the rule picks up. */
-  grows: 'projects' | 'environments' | null;
+  grows: 'projects' | 'environments' | 'named environments' | null;
 };
 
 /** What a rule covers, counted. */
 export function reachOf(world: World, rule: Rule): ReachSummary {
   const pairs = projectsOf(world, rule).flatMap((project) => {
-    const envs = rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
+    const envs = envsIn(world, rule, project);
     return (projectById(world, project)?.envs ?? [])
       .filter((e) => (rule.envs.mode === 'all' ? !envs.includes(e.id) : envs.includes(e.id)))
       .map((env) => ({ project, env }));
@@ -428,7 +441,8 @@ export function reachOf(world: World, rule: Rule): ReachSummary {
     keys: readable ? keys.size : null,
     secrets: readable && effective(rule).includes('reveal') ? secrets : null,
     protectedEnvs: pairs.filter((pair) => pair.env.protected === true).length,
-    grows: rule.projects === '*' ? 'projects' : rule.envs.mode === 'all' ? 'environments' : null,
+    // An only list's names also match environments created or renamed to them later.
+    grows: rule.projects === '*' ? 'projects' : rule.envs.mode === 'all' ? 'environments' : (rule.envs.names?.length ?? 0) > 0 ? 'named environments' : null,
   };
 }
 

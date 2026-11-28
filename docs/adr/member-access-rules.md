@@ -334,16 +334,18 @@ apply when the implementing pull request merges.
   a widening refuses it. A new environment that an *all* or *all, except* rule reaches because it
   does not name it needs no confirmation, and nor does a change that only narrows.
 - **Machines that gain (#1473, #1480).** Each confirmed machine gainer also passes the machine
-  widening gate: `manage-identities` on the project, disclosure authority, and a live
-  reauthentication window over every environment it newly reaches in plaintext, audited as
+  widening gate. Where it newly reaches secret plaintext (`read` with `reveal` or
+  `reveal-history`), the gate asks for `manage-identities` on the project, disclosure authority,
+  and a live reauthentication window over every such environment, audited as
   `identity.grant_widened`. This settles the 2026-11-20 question: the reauthentication conjunct
   applies to a later rename. **Limitation, disclosed:** a create or clone whose name gives a machine
   plaintext access to the *new* environment through an *only* rule always fails closed. A machine
   whose `all` rule reaches it because it does not except the name gains nothing by name, so that
   create needs no confirmation and no workaround. The window must name the new
   environment's id, and no session can hold one before the environment exists. The way through is
-  to create the environment under another name and rename it. A gain without plaintext, such as a
-  machine's read without reveal, passes the gate with nothing to reauthenticate. One option for a
+  to create the environment under another name and rename it. A gain that reaches no secret plaintext passes
+  the gate with nothing to reauthenticate: a machine's `edit`, and also its `read` without `reveal`
+  or `reveal-history`, which delivers config values but no secret plaintext. One option for a
   later decision: exempt a plain create, since an empty environment holds no plaintext. A clone
   copies values and cannot take that exemption.
 - **Deleting an environment** no longer touches rules: a name stays the rule's. An *only* list

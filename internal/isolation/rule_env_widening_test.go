@@ -72,10 +72,25 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				t.Fatalf("rule for %s: %v", p, err)
 			}
 		}
-		confirmed := func(t *testing.T, env domain.EnvID, from, to string) int64 {
+		// confirmed is every widening confirmation recorded for env, in
+		// order, as from>to: a row with other names is not filtered out.
+		confirmed := func(t *testing.T, env domain.EnvID) []string {
 			t.Helper()
-			return queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+string(env)+
-				"' AND payload LIKE '%\"from_name\":\""+from+"\"%' AND payload LIKE '%\"to_name\":\""+to+"\"%'")
+			var out []string
+			for _, row := range strings.Split(queryStrings(t, db, "SELECT payload || '\n' FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+string(env)+"' ORDER BY seq"), "\n") {
+				if row == "" {
+					continue
+				}
+				var names struct {
+					From string `json:"from_name"`
+					To   string `json:"to_name"`
+				}
+				if err := json.Unmarshal([]byte(row), &names); err != nil {
+					t.Fatalf("confirmation payload %q: %v", row, err)
+				}
+				out = append(out, names.From+">"+names.To)
+			}
+			return out
 		}
 		refusedFor := func(t *testing.T, err error, want ...domain.PrincipalID) *service.EnvWideningError {
 			t.Helper()
@@ -202,7 +217,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA1, "prod", nil, []domain.PrincipalID{envOnly}); err != nil {
 				t.Fatalf("confirmed rename: %v", err)
 			}
-			if !reachesEnv(t, db, envOnly, prodA1) || confirmed(t, envProd, "production", "prod") != 1 {
+			if !reachesEnv(t, db, envOnly, prodA1) || !slices.Equal(confirmed(t, envProd), []string{"production>prod"}) {
 				t.Fatal("the confirmed rename did not widen the rule with one audited confirmation")
 			}
 		})
@@ -235,7 +250,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				t.Fatalf("confirmed create: %v", err)
 			}
 			prodA2 = scopeEnv(orgA, prjA2, domain.EnvID(env.ID))
-			if !reachesEnv(t, db, envOnly, prodA2) || reachesEnv(t, db, envExcpt, prodA2) || confirmed(t, domain.EnvID(env.ID), "", "prod") != 1 {
+			if !reachesEnv(t, db, envOnly, prodA2) || reachesEnv(t, db, envExcpt, prodA2) || !slices.Equal(confirmed(t, domain.EnvID(env.ID)), []string{">prod"}) {
 				t.Fatal("the confirmed create did not give exactly the only-prod rule the new prod, audited")
 			}
 			// The except names every prod: the first project's stays excepted too.
@@ -260,7 +275,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA2, "staging", nil, []domain.PrincipalID{envExcpt}); err != nil {
 					t.Fatalf("confirmed rename: %v", err)
 				}
-				if !reachesEnv(t, db, envExcpt, prodA2) || reachesEnv(t, db, envOnly, prodA2) || confirmed(t, prodA2.Env, "prod", "staging") != 1 {
+				if !reachesEnv(t, db, envExcpt, prodA2) || reachesEnv(t, db, envOnly, prodA2) || !slices.Equal(confirmed(t, prodA2.Env), []string{">prod", "prod>staging"}) {
 					t.Fatal("renaming out of the except list did not move the reach, audited")
 				}
 			})
@@ -327,7 +342,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("confirmed clone: %v", err)
 			}
-			if !reachesEnv(t, db, envOnly, scopeEnv(orgA, prjA1, domain.EnvID(env.ID))) || confirmed(t, domain.EnvID(env.ID), "", "uat") != 1 {
+			if !reachesEnv(t, db, envOnly, scopeEnv(orgA, prjA1, domain.EnvID(env.ID))) || !slices.Equal(confirmed(t, domain.EnvID(env.ID)), []string{">uat"}) {
 				t.Fatal("the confirmed clone did not give the only-uat rule the new environment, audited")
 			}
 		})
@@ -435,6 +450,61 @@ func TestEnvironmentNameWideningGatesMachines(t *testing.T) {
 	})
 }
 
+// A machine rule create that has bound its names when a rename gives one of
+// them to an environment cannot commit alongside that rename (#1447): each
+// side's widening check reads what the other writes, so on PostgreSQL the
+// SERIALIZABLE write transaction aborts the create, and its retry sees the
+// renamed environment and asks for the reauthentication the caller lacks.
+// The create is held after its name binding by the machine's principal row
+// lock, which the rename does not take. SQLite admits one writer at a time,
+// so a held create cannot interleave with a rename there.
+func TestMachineRuleCreateRacingEnvironmentRenameFailsClosed(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		if db.Engine() != store.EnginePostgres {
+			t.Skip("SQLite serializes whole write transactions, so a create held after its name binding blocks the rename too")
+		}
+		identityFixtures(t, db)
+		ctx := t.Context()
+		execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
+		for _, c := range []string{"definitions-edit", "read", "edit", "publish"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		sa, err := identitySvc(db).CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), "racing-reader", domain.ClassAutomation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_race_reveal', '"+string(sa.Principal)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+		// The creator may disclose project-wide and holds no window, so only
+		// reauthentication refuses a create that sees a staging.
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_ida_reveal_prj', '"+string(identAdmin)+"', 'reveal', 'org_a', 'prj_a1', NULL, "+ts+")")
+		seedOrigins(t, db)
+		rules := &service.Rules{DB: db, Auth: authWithWindow(db)}
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+		dev := envScope(envA1)
+		hold := func(ctx context.Context, az *authz.TxAuthorizer) error {
+			return az.LockTargetPrincipal(ctx, sa.Principal)
+		}
+		var renamed error
+		created := runBehindHolderThen(t, db, hold, func() {
+			_, renamed = envs.RenameConfirming(ctx, service.LocalPrincipal(identRevatr), dev, "staging", nil, nil)
+		}, func() error {
+			_, err := rules.Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
+				Target: sa.Principal, Capability: domain.CapRead, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"staging"}, KeyMode: domain.AxisAll}})
+			return err
+		})
+		if renamed != nil {
+			t.Fatalf("the rename, committed before the held create: %v", renamed)
+		}
+		if !errors.Is(created, service.ErrReauthRequired) {
+			t.Fatalf("a machine rule create racing a rename into its name = %v, want ErrReauthRequired", created)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE principal_id = '"+string(sa.Principal)+"'"); n != 0 || reachesEnv(t, db, sa.Principal, dev) {
+			t.Fatalf("the refused create left %d rules for the machine, or it reaches the renamed environment", n)
+		}
+	})
+}
+
 // Two machines gaining the same environment through one confirmed change
 // spend one reauthentication decision, not one each (#1447): a
 // single-decision window over the environment admits the change once, and a
@@ -526,7 +596,9 @@ func TestEnvironmentNameWideningGatesMixedDisclosureClasses(t *testing.T) {
 		token := service.Bearer(sessionWithWindows(t, db, identRevatr))
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
 		dev := envScope(envA1)
-		openWindow(t, db, "usr_idrev", envA1)
+		// One decision: a gate validating current and historical access
+		// separately would spend it twice and be refused the second time.
+		openSingleDecisionWindow(t, db, identRevatr, "rw_mixed_decision", envA1)
 		if _, err := envs.RenameConfirming(ctx, token, dev, "staging", nil, confirm); !errors.Is(err, service.ErrDisclosureAuthority) ||
 			!strings.Contains(err.Error(), string(domain.CapRevealHistory)) {
 			t.Fatalf("a rename one machine gains historical plaintext through, by a caller without reveal-history = %v, want ErrDisclosureAuthority naming %s", err, domain.CapRevealHistory)
@@ -539,6 +611,9 @@ func TestEnvironmentNameWideningGatesMixedDisclosureClasses(t *testing.T) {
 		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_reveal-history', 'usr_idrev', 'reveal-history', 'org_a', 'prj_a1', NULL, "+ts+")")
 		if _, err := envs.RenameConfirming(ctx, token, dev, "staging", nil, confirm); err != nil {
 			t.Fatalf("a rename by a caller holding both disclosure capabilities: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM reauth_windows WHERE id = 'rw_mixed_decision' AND consumed_at IS NOT NULL"); n != 1 {
+			t.Fatalf("the decision was consumed %d times, want 1", n)
 		}
 		for _, sa := range confirm {
 			if !reachesEnv(t, db, sa, dev) {
@@ -1349,27 +1424,6 @@ func TestDefinitionsApplyAttributionKeepsKeySelectors(t *testing.T) {
 			t.Fatalf("unconfirmed apply = %v, want a plan-level refusal naming %s", err, editor)
 		}
 	})
-}
-
-// openWindow opens a sliding reauthentication window over env on the
-// session sessionWithWindows minted for p.
-func openWindow(t *testing.T, db *store.DB, p domain.PrincipalID, env domain.EnvID) {
-	t.Helper()
-	now := time.Now().UTC()
-	if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		epoch, err := az.CredentialEpoch(ctx)
-		if err != nil {
-			return err
-		}
-		return az.OpenReauthWindow(ctx, authz.NewReauthWindow{
-			ID: "raw_" + string(p) + "_" + string(env), SessionID: "ses_" + string(p),
-			EnvironmentID: string(env), CeremonyID: "cer_test", FactorClass: "totp",
-			AuthenticatedAt: now, WindowExpiresAt: now.Add(time.Hour),
-			HardExpiresAt: now.Add(2 * time.Hour), CredentialEpoch: epoch, CreatedAt: now,
-		})
-	}); err != nil {
-		t.Fatalf("open a window over %s for %s: %v", env, p, err)
-	}
 }
 
 // openSingleDecisionWindow opens window id over env on p's session from a

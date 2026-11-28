@@ -82,6 +82,9 @@ func TestRulesManageableSharesCallerAndKeyMetadata(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(held) != len(targets) {
+			t.Fatalf("%d decisions for %d targets", len(held), len(targets))
+		}
 		for i, want := range held {
 			if want != (i < 100) {
 				t.Fatalf("target %d held=%v", i, want)

@@ -292,6 +292,14 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   no window can name the new id; the workaround is to create it under another
   name and rename it. An `all` rule that does not except the name reaches the
   new environment by default, which needs no confirmation and no workaround.
+  The gate's reauthentication covers secret plaintext only (`read` with
+  `reveal` or `reveal-history`); a machine gaining `edit`, or `read` alone,
+  needs the confirmation and no window. A machine rule create racing a rename
+  into its name takes no project lock: on PostgreSQL the SERIALIZABLE write
+  transactions abort one side (each reads what the other writes), and the
+  retry asks for the ceremony; a row lock taken after the first statement
+  would not change that. `TestMachineRuleCreateRacingEnvironmentRenameFailsClosed`
+  pins it and fails under REPEATABLE READ.
 - **Deletion (owner decision 2026-11-27).** Deleting an environment an `all`
   rule excepts widens that rule to the project's other atoms, so it fails
   closed: the service delete and a definitions apply delete are refused like a

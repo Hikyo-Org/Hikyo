@@ -997,9 +997,13 @@ export const getEnvironment = <ThrowOnError extends boolean = false>(options: Op
  * people or machines access through their rules: renamed out of an
  * `all` list's exceptions, or into an `only` list. Such a rename is
  * refused with 409 `conflict` carrying `widening` until it is resent
- * with `confirm_widening` naming exactly those principals; a machine
- * gaining access also needs the caller's fresh reauthentication. A
- * rename that only narrows access needs no confirmation.
+ * with `confirm_widening` naming exactly those principals. A machine
+ * that newly reaches secret plaintext (`read` with `reveal` or
+ * `reveal-history`) also needs the caller's `manage-identities`, the
+ * matching disclosure capability and a fresh reauthentication over the
+ * environment; a machine gaining only other permissions needs the
+ * confirmation alone. A rename that only narrows access needs no
+ * confirmation.
  *
  */
 export const renameEnvironment = <ThrowOnError extends boolean = false>(options: Options<RenameEnvironmentData, ThrowOnError>): RequestResult<RenameEnvironmentResponses, RenameEnvironmentErrors, ThrowOnError> => (options.client ?? client).patch<RenameEnvironmentResponses, RenameEnvironmentErrors, ThrowOnError>({
