@@ -510,6 +510,7 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env -P":                             "env -P /bin bash -c '[[ a == b ]]'\n",
 		"env --split-string then words":      "env --split-string 'bash -c' '[[ a == b ]]'\n",
 		"env -S ignores <":                   "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"env -aNAME":                         "env -an bash -c '[[ a == b ]]'\n",
 		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
 		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
 		"env --env0-from=":                   "env --env0-from=f bash -c '[[ a == b ]]'\n",
@@ -740,7 +741,7 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"echo x | bash\n", "printf x | sh -s -- a\n", "echo x | bash >/dev/null\n", "echo x | bash 2>&1\n", "echo x |& bash\n",
 		"source /dev/stdin\n", ". /dev/fd/0\n", "source -- /proc/self/fd/0\n", "bash 3<<'EOF'\nx\nEOF\n", "bash <&3\n",
 		"{ bash; } <<'EOF'\n[[ a == b ]]\nEOF\n", "( bash -s ) <<'EOF'\nx\nEOF\n", "exec 0<<'EOF'\nx\nEOF\nbash\n", "run() { bash -s; }\n", "coproc bash\n",
-		"source /dev/stdin </dev/stdin\n", "bash <<'EOF' 0<&3\nx\nEOF\n",
+		"source /dev/stdin </dev/stdin\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
 		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed "bash </dev/stdin\n", "bash < <(printf x)\n",
 	} {
 		if _, err := bareTests(script); err == nil || !strings.Contains(err.Error(), "cannot be scanned") {
