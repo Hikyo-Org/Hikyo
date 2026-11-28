@@ -876,10 +876,10 @@ export const listEnvironments = <ThrowOnError extends boolean = false>(options: 
  * since the gate asks for a window over the new environment's id, which
  * no session can hold before the environment exists. Create it under a
  * name no `only` list names, reauthenticate over it, then rename it. A
- * machine gaining other permissions, `read` without `reveal` included,
- * needs the confirmation alone. A rule reaching every environment, or
- * every one except other names, reaches the new one without
- * confirmation.
+ * machine gaining other permissions, `read` without `reveal` or
+ * `reveal-history` included, needs the confirmation alone. A rule
+ * reaching every environment, or every one except other names, reaches
+ * the new one without confirmation.
  *
  */
 export const createEnvironment = <ThrowOnError extends boolean = false>(options: Options<CreateEnvironmentData, ThrowOnError>): RequestResult<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError>({
@@ -915,8 +915,8 @@ export const createEnvironment = <ThrowOnError extends boolean = false>(options:
  * secret plaintext through an `only` name is always refused with
  * 409 `conflict`, as a creation is. Clone under another name,
  * reauthenticate over it, then rename it. A machine gaining other
- * permissions, `read` without `reveal` included, needs the confirmation
- * alone.
+ * permissions, `read` without `reveal` or `reveal-history` included,
+ * needs the confirmation alone.
  *
  * It is a separate route rather than a flag on `createEnvironment`
  * because its RESPONSE is different: a clone has to report what it could

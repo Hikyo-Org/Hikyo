@@ -73,9 +73,10 @@ created into an *only*. Such a change is refused until it is confirmed with
 `--confirm-widening` naming exactly those principals, as a key move is below;
 a machine that gains secret plaintext (`read` with `reveal` or
 `reveal-history`) also needs your recent reauthentication over the
-environment. A machine that gains `read` without `reveal`, or another
-permission, needs the confirmation alone. A new environment that a rule reaches
-because it does not except it needs no confirmation, and nor does a change
+environment. A machine that gains `read` without `reveal` or
+`reveal-history`, or another permission, needs the confirmation alone. A new
+environment that a rule reaches because it does not except it needs no
+confirmation, and nor does a change
 that only narrows access. Creating or cloning an environment whose name
 gives a machine secret plaintext through an *only* rule is always refused:
 create it under another name, then rename it. A machine whose `all` rule

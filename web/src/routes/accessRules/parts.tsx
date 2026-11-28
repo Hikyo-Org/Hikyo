@@ -127,13 +127,13 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   // selector without names is labelled by its project-bound items. A name
   // is protected where any covered project's environment of it is, listed
   // in this view or not.
-  const named = envs.names === undefined ? [] : ruleEnvIds(world, rule).map((id) => envById(world, id));
+  const named = envs.names === undefined ? [] : ruleEnvIds(world, rule).flatMap((id) => envById(world, id) ?? []);
   const envList: Labels =
     envs.names === undefined
       ? envLabels(world, rule, envs.items)
       : envs.names.map((name) => ({
           label: name,
-          flag: named.some((env) => env?.name === name && env.protected === true),
+          flag: named.some((env) => env.name === name && env.protected === true),
         }));
   const keyList = keyLabels(world, rule, keys.items);
   const envText = labelsText(envList, 'protected');

@@ -722,6 +722,49 @@ func TestEnvironmentNameWideningGatesMixedDisclosureClasses(t *testing.T) {
 	})
 }
 
+// Historical plaintext is secret plaintext too: a machine gaining `read` with
+// `reveal-history` through an only name is refused a create or clone, as one
+// with `reveal` is.
+func TestEnvironmentNameWideningRefusesHistoricalPlaintextOnCreate(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		ctx := t.Context()
+		execRaw(t, db, `UPDATE projects SET machine_reveal = TRUE WHERE id = 'prj_a1'`)
+		for _, c := range []string{"definitions-edit", "read", "edit", "publish", "reveal-history"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		sa, err := identitySvc(db).CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), "history-reader", domain.ClassAutomation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_hist_reveal', '"+string(sa.Principal)+"', 'reveal-history', 'org_a', 'prj_a1', NULL, "+ts+")")
+		if _, err := (&service.Rules{DB: db, Auth: authWithWindow(db)}).Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
+			Target: sa.Principal, Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"staging"}, KeyMode: domain.AxisAll}}); err != nil {
+			t.Fatalf("named rule: %v", err)
+		}
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+		var windowed []domain.EnvID
+		for _, id := range strings.Fields(queryStrings(t, db, "SELECT id || ' ' FROM environments WHERE project_id = 'prj_a1' ORDER BY id")) {
+			windowed = append(windowed, domain.EnvID(id))
+		}
+		windows := service.Bearer(sessionWithWindows(t, db, identRevatr, windowed...))
+		confirm := []domain.PrincipalID{sa.Principal}
+		var detail interface{ SafeDetail() string }
+		if _, err := envs.CreateConfirming(ctx, windows, prjScope(), "staging", nil, confirm); !errors.Is(err, service.ErrReauthRequired) ||
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "then rename it") {
+			t.Fatalf("create giving a machine historical plaintext = %v, want ErrReauthRequired saying to rename", err)
+		}
+		if _, _, err := envs.CloneConfirming(ctx, windows, prjScope(), "staging", string(envA1), nil, confirm); !errors.Is(err, service.ErrReauthRequired) ||
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "then rename it") {
+			t.Fatalf("clone giving a machine historical plaintext = %v, want ErrReauthRequired saying to rename", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE project_id = 'prj_a1' AND name = 'staging'"); n != 0 {
+			t.Fatalf("a refused create or clone wrote %d environments", n)
+		}
+	})
+}
+
 // A create or clone giving machines `read` without any disclosure capability,
 // or `edit`, through an only name reaches no secret plaintext (#1447): it
 // needs the confirmation and no reauthentication window, and audits no
@@ -738,7 +781,11 @@ func TestEnvironmentNameWideningMachinesWithoutSecretPlaintext(t *testing.T) {
 		identities := identitySvc(db)
 		var reader domain.PrincipalID
 		var confirm []domain.PrincipalID
-		for name, capability := range map[string]domain.Capability{"plain-reader": domain.CapRead, "plain-editor": domain.CapEdit} {
+		for _, m := range []struct {
+			name       string
+			capability domain.Capability
+		}{{"plain-reader", domain.CapRead}, {"plain-editor", domain.CapEdit}} {
+			name, capability := m.name, m.capability
 			sa, err := identities.CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), name, domain.ClassAutomation)
 			if err != nil {
 				t.Fatal(err)
@@ -780,7 +827,7 @@ func TestEnvironmentNameWideningMachinesWithoutSecretPlaintext(t *testing.T) {
 				t.Fatalf("confirmations for %s = %d, want 1", env, n)
 			}
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'identity.grant_widened'"); n != 0 {
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'identity.grant_widened' AND object_id IN ('"+string(confirm[0])+"', '"+string(confirm[1])+"')"); n != 0 {
 			t.Fatalf("identity.grant_widened rows = %d, want 0", n)
 		}
 	})
