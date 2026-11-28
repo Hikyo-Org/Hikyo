@@ -425,7 +425,7 @@ function envGrowth(rule: Rule): Growth['environments'] | null {
 
 function growthOf(rule: Rule): Growth | null {
   const environments = envGrowth(rule);
-  // An only list naming nothing reaches nothing, in later projects too.
+  // An only list without names reaches nothing later: it is empty, or legacy ids that never match a new environment.
   if (environments === null) return null;
   return { projects: rule.projects === '*', environments };
 }
