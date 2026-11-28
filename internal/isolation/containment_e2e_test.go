@@ -509,8 +509,9 @@ func writerWaiters(t *testing.T, db *store.DB) int64 {
 	return db.SQLiteWrite().Stats().WaitCount
 }
 
-// awaitBlocked waits until result delivers or more sessions than base wait on
-// a lock, and reports whether result delivered. On timeout it runs cleanup, if
+// awaitBlocked waits until result delivers or writerWaiters rises above base
+// (on PostgreSQL, one more session waiting on a lock), and reports whether
+// result delivered. On timeout it runs cleanup, if
 // any, so held locks are freed before the test fails.
 func awaitBlocked(t *testing.T, db *store.DB, base int64, result <-chan error, cleanup func()) (bool, error) {
 	t.Helper()

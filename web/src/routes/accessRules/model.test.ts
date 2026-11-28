@@ -413,7 +413,7 @@ describe('reach and saving', () => {
     expect(reachOf(world, everywhere).grows).toEqual({ projects: true, environments: { every: false, named: ['staging'] } });
     expect(text(everywhere)).toContain('new projects and environments named staging included');
     expect(text({ ...everywhere, envs: ALL })).toContain('new projects and environments included');
-    expect(text({ ...everywhere, envs: { mode: 'only', names: [], items: [] } })).toContain('new projects included');
+    expect(reachOf(world, { ...everywhere, envs: { mode: 'only', names: [], items: [] } }).grows).toBeNull();
   });
 
   it('with the Where unchanged, a save moves only the permissions that changed', () => {
