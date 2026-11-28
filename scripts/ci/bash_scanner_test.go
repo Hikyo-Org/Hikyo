@@ -199,7 +199,8 @@ var heredocEscape = regexp.MustCompile("\\\\([$`\\\\])")
 // string, a bash or sh -c string, as codeText reads them) with the word that holds it, and
 // whether it reads its script from stdin: bash or sh with -s or no script operand, a script
 // operand of /dev/stdin, or a source of /dev/stdin read it; an expanded word in place of the
-// operand may. Through env -S, the shell the string runs is returned, with no code.
+// operand may. Through env -S, the command env's own splitting of the string gives is read
+// the same way.
 func handedCode(call *syntax.CallExpr) (name, code string, word *syntax.Word, stdin stdinUse) {
 	if call == nil {
 		return "", "", nil, noStdin
@@ -247,7 +248,7 @@ prefixes:
 						split, rest = codeText(rest[0]), rest[1:]
 					}
 					// env runs the command its own splitting gives, with no shell between.
-					passed := &syntax.CallExpr{Args: append(envSplitWords(split, words[0].Pos()), rest...)}
+					passed := &syntax.CallExpr{Args: slices.Concat([]*syntax.Word{{Parts: []syntax.WordPart{&syntax.Lit{ValuePos: words[0].Pos(), Value: "env"}}}}, envSplitWords(split, words[0].Pos()), rest)}
 					return handedCode(passed)
 				case envValued.MatchString(option) || envLongValued[long] && hasValue:
 					words = words[1:] // -uNAME, -CDIR, -aNAME, --unset=NAME, --chdir=DIR, --argv0=NAME
@@ -366,22 +367,21 @@ const (
 
 // envSplitWords splits text as GNU env -S does: on unquoted whitespace, with '...' and "..."
 // quotes, backslash escapes (\_ separates outside quotes and is a space inside them, \c ends
-// the text) and a # comment. A word holding ${VAR} reads as an expansion. Each word is placed
-// at pos. Text env would reject splits to nothing.
+// the text) and a # comment. ${VAR} reads as an expansion within its word. Each word is placed
+// at pos. An unterminated quote, which env rejects, splits to nothing; other text env rejects
+// is split as far as it goes.
 func envSplitWords(text string, pos syntax.Pos) []*syntax.Word {
 	var words []*syntax.Word
 	var word strings.Builder
-	inWord, expanded, quote := false, false, byte(0)
+	var parts []syntax.WordPart
+	inWord, quote := false, byte(0)
 	flush := func() {
 		if inWord {
-			part := syntax.WordPart(&syntax.SglQuoted{Left: pos, Value: word.String()})
-			if expanded {
-				part = &syntax.ParamExp{Dollar: pos}
-			}
-			words = append(words, &syntax.Word{Parts: []syntax.WordPart{part}})
+			parts = append(parts, &syntax.SglQuoted{Left: pos, Value: word.String()})
+			words = append(words, &syntax.Word{Parts: parts})
 		}
 		word.Reset()
-		inWord, expanded = false, false
+		parts, inWord = nil, false
 	}
 	for i := 0; i < len(text); i++ {
 		c := text[i]
@@ -412,7 +412,9 @@ func envSplitWords(text string, pos syntax.Pos) []*syntax.Word {
 			}
 			inWord = inWord || word.Len() > 0
 		case c == '$' && quote != '\'' && strings.HasPrefix(text[i:], "${"):
-			expanded, inWord = true, true
+			inWord = true
+			parts = append(parts, &syntax.SglQuoted{Left: pos, Value: word.String()}, &syntax.ParamExp{Dollar: pos})
+			word.Reset() // the {NAME} after it stays as text in the placeholder's word
 		default:
 			word.WriteByte(c)
 			inWord = true
@@ -603,6 +605,15 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env -S single-quoted backslash":     "env -S \"bash -c 'echo \\\\#; [[ a == b ]]'\"\n",
 		"env -S \\_ in quotes":               "env -S 'bash -c \"[[\\_a\\_==\\_b\\_]]\"'\n",
 		"env -S \\n escape":                  "env -S 'bash -c \"x=1\\n[[ a == b ]]\"'\n",
+		"env -S assignment":                  "env -S 'FOO=1 bash -c \"[[ a == b ]]\"'\nenv -S FOO=1 bash -c '[[ a == b ]]'\n",
+		"env -S assignment, stdin":           "env -S 'FOO=1 bash -s' <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"env -S option":                      "env -S '-i bash -c \"[[ a == b ]]\"'\n",
+		"env -S expansion in a word":         "env -S 'bash -c \"${X}; [[ a == b ]]\"'\n",
+		"env -S vertical tab":                "env -S 'bash\v-c\v\"[[ a == b ]]\"'\n",
+		"env -S # inside a word":             "env -S 'bash -c x=1#\"; [[ a == b ]]\"'\n",
+		"env -S single-quoted escapes":       "env -S \"bash -c 'x=\\\\'\\\\'; [[ a == b ]]'\"\n",
+		"env -S ${ in single quotes":         "env -S \"bash -c '\\${X:-;} ; [[ a == b ]]'\"\n",
+		"env -S text before an expansion":    "env -S 'bash -c \"[[ a == b ]]; echo ${X}\"'\n",
 		"env -aNAME":                         "env -an bash -c '[[ a == b ]]'\n",
 		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
 		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
@@ -723,6 +734,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"bash --version":                "bash --version\nsh --help\n",
 		"expanded script, flag, data":   "bash \"$script\" -e <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script, here-string":  "bash \"$script\" <<<'not ( shell'\n",
+		"env -S empty quotes":           "env -S \"bash -c '' '[[ a == b ]]'\"\n",
+		"env -S escaped #":              "env -S 'bash -c \\# \"[[ a == b ]]\"'\n",
 		"env -S comment":                "env -S 'true #bash -c \"[[ a == b ]]\"'\n",
 		"env -S \\c ends":               "env -S 'true \\c bash -c \"[[ a == b ]]\"'\n",
 		"env -S unterminated quote":     "env -S 'bash -c \"[[ a == b ]]'\n",
@@ -840,7 +853,7 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"echo x | bash\n", "printf x | sh -s -- a\n", "echo x | bash >/dev/null\n", "echo x | bash 2>&1\n", "echo x |& bash\n",
 		"source /dev/stdin\n", ". /dev/fd/0\n", "source -- /proc/self/fd/0\n", "bash 3<<'EOF'\nx\nEOF\n", "bash <&3\n",
 		"{ bash; } <<'EOF'\n[[ a == b ]]\nEOF\n", "( bash -s ) <<'EOF'\nx\nEOF\n", "exec 0<<'EOF'\nx\nEOF\nbash\n", "run() { bash -s; }\n", "coproc bash\n",
-		"source /dev/stdin </dev/stdin\n", "echo x | env -S 'bash -s <f'\n", "env -S 'bash #-c x'\n", "env -S 'bash \\c -c x'\n", "env -S 'bash \\_ -s'\n", "echo x | env -S 'bash -s >/dev/null'\n", "env -S 'bash -s 2>/dev/null'\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
+		"source /dev/stdin </dev/stdin\n", "echo x | env -S 'bash -s <f'\n", "env -S 'FOO=1 bash -s'\n", "env -S 'bash #-c x'\n", "env -S 'bash \\c -c x'\n", "env -S 'bash \\_ -s'\n", "echo x | env -S 'bash -s >/dev/null'\n", "env -S 'bash -s 2>/dev/null'\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
 		"bash </dev/stdin\n", "bash < <(printf x)\n", "bash <<'EOF' <>f\nx\nEOF\n",
 		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed
 	} {
