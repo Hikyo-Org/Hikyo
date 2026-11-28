@@ -207,6 +207,14 @@ Before you request review, run the checks for what you touched:
   run the affected Playwright flow specs (`web/e2e/flows/*.spec.ts`, see the
   browser flow tests below) and list them in the PR Evidence. The pre-push hook
   runs the Storybook suite for you.
+  For quick feedback while editing, `node --run typecheck:fast` runs
+  [tsrs](https://github.com/oxc-project/tsrs), a Rust port of the pinned
+  TypeScript compiler, in under a second. Its `--fast` mode can, rarely, report
+  different diagnostics, so `typecheck` (`tsc`) stays the gate.
+  In VS Code, the TypeScript 7 extension can use it as the language server
+  with `"js/ts.experimental.useTsgo": true` and
+  `"js/ts.tsdk.path": "web/node_modules/tsrs/tsdk"` from the repository root
+  (macOS and Linux).
 - Run the formatter and linters so the `lint` gate does not bounce the pull
   request.
 

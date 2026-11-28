@@ -34,3 +34,9 @@ overrides:
   # still matches correctly with minimatch 11; drop this once the Storybook
   # docgen plugin no longer pulls glob 13.
   minimatch@>=10 <11.0.1: 11.0.8
+# Semver ranges exclude prereleases, so Storybook's and react-docgen-typescript's
+# `typescript >= 4.x` peers reject 7.1.0-beta although it satisfies them. Drop
+# this once web pins TypeScript 7.1.0 stable.
+peerDependencyRules:
+  allowedVersions:
+    typescript: 7.1.0-beta
