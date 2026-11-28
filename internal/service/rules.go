@@ -175,15 +175,26 @@ func gainedPrincipals(gains []WideningGain) []domain.PrincipalID {
 // mergeGains unions b into a per (principal, capability, key selector),
 // keeping the order moveWidening produces.
 func mergeGains(a, b []WideningGain) []WideningGain {
+	// Each selector is encoded once per call, not per comparison: one can
+	// hold 500 items.
+	sels := make([]string, len(a), len(a)+len(b))
+	for i := range a {
+		sels[i] = a[i].Keys.selector()
+	}
 	for _, g := range b {
+		sel := g.Keys.selector()
 		// A project-wide gain (no environments) stays its own entry, so a
 		// merge with an environment gain does not hide the project scope.
-		i := slices.IndexFunc(a, func(x WideningGain) bool {
-			return x.Principal == g.Principal && x.Capability == g.Capability && (len(x.Envs) == 0) == (len(g.Envs) == 0) &&
-				x.Keys.selector() == g.Keys.selector()
-		})
+		i := -1
+		for j, x := range a {
+			if x.Principal == g.Principal && x.Capability == g.Capability && (len(x.Envs) == 0) == (len(g.Envs) == 0) && sels[j] == sel {
+				i = j
+				break
+			}
+		}
 		if i < 0 {
 			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs), Keys: g.Keys})
+			sels = append(sels, sel)
 			continue
 		}
 		for _, env := range g.Envs {
@@ -193,15 +204,24 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 		}
 		slices.Sort(a[i].Envs)
 	}
-	slices.SortFunc(a, func(x, y WideningGain) int {
+	order := make([]int, len(a))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortFunc(order, func(i, j int) int {
+		x, y := a[i], a[j]
 		return cmp.Or(
 			strings.Compare(string(x.Principal), string(y.Principal)),
 			strings.Compare(string(x.Capability), string(y.Capability)),
 			cmp.Compare(min(len(x.Envs), 1), min(len(y.Envs), 1)), // the project gain first
-			strings.Compare(x.Keys.selector(), y.Keys.selector()), // every key first
+			strings.Compare(sels[i], sels[j]),                     // every key first
 		)
 	})
-	return a
+	out := make([]WideningGain, len(a))
+	for k, i := range order {
+		out[k] = a[i]
+	}
+	return out
 }
 
 // selector is k's canonical key selector; "" is every key.
@@ -227,20 +247,26 @@ type gainAtom struct {
 // one per key selector; a gain over every key absorbs a narrowed one for the
 // same environment.
 func gainsOf(project domain.ProjectID, atoms map[gainAtom]bool) []WideningGain {
-	var out []WideningGain
+	var gs []WideningGain
+	decoded := map[string]*WideningKeys{}
 	for a := range atoms {
 		every := a
 		every.keys = ""
 		if a.keys != "" && atoms[every] {
 			continue
 		}
-		g := WideningGain{Principal: a.principal, Capability: a.capability, Keys: keysOf(project, a.keys)}
+		keys, ok := decoded[a.keys]
+		if !ok {
+			keys = keysOf(project, a.keys)
+			decoded[a.keys] = keys
+		}
+		g := WideningGain{Principal: a.principal, Capability: a.capability, Keys: keys}
 		if a.env != "" {
 			g.Envs = []domain.EnvID{a.env}
 		}
-		out = mergeGains(out, []WideningGain{g})
+		gs = append(gs, g)
 	}
-	return out
+	return mergeGains(nil, gs)
 }
 
 // MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
