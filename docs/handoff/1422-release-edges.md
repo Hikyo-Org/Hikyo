@@ -65,7 +65,7 @@ entirely and is not a fallback.
 - **A. Nothing.** v1.0.0 installs stay on v1.0.0. Restore into a newer release
   is refused (see above). Rejected.
 - **B. Recovery-signed bridge v1.0.0 → v1.1.0**, one statement per engine, in a
-  new offline-signed catalog (`hikyo.dev/recovery-bridge/v1`). It reaches
+  new offline-signed catalog (`hikyo.dev/recovery-bridge/v2`, with a signed `not_after`). It reaches
   exactly the missing hop, changes no release check, and needs the recovery-key
   ceremony plus operator attestation at upgrade time. A v1.0.0 install then
   takes two hops (to v1.1.0, then to the next release).
@@ -96,7 +96,38 @@ workflow (full `check-compatibility-unchanged.sh`).
 
 ## Remaining work
 
-- Bridge for v1.0.0 (option B): separate PR after key custody is decided; not implemented here.
+- Owner decision (#1561): the legacy nightly bridge now carries a signed `not_after`
+  (schema `legacy-nightly-bridge/v2`, at most 30 days; the expiry-free v1 verifies as an
+  always-expired bridge that counts in the inventory and never routes), and
+  a 404 for the revocation list counts as no answer (route plans with a warning, expiry
+  is the limit). The two legacy v1 statements in the committed catalog
+  (`release/trust/BRIDGES.md`) therefore plan no route until the owner re-signs v2
+  statements offline (`scripts/release/nightly legacy-bridges --not-after ...`) and
+  catalogues them. The v1 digests are policy-listed, so they cannot leave the catalog
+  without a policy rotation, which is an owner tidy-up and not a merge blocker: the
+  runtime loads them as expired, so they stay inert and every bundle still loads. Agents
+  never sign or publish this. The rehearsal does not yet exercise a legacy statement.
+- Revocation state (#1561 review): the accepted list and signature are one file
+  (`bridge-revocations-store.json`, fsync plus one rename); unusable stored state refuses
+  bridge routes under off and with an unreachable endpoint. Online, a verified list of any
+  age at or above this trust root's readable floor (with the floor's digest at its
+  sequence) replaces it automatically (owner decision, option A); otherwise the operator
+  removes the named files (runbook and `manual-upgrades.md`; a rollback is never blocked).
+  The floor file keeps one record per trust root, so a run under another root never lowers
+  or rebinds this root's floor. The
+  native security maintenance service reads the revocation policy from the host's
+  `hikyo.env`, proxy variables included. The fetcher honors the proxy environment.
+
+- Bridge for v1.0.0 (option B): tooling, independent verifier, rehearsal and
+  ceremony runbook are in the bridge PR (`docs/operations/recovery-bridge-ceremony.md`).
+  Owner-only prerequisite, in order, before any bridge can be used (not a merge blocker,
+  agents do none of it): (1) rotate the root to `recovery-2`; (2) sign the legacy-nightly
+  v2 and recovery-bridge statements with `recovery-2`; (3) publish the trust asset. Until
+  then the code refuses to route any bridge under the `recovery-1` root and says so
+  (runbook section "Owner prerequisite: rotate to recovery-2"); load and security rollback are unaffected, resume is refused too.
+  The ceremony itself (owner, #1560) is not done. The owner chose
+  `recovery-2` as the signing key (ADR R2). Open: a real-signature database upgrade
+  with operator attestation, and restore through `VerifyEmbeddedUpgradeSource` are untested.
 - No supported command writes a stable release edge; it is still authored by
   hand (documented in `docs/operations/upgrade-artifacts.md`).
 - PostgreSQL 17 fails first migrate with `upgrade: corrupt control state`

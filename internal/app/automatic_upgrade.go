@@ -352,9 +352,9 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	diagnostics.Printf(ctx, 1, "  Resolving the migration route from the installed release.")
 	var route automaticRoute
 	if expected != nil {
-		route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+		route, err = discoverReleaseRoute(ctx, cfg, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
 	} else {
-		route, err = prepareAutomaticRoute(ctx, installer, source, target, pinned, database, previous)
+		route, err = prepareAutomaticRoute(ctx, cfg, installer, source, target, pinned, database, previous)
 	}
 	if err != nil {
 		return err

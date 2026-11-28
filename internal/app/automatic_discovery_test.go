@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -98,7 +99,7 @@ func newAutomaticDiscoveryGraph(t *testing.T, predecessors [][]int) *automaticDi
 		materials = append(materials, material)
 		f.identities = append(f.identities, releaseidentity.Identity{Profile: declaration.Profile, Version: declaration.Version, Sequence: declaration.Sequence, Commit: declaration.Commit, CompatibilitySHA256: releaseidentity.Hash(claim), ManifestSHA256: releaseidentity.Hash(material.Manifest)})
 	}
-	bridge := f.trust.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: f.identities[0], TargetPolicySHA256: releaseidentity.Hash(materials[0].Policy), SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+	bridge := f.trust.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: f.identities[0], TargetPolicySHA256: releaseidentity.Hash(materials[0].Policy), SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
 	write := func(path string, raw []byte) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -154,7 +155,7 @@ func TestAutomaticDiscoveryNoopDoesNotFetchHistoricalPredecessors(t *testing.T) 
 	for _, identity := range f.identities[:2] {
 		f.forbidden[identity] = true
 	}
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(2), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(2), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 0 || len(f.fetched) != 0 || f.assembled != 0 {
 		t.Fatalf("same-release restart fetched historical artifacts: %v fetched=%v assemblies=%d", err, f.fetched, f.assembled)
 	}
@@ -163,7 +164,7 @@ func TestAutomaticDiscoveryNoopDoesNotFetchHistoricalPredecessors(t *testing.T) 
 func TestAutomaticDiscoveryRecentUpgradeDoesNotFetchAncientHistory(t *testing.T) {
 	f := newAutomaticDiscoveryFixture(t)
 	f.forbidden[f.identities[0]] = true
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(1), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[2]], f.trust.Pinned, f.inspection(1), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 1 || !slices.Equal(f.fetched, []releaseidentity.Identity{f.identities[1]}) || f.assembled != 1 {
 		t.Fatalf("direct upgrade fetched unrelated predecessor: %v fetched=%v assemblies=%d", err, f.fetched, f.assembled)
 	}
@@ -185,6 +186,7 @@ func TestAutomaticDiscoveryLegacyAndInterruptedRouteKeepExactBridge(t *testing.T
 				if err != nil {
 					t.Fatal(err)
 				}
+				bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 				plan, err := bundle.Plan(f.source, target.Identity)
 				if err != nil {
 					t.Fatal(err)
@@ -196,7 +198,7 @@ func TestAutomaticDiscoveryLegacyAndInterruptedRouteKeepExactBridge(t *testing.T
 				inspection.installed.InstanceID = "must-not-inspect-new-source"
 				f.assembled = 0
 			}
-			result, err := discoverAutomaticRoute(t.Context(), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
+			result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
 			if err != nil || len(result.Plan.Steps()) != 2 || len(result.Plan.BridgeDigests()) != 1 || !slices.Equal(f.fetched, []releaseidentity.Identity{f.identities[0]}) {
 				t.Fatalf("legacy bridge route unavailable: %v fetched=%v", err, f.fetched)
 			}
@@ -211,7 +213,7 @@ func TestAutomaticDiscoveryRejectsSnapshotBelowInstalledFloorBeforeFetching(t *t
 	f := newAutomaticDiscoveryFixture(t)
 	inspection := f.inspection(1)
 	inspection.state.Floor.CatalogSequence++
-	if _, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[2]], f.trust.Pinned, inspection, releaseidentity.SQLite, nil); err == nil || len(f.fetched) != 0 {
+	if _, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[2]], f.trust.Pinned, inspection, releaseidentity.SQLite, nil); err == nil || len(f.fetched) != 0 {
 		t.Fatal("stale trust evidence caused historical downloads")
 	}
 }
@@ -222,7 +224,7 @@ func TestAutomaticDiscoveryResolvesShallowAlternativesBeforeLongerHistory(t *tes
 	// the unnecessary interior node of the longer branch.
 	f := newAutomaticDiscoveryGraph(t, [][]int{{}, {0}, {0}, {2}, {3, 1}})
 	f.forbidden[f.identities[2]] = true
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 2 || result.Plan.Steps()[0].Target != f.identities[1] {
 		t.Fatalf("shortest authenticated branch was not selected: %v fetched=%v", err, f.fetched)
 	}
@@ -234,7 +236,7 @@ func TestAutomaticDiscoveryResolvesShallowAlternativesBeforeLongerHistory(t *tes
 func TestAutomaticDiscoveryPreservesDeterministicRouteTieBreak(t *testing.T) {
 	f := newAutomaticDiscoveryGraph(t, [][]int{{}, {}, {0}, {0}, {3, 2}})
 	f.forbidden[f.identities[1]] = true
-	result, err := discoverAutomaticRoute(t.Context(), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
+	result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, f.prepared[f.identities[4]], f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, nil)
 	if err != nil || len(result.Plan.Steps()) != 2 || result.Plan.Steps()[0].Target != f.identities[2] {
 		t.Fatalf("partial graph changed deterministic tie break: %v fetched=%v", err, f.fetched)
 	}
@@ -256,6 +258,7 @@ func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(
 			if err != nil {
 				t.Fatal(err)
 			}
+			bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 			plan, err := bundle.Plan(f.source, target.Identity)
 			if err != nil {
 				t.Fatal(err)
@@ -264,7 +267,7 @@ func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(
 			previous := &automaticJournal{Phase: "schema-applied", Target: target.Identity, Source: f.source, Instance: "actual-installation", Route: plan.Digest(), Hop: 1}
 			f.forbidden[f.identities[1]] = unavailable
 			inspection := f.inspection(0)
-			result, err := discoverAutomaticRoute(t.Context(), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
+			result, err := discoverAutomaticRoute(t.Context(), offConfig(t.TempDir()), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
 			if unavailable {
 				if err == nil {
 					t.Fatal("resume accepted missing intermediate executable")
@@ -286,5 +289,38 @@ func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(
 				t.Fatalf("unexpected exact payload requests: %v", f.fetched)
 			}
 		})
+	}
+}
+
+// An automatic resume is a resume, not a rollback: a journaled route through a bridge the
+// stored revocation list withdraws is refused, and the cause says revoked.
+func TestAutomaticResumeRefusesARevokedBridge(t *testing.T) {
+	f := newAutomaticDiscoveryFixture(t)
+	target := f.prepared[f.identities[2]]
+	full, err := f.AssembleNightlyRoute(t.Context(), target, []selfupdate.PreparedNightly{f.prepared[f.identities[0]], f.prepared[f.identities[1]]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := upgradebundle.Load(t.Context(), full, f.trust.Pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := bundle.WithBridgeRevocations(noRevokedBridges).Plan(f.source, target.Identity)
+	if err != nil || len(plan.BridgeDigests()) != 1 {
+		t.Fatalf("the fixture route uses one bridge: %v", err)
+	}
+	target.BundleDirectory = full
+	previous := &automaticJournal{Phase: "schema-applied", Target: target.Identity, Source: f.source, Instance: "actual-installation", Route: plan.Digest(), Hop: 1}
+	list := trustfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(f.trust.Pinned.Root), Revoked: plan.BridgeDigests()})
+	state := t.TempDir()
+	if err := os.WriteFile(filepath.Join(state, "bridge-revocations-store.json"), trustfixture.JSON(t, struct {
+		List      []byte `json:"list"`
+		Signature []byte `json:"signature"`
+	}{list, trustfixture.Sign(t, f.trust.RecoverySigner, list)}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = discoverAutomaticRoute(t.Context(), offConfig(state), f, f, target, f.trust.Pinned, f.inspection(0), releaseidentity.SQLite, previous)
+	if err == nil || !strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("a resume through a revoked bridge must be refused as revoked: %v", err)
 	}
 }

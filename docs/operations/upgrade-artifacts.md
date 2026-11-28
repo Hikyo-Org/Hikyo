@@ -40,7 +40,7 @@ route a stranded release. None is automatic, and each needs an owner decision:
 - **Nothing.** The installation stays on its release. Restoring its backup into
   a newer release does not work either: v1.1.0 refuses a v1.0.0 archive
   (`archive source has no authenticated embedded schema route`).
-- **A recovery-signed bridge** (`hikyo.dev/recovery-bridge/v1`) per engine from
+- **A recovery-signed bridge** (`hikyo.dev/recovery-bridge/v2`, with a signed `not_after` of at most 30 days) per engine from
   the stranded release to its successor, authorized by a new offline-signed
   catalog and passed to `assemble-upgrade --bridge`. It needs the recovery-key
   ceremony and operator attestation at upgrade time. See
@@ -254,13 +254,25 @@ requires maintenance. The returned bridge digest and
 instance attestation, backup evidence, current operator pin and atomic one-use
 nonce consumption remain required at admission.
 
-`hikyo.dev/legacy-nightly-bridge/v1` is the explicit first-hop form for an unsigned
+`hikyo.dev/legacy-nightly-bridge/v2` is the explicit first-hop form for an unsigned
 pre-ledger installation. It names `source_genesis: "legacy/v1"`, exact source
-schema/migrations, and an independently authenticated nightly target and policy.
+schema/migrations, an independently authenticated nightly target and policy, and a
+signed canonical-UTC `not_after` (the owner's choice, at most 30 days after
+signing). The expiry-free `v1` form loads as an always-expired bridge: it counts in the
+inventory and is never a route.
 It carries no invented `source` release or `source_policy_sha256`. Only recovery
 signatures and the current catalog authorize it. An ordinary nightly legacy
 edge is an inspection candidate and cannot create an executable route. Fresh
 installs and existing stable-profile rules are unchanged.
+
+### Recovery bridges for a missing release edge
+
+When a shipped release pair has no ordinary edge, a recovery-signed bridge
+statement per engine can authorize it. `recovery-bridge.sh author` derives the
+statements from the published declarations, and `verify-recovery-bridge.sh`
+independently re-derives them. The signing procedure, constraints and
+revocation are in the [recovery bridge ceremony](recovery-bridge-ceremony.md).
+`assemble-upgrade --bridge DIR` adds each catalogued bridge to the offline bundle.
 
 Plans expose defensive copies. Their digest binds the exact route, schemas,
 migrations, inventory, policies and bridge statements. Unrelated later metadata

@@ -111,6 +111,8 @@ func TestVariableInventoryIncludesServerUpgradeAndRotationInputs(t *testing.T) {
 		"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":    true,
 		"HIKYO_UPGRADE_STATE_DIR":              true,
 		"HIKYO_UPGRADE_TARGET_MANIFEST":        true,
+		"HIKYO_UPGRADE_REVOCATION_CHECK":       true,
+		"HIKYO_UPGRADE_REVOCATION_URL":         true,
 	}
 	for _, descriptor := range VariableInventory() {
 		if bootInputs[descriptor.Key] {

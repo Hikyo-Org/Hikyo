@@ -1,5 +1,22 @@
 # Legacy bridges
 
+Note (#1561): the statements below are `hikyo.dev/legacy-nightly-bridge/v1`
+(no expiry). The runtime loads that form as a verified but always-expired bridge: it
+counts in the bridge inventory, so every snapshot and bundle still loads, and it is
+never a route, so no legacy-nightly route plans until the owner replaces it. The owner
+steps, in order: rotate the trust root to `recovery-2`, ship a release whose binary
+embeds that root, re-sign
+`legacy-nightly-bridge/v2` statements with a `not_after` offline, signed with
+`recovery-2`, publish a new catalog listing them together with the recovery-signed
+bridge revocation list (sequence 1, `recovery-revocations.json` and its `.sigstore.json`)
+as assets of the `trust` release, and rotate the stable policy, because
+these two digests are policy-listed and cannot leave the catalog without a rotation.
+The revocation list is re-signed only when something is revoked, never on a schedule:
+an old list is reported `stale` but still applies, and it replaces unusable stored state
+on an installation when it is at or above that installation's floor for the trust root. These steps are owner tidy-up, not a merge or release blocker. The full list is in
+[the ceremony runbook](../../docs/operations/recovery-bridge-ceremony.md), section
+"Owner prerequisite: rotate to recovery-2".
+
 ## Catalog sequence 3: legacy schema into nightly 27 (2026-09-07)
 
 The GitHub release object for nightly 26 was deleted after publication, so

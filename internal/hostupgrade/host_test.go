@@ -3,6 +3,7 @@ package hostupgrade
 import (
 	"context"
 	"errors"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -182,5 +183,26 @@ func TestRuntimeCommandCannotSelectArbitraryExecutable(t *testing.T) {
 	}
 	if _, err := h.Export(context.Background(), "/bin/sh", ExportRequest{OutputDirectory: "/etc/hikyo/upgrade-keys", Recipient: "age1recipient"}); err == nil {
 		t.Fatal("accepted private output")
+	}
+}
+
+func TestRuntimeEnvironmentKeepsTheUpgradePolicyAndProxies(t *testing.T) {
+	h := &Host{config: DefaultConfig(), env: map[string]string{"HIKYO_DB": "sqlite:/var/lib/hikyo/hikyo.db", "HIKYO_UPGRADE_REVOCATION_CHECK": "off", "HIKYO_UPGRADE_REVOCATION_URL": "https://mirror.invalid/list", "HTTPS_PROXY": "http://proxy.invalid:3128", "NO_PROXY": "localhost", "COSIGN_PASSWORD": "operator-secret"}}
+	values, err := h.runtimeEnvironment(RuntimeEvidence{BundleDirectory: h.config.PublicDirectory + "/bundle", OperatorPublicKey: h.config.PublicDirectory + "/operator.pub"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]string{}
+	for _, entry := range environmentList(values) {
+		key, value, _ := strings.Cut(entry, "=")
+		listed[key] = value
+	}
+	for _, key := range config.UpgradePolicyVariables {
+		if listed[key] == "" || listed[key] != h.env[key] {
+			t.Fatalf("runtime child lost %s", key)
+		}
+	}
+	if listed["HTTPS_PROXY"] != "http://proxy.invalid:3128" || listed["NO_PROXY"] != "localhost" || listed["COSIGN_PASSWORD"] != "" {
+		t.Fatalf("proxy settings must pass and other operator state must not: %v", listed)
 	}
 }

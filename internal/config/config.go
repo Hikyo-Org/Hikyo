@@ -66,8 +66,18 @@ type UpgradeConfiguration struct {
 	OperatorPublicKeyFile string
 	OperatorInstanceID    string
 	TargetManifestSHA256  string
-	LegacyWritersStopped  bool
+	RevocationCheck       string
+	RevocationURL         string
+	// RevocationProxy, when set, supplies the proxy settings the revocation fetcher honours
+	// instead of the process environment. The native security service runs without the
+	// operator's environment, so it passes the host's own file here. It is never read from
+	// the environment itself.
+	RevocationProxy      *ProxySettings
+	LegacyWritersStopped bool
 }
+
+// ProxySettings are the HTTP_PROXY, HTTPS_PROXY and NO_PROXY values of one environment.
+type ProxySettings struct{ HTTP, HTTPS, None string }
 
 type Config struct {
 	// ManagedInputs are unvalidated one-time seed inputs. The owning service
@@ -104,11 +114,17 @@ type Config struct {
 	// client tunnels through, from HIKYO_DIRECTORY_PROXY. Empty is the default
 	// and means direct egress.
 	//
-	// It is EXPLICIT CONFIGURATION and nothing else: http.ProxyFromEnvironment
-	// is deliberately not consulted anywhere, because ambient HTTP_PROXY
-	// discovery would let a process's environment redirect authenticated fleet
-	// traffic. https only — the CONNECT request names the remote host, so a
-	// plaintext proxy publishes the fleet topology to the path.
+	// It is EXPLICIT CONFIGURATION and nothing else for fleet traffic:
+	// http.ProxyFromEnvironment is deliberately not consulted by the directory,
+	// pairing or operator clients, because ambient HTTP_PROXY discovery would let
+	// a process's environment redirect authenticated fleet traffic. Clients that
+	// carry no fleet credentials do honour the proxy environment: the recovery
+	// bridge revocation fetcher (internal/bridgerevocation), because a proxy-only
+	// host would otherwise see the endpoint as unreachable and fall back to the
+	// bridge's not_after, and the CLI and desktop shell transports. Whatever a
+	// proxy returns is still verified against the pinned recovery key. https only:
+	// the CONNECT request names the remote host, so a plaintext proxy publishes the
+	// fleet topology to the path.
 	DirectoryProxy string
 	// PairingSPKIPin optionally states the externally served TLS public key.
 	// Managed owner configuration is its authority after adoption.
@@ -330,6 +346,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":      true,
 	"HIKYO_UPGRADE_OPERATOR_INSTANCE":        true,
 	"HIKYO_UPGRADE_TARGET_MANIFEST":          true,
+	"HIKYO_UPGRADE_REVOCATION_CHECK":         true,
+	"HIKYO_UPGRADE_REVOCATION_URL":           true,
 	"HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED":   true,
 	"HIKYO_NEW_ROOT_KEY_FILE":                true,
 	"HIKYO_DIRECTORY_PROXY":                  true,
@@ -389,6 +407,20 @@ var knownEnv = map[string]bool{
 }
 
 const devSQLitePath = "hikyo-dev.db"
+
+// UpgradePolicyVariables are the operator-owned upgrade settings (the revocation
+// policy) that every process launched on the installation's behalf inherits, as
+// opposed to the per-upgrade evidence variables each launcher sets itself. A
+// launcher that filters HIKYO_UPGRADE_* must carry exactly these through.
+var UpgradePolicyVariables = []string{"HIKYO_UPGRADE_REVOCATION_CHECK", "HIKYO_UPGRADE_REVOCATION_URL"}
+
+// PolicyEnvironment is the configured value of each UpgradePolicyVariables entry.
+func (u UpgradeConfiguration) PolicyEnvironment() map[string]string {
+	return map[string]string{
+		"HIKYO_UPGRADE_REVOCATION_CHECK": u.RevocationCheck,
+		"HIKYO_UPGRADE_REVOCATION_URL":   u.RevocationURL,
+	}
+}
 
 // Load parses configuration for a subcommand. getenv supplies single keys;
 // environ (os.Environ() shape) is scanned for unknown HIKYO_* keys and may be
@@ -469,6 +501,8 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 			OperatorPublicKeyFile: getenv("HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY"),
 			OperatorInstanceID:    getenv("HIKYO_UPGRADE_OPERATOR_INSTANCE"),
 			TargetManifestSHA256:  getenv("HIKYO_UPGRADE_TARGET_MANIFEST"),
+			RevocationCheck:       getenv("HIKYO_UPGRADE_REVOCATION_CHECK"),
+			RevocationURL:         getenv("HIKYO_UPGRADE_REVOCATION_URL"),
 		},
 		Dev:                     *dev,
 		AutoMigrate:             *autoMigrate,

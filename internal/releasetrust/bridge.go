@@ -3,6 +3,7 @@ package releasetrust
 import (
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Masterminds/semver/v3"
@@ -20,6 +21,52 @@ type BridgeStatement struct {
 	SourceSchemaSHA256 releaseidentity.Digest            `json:"source_schema_sha256"`
 	TargetSchemaSHA256 releaseidentity.Digest            `json:"target_schema_sha256"`
 	Mode               string                            `json:"mode"`
+	// NotAfter is the canonical UTC instant (RFC 3339, "Z") after which a bridge is
+	// no longer usable. Every runtime-valid bridge carries one: the recovery v2 and
+	// legacy nightly v2 schemas require it; the expiry-free legacy nightly v1 form
+	// verifies as an always-expired bridge that only counts in the inventory.
+	NotAfter string `json:"not_after,omitempty"`
+}
+
+// BridgeSchemaV2 adds a signed expiry to the recovery bridge.
+const BridgeSchemaV2 = "hikyo.dev/recovery-bridge/v2"
+
+// LegacyNightlyBridgeSchemaV2 adds the same signed expiry to the legacy nightly
+// bridge. Its v1 form (no expiry) verifies as an expired bridge that never routes:
+// the owner re-signs a v2 statement offline at the ceremony, choosing not_after;
+// agents never sign one.
+const LegacyNightlyBridgeSchemaV2 = "hikyo.dev/legacy-nightly-bridge/v2"
+
+// notAfter parses the canonical expiry; only the exact "Z" form is accepted so
+// the signed bytes have one spelling.
+func notAfter(value string) (time.Time, error) {
+	at, err := time.Parse(time.RFC3339, value)
+	if err != nil || at.UTC().Format(time.RFC3339) != value {
+		return time.Time{}, errors.New("recovery bridge not_after must be canonical UTC RFC 3339")
+	}
+	return at, nil
+}
+
+// MaxBridgeWindow is the longest a bridge may stay usable after it is signed.
+// BridgeWindowSkew is the slack granted to the host clock when the runtime checks
+// that bound at admission, so a statement signed with a full window on a slightly
+// fast signing machine is not refused.
+const (
+	MaxBridgeWindow  = 30 * 24 * time.Hour
+	BridgeWindowSkew = time.Hour
+)
+
+// Expired reports whether the bridge may not be used for a new route at now: it is
+// at or past its not_after, it carries none (the expiry-free legacy v1 form), or its
+// not_after lies further ahead than MaxBridgeWindow plus BridgeWindowSkew, so a
+// statement signed with a longer window than policy allows is bounded at admission,
+// not only where it is signed. The host clock is the only clock consulted.
+func (b VerifiedBridge) Expired(now time.Time) bool {
+	if b.state == nil {
+		return true
+	}
+	at, err := notAfter(b.state.statement.NotAfter)
+	return err != nil || !now.Before(at) || at.Sub(now) > MaxBridgeWindow+BridgeWindowSkew
 }
 
 // SourceIdentity preserves the inspected legacy genesis without inventing a
@@ -33,6 +80,8 @@ type bridgeState struct {
 	statement BridgeStatement
 	digest    releaseidentity.Digest
 	snapshot  releaseidentity.Digest
+	// retiredSigner: a routable schema signed under a root that still pins a denied key.
+	retiredSigner bool
 }
 
 // VerifiedBridge authorizes only the exact exceptional edge. Target release
@@ -40,6 +89,10 @@ type bridgeState struct {
 type VerifiedBridge struct{ state *bridgeState }
 
 func (b VerifiedBridge) Valid() bool { return b.state != nil }
+
+// RetiredSigner reports a routable bridge under a root that still pins a denied recovery
+// key: it verifies and counts, but never routes a new admission.
+func (b VerifiedBridge) RetiredSigner() bool { return b.state != nil && b.state.retiredSigner }
 func (b VerifiedBridge) Digest() releaseidentity.Digest {
 	if b.state == nil {
 		return ""
@@ -62,6 +115,26 @@ func (b VerifiedBridge) Statement() BridgeStatement {
 	return statement
 }
 
+// bridgeDeniedSigners are recovery keys (SHA-256 of the public key) that never sign a
+// routable bridge. The owner decided that recovery-1 is not extended to bridges (R2): a
+// bridge is signed by a rotated key that the running binary's root pins, so a build whose
+// root still pins recovery-1 admits no routable bridge. Such a bridge still verifies and
+// counts in the inventory, so every bundle loads and a security rollback is unaffected,
+// but it never routes a new admission or resumes one (only a security rollback ignores it).
+var bridgeDeniedSigners = []string{"1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"}
+
+// DenyBridgeSignerForTest adds a recovery key digest to the denied set, for tests that
+// cannot hold the retired key, and returns the undo. It can only add a restriction.
+func DenyBridgeSignerForTest(sha256 string) func() {
+	previous := bridgeDeniedSigners
+	bridgeDeniedSigners = append(append([]string{}, previous...), sha256)
+	return func() { bridgeDeniedSigners = previous }
+}
+
+// ErrRetiredBridgeSigner explains why a routable bridge cannot be used while the trust
+// root still pins recovery-1, and where the owner's way out is written down.
+var ErrRetiredBridgeSigner = errors.New("the trust root pins recovery-1, and recovery bridges need the rotated recovery-2 root: an owner step, see docs/operations/recovery-bridge-ceremony.md, section \"Owner prerequisite: rotate to recovery-2\"")
+
 func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, error) {
 	if !snapshot.Valid() {
 		return VerifiedBridge{}, errors.New("unverified trust snapshot")
@@ -81,7 +154,11 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 		return VerifiedBridge{}, errors.New("invalid recovery bridge identity or mode")
 	}
 	switch statement.Schema {
-	case "hikyo.dev/recovery-bridge/v1":
+	case BridgeSchemaV2:
+		// The unbounded v1 recovery statement is refused: every recovery bridge expires.
+		if _, err := notAfter(statement.NotAfter); err != nil {
+			return VerifiedBridge{}, err
+		}
 		if statement.SourceGenesis != "" || statement.Source.Validate() != nil || statement.Target.Sequence <= statement.Source.Sequence || statement.SourcePolicySHA256.Validate() != nil {
 			return VerifiedBridge{}, errors.New("invalid recovery bridge source")
 		}
@@ -93,6 +170,17 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 			}
 		}
 	case "hikyo.dev/legacy-nightly-bridge/v1":
+		// The expiry-free v1 form verifies (the catalog and the bundle inventory list it,
+		// and every bridge in the catalog must load) but it is born expired: no
+		// not_after is kept, so Expired is always true and no route ever uses it.
+		if statement.SourceGenesis != releaseidentity.LegacyGenesisV1 || statement.Source != (releaseidentity.Identity{}) || statement.SourcePolicySHA256 != "" || statement.Target.Profile != releaseidentity.NightlyV1 || len(statement.SourceMigrations.Entries) == 0 {
+			return VerifiedBridge{}, errors.New("invalid legacy nightly bridge source or target")
+		}
+		statement.NotAfter = ""
+	case LegacyNightlyBridgeSchemaV2:
+		if _, err := notAfter(statement.NotAfter); err != nil {
+			return VerifiedBridge{}, err
+		}
 		if statement.SourceGenesis != releaseidentity.LegacyGenesisV1 || statement.Source != (releaseidentity.Identity{}) || statement.SourcePolicySHA256 != "" || statement.Target.Profile != releaseidentity.NightlyV1 || len(statement.SourceMigrations.Entries) == 0 {
 			return VerifiedBridge{}, errors.New("invalid legacy nightly bridge source or target")
 		}
@@ -102,5 +190,6 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 	if statement.SourceMigrations.Validate() != nil || statement.TargetMigrations.Validate() != nil || statement.SourceMigrations.Engine != statement.TargetMigrations.Engine || statement.SourceSchemaSHA256.Validate() != nil || statement.TargetSchemaSHA256.Validate() != nil {
 		return VerifiedBridge{}, errors.New("invalid recovery bridge migration binding")
 	}
-	return VerifiedBridge{state: &bridgeState{statement: statement, digest: digest, snapshot: snapshot.Digest()}}, nil
+	retired := statement.Schema != "hikyo.dev/legacy-nightly-bridge/v1" && slices.Contains(bridgeDeniedSigners, snapshot.state.root.Recovery.SHA256)
+	return VerifiedBridge{state: &bridgeState{statement: statement, digest: digest, snapshot: snapshot.Digest(), retiredSigner: retired}}, nil
 }

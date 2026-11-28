@@ -1,0 +1,173 @@
+package releasetrust_test
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
+)
+
+func v2Statement(schema, notAfter string) releasetrust.BridgeStatement {
+	digest := releaseidentity.Hash([]byte("fixture"))
+	source := releaseidentity.Identity{Profile: releaseidentity.StableV1, Version: "1.0.0", Sequence: 1, Commit: strings.Repeat("a", 40), CompatibilitySHA256: digest, ManifestSHA256: digest}
+	target := source
+	target.Version, target.Sequence = "1.1.0", 2
+	migrations := releaseidentity.MigrationManifest{Engine: releaseidentity.SQLite, Entries: []releaseidentity.Migration{}}
+	return releasetrust.BridgeStatement{
+		Schema: schema, Source: source, Target: target, SourcePolicySHA256: digest, TargetPolicySHA256: digest,
+		SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: digest, TargetSchemaSHA256: digest,
+		Mode: "maintenance", NotAfter: notAfter,
+	}
+}
+
+func TestBridgeNotAfterIsRequiredCanonicalAndEnforced(t *testing.T) {
+	for _, tc := range []struct {
+		name, schema, notAfter, refusal string
+	}{
+		{"v2 canonical", releasetrust.BridgeSchemaV2, "2026-12-24T00:00:00Z", ""},
+		{"v2 without not_after", releasetrust.BridgeSchemaV2, "", "canonical UTC"},
+		{"v1 carrying not_after", "hikyo.dev/recovery-bridge/v1", "2026-12-24T00:00:00Z", "unknown recovery bridge schema"},
+		{"v2 with an offset", releasetrust.BridgeSchemaV2, "2026-12-24T01:00:00+01:00", "canonical UTC"},
+		{"v2 with fractional seconds", releasetrust.BridgeSchemaV2, "2026-12-24T00:00:00.5Z", "canonical UTC"},
+		{"v2 malformed", releasetrust.BridgeSchemaV2, "tomorrow", "canonical UTC"},
+		{"v1 without not_after (unbounded, refused at runtime)", "hikyo.dev/recovery-bridge/v1", "", "unknown recovery bridge schema"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := testfixture.New(t)
+			material := f.AddBridge(t, v2Statement(tc.schema, tc.notAfter))
+			bridge, err := releasetrust.VerifyBridge(f.Snapshot(t), material)
+			if tc.refusal != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.refusal) {
+					t.Fatalf("want refusal %q, got %v", tc.refusal, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.notAfter == "" {
+				if bridge.Expired(time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC)) {
+					t.Fatal("a v1 statement has no expiry")
+				}
+				return
+			}
+			edge := time.Date(2026, 12, 24, 0, 0, 0, 0, time.UTC)
+			for _, probe := range []struct {
+				at      time.Time
+				expired bool
+			}{{edge.Add(-time.Second), false}, {edge, true}, {edge.Add(time.Second), true}} {
+				if bridge.Expired(probe.at) != probe.expired {
+					t.Fatalf("Expired(%s) = %v, want %v", probe.at, !probe.expired, probe.expired)
+				}
+			}
+		})
+	}
+}
+
+// The legacy nightly bridge expires like every other bridge: v2 requires a canonical
+// not_after, and the expiry-free v1 form loads but is always expired.
+func TestLegacyNightlyBridgeRequiresASignedNotAfter(t *testing.T) {
+	legacy := func(schema, notAfter string) releasetrust.BridgeStatement {
+		digest := releaseidentity.Hash([]byte("fixture"))
+		target := releaseidentity.Identity{Profile: releaseidentity.NightlyV1, Version: "1.1.0-nightly.20260101.1.gabcdef12", Sequence: 2, Commit: strings.Repeat("c", 40), CompatibilitySHA256: digest, ManifestSHA256: digest}
+		migrations := releaseidentity.MigrationManifest{Engine: "sqlite", Entries: []releaseidentity.Migration{{Version: 1, SHA256: digest}}}
+		return releasetrust.BridgeStatement{Schema: schema, SourceGenesis: releaseidentity.LegacyGenesisV1, Mode: "maintenance", Target: target, TargetPolicySHA256: digest,
+			SourceMigrations: migrations, TargetMigrations: migrations, SourceSchemaSHA256: digest, TargetSchemaSHA256: digest, NotAfter: notAfter}
+	}
+	verify := func(statement releasetrust.BridgeStatement) (releasetrust.VerifiedBridge, error) {
+		f := testfixture.New(t)
+		material := f.AddBridge(t, statement)
+		return releasetrust.VerifyBridge(f.Snapshot(t), material)
+	}
+	edge := time.Date(2026, 12, 24, 0, 0, 0, 0, time.UTC)
+	bridge, err := verify(legacy(releasetrust.LegacyNightlyBridgeSchemaV2, edge.Format(time.RFC3339)))
+	if err != nil || bridge.Expired(edge.Add(-time.Second)) || !bridge.Expired(edge) {
+		t.Fatalf("a v2 legacy bridge verifies and expires at not_after: %v", err)
+	}
+	for name, statement := range map[string]releasetrust.BridgeStatement{
+		"v2 without not_after":        legacy(releasetrust.LegacyNightlyBridgeSchemaV2, ""),
+		"v2 with a non-canonical one": legacy(releasetrust.LegacyNightlyBridgeSchemaV2, "2026-12-24T01:00:00+01:00"),
+	} {
+		if _, err := verify(statement); err == nil {
+			t.Fatalf("%s must be refused", name)
+		}
+	}
+	// The expiry-free v1 form verifies (it is catalogued) but never usable: expired at any time.
+	for name, notAfter := range map[string]string{"without not_after": "", "with a not_after": edge.Format(time.RFC3339)} {
+		v1, err := verify(legacy("hikyo.dev/legacy-nightly-bridge/v1", notAfter))
+		if err != nil || !v1.Valid() || !v1.Expired(edge.Add(-100*365*24*time.Hour)) || !v1.Expired(edge.Add(-time.Second)) {
+			t.Fatalf("v1 %s verifies as an always-expired bridge: %v", name, err)
+		}
+	}
+}
+
+func revocationDocument(f *testfixture.Fixture, t *testing.T, mutate func(*releasetrust.RevocationList)) ([]byte, []byte) {
+	t.Helper()
+	list := releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 3, IssuedAt: "2026-12-01T00:00:00Z", TrustRootSHA256: releaseidentity.Hash(f.Pinned.Root), Revoked: []releaseidentity.Digest{releaseidentity.Hash([]byte("a")), releaseidentity.Hash([]byte("b"))}}
+	if list.Revoked[0] > list.Revoked[1] {
+		list.Revoked[0], list.Revoked[1] = list.Revoked[1], list.Revoked[0]
+	}
+	if mutate != nil {
+		mutate(&list)
+	}
+	raw := testfixture.JSON(t, list)
+	return raw, testfixture.Sign(t, f.RecoverySigner, raw)
+}
+
+func TestRevocationListIsAuthenticatedAndBoundToTheRoot(t *testing.T) {
+	f := testfixture.New(t)
+	snapshot := f.Snapshot(t)
+	raw, signature := revocationDocument(f, t, nil)
+	verified, err := snapshot.VerifyRevocations(raw, signature)
+	if err != nil || !verified.IssuedAt().Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) || verified.Sequence() != 3 || len(verified.Revoked()) != 2 || verified.Digest() != releaseidentity.Hash(raw) {
+		t.Fatalf("a signed, root-bound list verifies: %+v %v", verified, err)
+	}
+	other := testfixture.New(t)
+	foreign, foreignSignature := revocationDocument(other, t, nil)
+	for name, tc := range map[string]struct {
+		raw, signature []byte
+		want           string
+	}{
+		"signed by another key":  {raw, testfixture.Sign(t, other.RecoverySigner, raw), ""},
+		"another trust root":     {foreign, foreignSignature, ""},
+		"bound to another root":  {revoke(f, t, func(l *releasetrust.RevocationList) { l.TrustRootSHA256 = releaseidentity.Hash([]byte("x")) }), nil, "different trust root"},
+		"sequence zero":          {revoke(f, t, func(l *releasetrust.RevocationList) { l.Sequence = 0 }), nil, "schema or sequence"},
+		"wrong schema":           {revoke(f, t, func(l *releasetrust.RevocationList) { l.Schema = "other" }), nil, "schema or sequence"},
+		"unsorted":               {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked[0], l.Revoked[1] = l.Revoked[1], l.Revoked[0] }), nil, "sorted"},
+		"duplicate":              {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked[1] = l.Revoked[0] }), nil, "sorted"},
+		"invalid digest":         {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked = []releaseidentity.Digest{"zz"} }), nil, "sorted"},
+		"too many":               {revoke(f, t, func(l *releasetrust.RevocationList) { l.Revoked = manyDigests(releasetrust.MaxRevocations + 1) }), nil, "too long"},
+		"missing issued_at":      {revoke(f, t, func(l *releasetrust.RevocationList) { l.IssuedAt = "" }), nil, "issued_at"},
+		"issued_at with offset":  {revoke(f, t, func(l *releasetrust.RevocationList) { l.IssuedAt = "2026-12-01T01:00:00+01:00" }), nil, "issued_at"},
+		"not json":               {[]byte("{"), nil, ""},
+		"unknown field":          {[]byte(`{"schema":"` + releasetrust.RevocationSchema + `","sequence":1,"extra":1}`), nil, ""},
+		"tampered after signing": {append([]byte(" "), raw...), signature, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			signature := tc.signature
+			if signature == nil {
+				signature = testfixture.Sign(t, f.RecoverySigner, tc.raw)
+			}
+			_, err := snapshot.VerifyRevocations(tc.raw, signature)
+			if err == nil || (tc.want != "" && !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("want refusal %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func revoke(f *testfixture.Fixture, t *testing.T, mutate func(*releasetrust.RevocationList)) []byte {
+	raw, _ := revocationDocument(f, t, mutate)
+	return raw
+}
+
+func manyDigests(n int) []releaseidentity.Digest {
+	out := make([]releaseidentity.Digest, 0, n)
+	for i := range n {
+		out = append(out, releaseidentity.Hash([]byte{byte(i), byte(i >> 8)}))
+	}
+	return out
+}

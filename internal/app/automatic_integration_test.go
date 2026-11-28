@@ -199,7 +199,7 @@ func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticR
 	if err != nil {
 		t.Fatal(err)
 	}
-	bridge := f.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: previous.Identity(), TargetPolicySHA256: previous.PolicyDigest(), SourceMigrations: legacyManifest, TargetMigrations: sqlite.Migrations, SourceSchemaSHA256: source.source.SchemaDigest, TargetSchemaSHA256: sqlite.SchemaSHA256, Mode: "maintenance"})
+	bridge := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: previous.Identity(), TargetPolicySHA256: previous.PolicyDigest(), SourceMigrations: legacyManifest, TargetMigrations: sqlite.Migrations, SourceSchemaSHA256: source.source.SchemaDigest, TargetSchemaSHA256: sqlite.SchemaSHA256, Mode: "maintenance"})
 	for i, engine := range declaration.Engines {
 		declaration.Engines[i].Sources = append(engine.Sources, upgradecompat.SourceEdge{Source: releaseidentity.Source{Release: previous.Identity()}, Migrations: engine.Migrations, SchemaSHA256: engine.SchemaSHA256, Mode: upgradecompat.Maintenance})
 	}
@@ -218,6 +218,7 @@ func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticR
 	if err != nil {
 		t.Fatal(err)
 	}
+	bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 	plan, err := bundle.Plan(upgradecompat.InstalledSource{Identity: source.source.Source, Migrations: legacyManifest, SchemaSHA256: source.source.SchemaDigest}, target.Identity())
 	if err != nil {
 		t.Fatal(err)
@@ -261,7 +262,8 @@ func automaticProcessProofWith(t *testing.T, f upgradeDrillFixture, route automa
 	publicPath := filepath.Join(work, "operator.pub")
 	automaticProcessPut(t, publicPath, operator.PrimaryPublic)
 	automaticProcessPut(t, filepath.Join(work, "root.key"), []byte(crypto.EncodeRootKey(f.root)))
-	host := &automaticProcessHost{work: work, installed: filepath.Join(work, "hikyo"), fenced: true, baseEnv: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + work, "HIKYO_DB=sqlite:" + f.cfg.Path, "HIKYO_EXTERNAL_ORIGIN=https://automatic.fixture.invalid", "HIKYO_UPDATE_CHANNEL=off", "HIKYO_UPGRADE_STATE_DIR=" + installation}}
+	// The revocation check stays on (never off): an endpoint that cannot be reached is the unreachable fallback, so the route plans with a warning and the child never contacts a real host.
+	host := &automaticProcessHost{work: work, installed: filepath.Join(work, "hikyo"), fenced: true, baseEnv: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + work, "HIKYO_DB=sqlite:" + f.cfg.Path, "HIKYO_EXTERNAL_ORIGIN=https://automatic.fixture.invalid", "HIKYO_UPDATE_CHANNEL=off", "HIKYO_UPGRADE_STATE_DIR=" + installation, "HIKYO_UPGRADE_REVOCATION_URL=https://revocation.fixture.invalid/recovery-revocations"}}
 	host.evidence = hostupgrade.RuntimeEvidence{BundleDirectory: route.Directory, OperatorPublicKey: publicPath, TargetManifest: string(route.Plan.Target().ManifestSHA256), LegacyWritersStopped: true}
 	identity, recipient, err := generate()
 	if err != nil {

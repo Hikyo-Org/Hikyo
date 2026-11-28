@@ -475,11 +475,38 @@ func (d *nativeSecurityDriver) Prepare(ctx context.Context, target securitymaint
 	return result, nil
 }
 
+// nativeSecurityRevocationGuard carries the operator's revocation policy. The host has
+// no config.Config, and the maintenance service loads no EnvironmentFile, so the policy
+// comes from the host's own environment (hikyo.env), never the process environment.
+func nativeSecurityRevocationGuard(host nativeSecurityHost) *config.Config {
+	environment := host.Environment()
+	return &config.Config{Upgrade: config.UpgradeConfiguration{
+		StateDirectory:  host.Config().StateDirectory,
+		RevocationCheck: environment["HIKYO_UPGRADE_REVOCATION_CHECK"],
+		RevocationURL:   environment["HIKYO_UPGRADE_REVOCATION_URL"],
+		// The proxy comes from the same host file as the policy, not the service's own environment.
+		RevocationProxy: nativeProxySettings(environment),
+	}}
+}
+
+// nativeProxySettings reads the proxy variables out of the host environment, upper or lower
+// case. A non-nil result, even an empty one, means "use only the host's proxy settings".
+func nativeProxySettings(environment map[string]string) *config.ProxySettings {
+	pick := func(name string) string {
+		if value := environment[name]; value != "" {
+			return value
+		}
+		return environment[strings.ToLower(name)]
+	}
+	return &config.ProxySettings{HTTP: pick("HTTP_PROXY"), HTTPS: pick("HTTPS_PROXY"), None: pick("NO_PROXY")}
+}
+
 func stageNativeSecurityRoute(ctx context.Context, prepared preparedSecurityRelease, installation nativeSecurityInstallation) (automaticRoute, error) {
 	if prepared.Installer == nil || prepared.Source == nil {
 		return automaticRoute{}, errors.New("native security route requires independent release preparation")
 	}
-	route, err := discoverReleaseRoute(ctx, unattendedRouteInstaller{prepared.Installer}, prepared.Source, prepared.Target, prepared.Pinned,
+	guard := nativeSecurityRevocationGuard(installation.Host)
+	route, err := discoverReleaseRoute(ctx, guard, unattendedRouteInstaller{prepared.Installer}, prepared.Source, prepared.Target, prepared.Pinned,
 		installation.Inspection, installation.Database.Engine, nil, true)
 	if err != nil {
 		return route, err

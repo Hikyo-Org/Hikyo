@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -152,8 +153,25 @@ func TestNightlyPreparationRequiresRecoveryAuthorization(t *testing.T) {
 		t.Fatal("verify accepted several directories")
 	}
 	bridgeDir := filepath.Join(t.TempDir(), "bridges")
-	if err := run(t.Context(), []string{"legacy-bridges", "--trust", trust, "--directory", download, "--out", bridgeDir}, &output); err != nil {
+	if err := run(t.Context(), []string{"legacy-bridges", "--trust", trust, "--directory", download, "--not-after", time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339), "--out", bridgeDir}, &output); err != nil {
 		t.Fatal(err)
+	}
+	// The expiry is the owner's choice and must be inside the window: none, a past one, one
+	// beyond 30 days and a non-canonical spelling are all refused.
+	now := time.Now().UTC()
+	for name, notAfter := range map[string]string{
+		"missing":        "",
+		"past":           now.Add(-time.Hour).Format(time.RFC3339),
+		"beyond 30 days": now.Add(31 * 24 * time.Hour).Format(time.RFC3339),
+		"offset":         now.Add(time.Hour).In(time.FixedZone("x", 3600)).Format(time.RFC3339),
+	} {
+		args := []string{"legacy-bridges", "--trust", trust, "--directory", download, "--out", filepath.Join(t.TempDir(), "b")}
+		if notAfter != "" {
+			args = append(args, "--not-after", notAfter)
+		}
+		if err := run(t.Context(), args, &output); err == nil {
+			t.Fatalf("legacy-bridges accepted a %s not-after", name)
+		}
 	}
 	entries, err := os.ReadDir(bridgeDir)
 	if err != nil || len(entries) != 2 {

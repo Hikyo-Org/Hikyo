@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -122,7 +123,7 @@ func TestWithdrawalNeedsExactCurrentRecoveryBridge(t *testing.T) {
 		t.Fatal("ordinary edge revived withdrawn source")
 	}
 	policy := releaseidentity.Hash(f.Pinned.Root)
-	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/recovery-bridge/v1", Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
+	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
 	snapshot = f.Snapshot(t)
 	targetNodes = nodes(t, snapshot, b)
 	bridge, err := releasetrust.VerifyBridge(snapshot, raw)
@@ -204,7 +205,7 @@ func TestBridgeCannotBeOmittedToBypassMaintenancePrecedence(t *testing.T) {
 	ordinary.Mode = upgradecompat.Restart
 	b := add(t, f, 2, m, ordinary)
 	policy := releaseidentity.Hash(f.Pinned.Root)
-	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/recovery-bridge/v1", Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
+	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
 	snapshot := f.Snapshot(t)
 	ns := nodes(t, snapshot, a, b)
 	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: a.Identity}, Migrations: m, SchemaSHA256: catalog(m)}
@@ -232,5 +233,35 @@ func TestBridgeCannotBeOmittedToBypassMaintenancePrecedence(t *testing.T) {
 	withdrawn := f.Snapshot(t)
 	if _, err := releasetrust.VerifyBridge(withdrawn, raw); err == nil {
 		t.Fatal("withdrawn bridge still authenticated")
+	}
+}
+
+// A verified bridge keeps controlling its pair after it lapses or is revoked: the ordinary
+// Restart edge it overrode must not become the route, or maintenance mode and the operator
+// attestation could be bypassed by waiting out or revoking the bridge.
+func TestLapsedOrRevokedBridgeKeepsMaintenancePrecedence(t *testing.T) {
+	f := testfixture.New(t)
+	m := manifest(releaseidentity.SQLite, 1)
+	a := add(t, f, 1, m)
+	ordinary := edge(a, m)
+	ordinary.Mode = upgradecompat.Restart
+	b := add(t, f, 2, m, ordinary)
+	policy := releaseidentity.Hash(f.Pinned.Root)
+	now := time.Now().UTC().Truncate(time.Second)
+	raw := f.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.BridgeSchemaV2, NotAfter: now.Add(24 * time.Hour).Format(time.RFC3339), Source: a.Identity, Target: b.Identity, SourcePolicySHA256: policy, TargetPolicySHA256: policy, SourceMigrations: m, TargetMigrations: m, SourceSchemaSHA256: catalog(m), TargetSchemaSHA256: catalog(m), Mode: "maintenance"})
+	snapshot := f.Snapshot(t)
+	ns := nodes(t, snapshot, a, b)
+	source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: a.Identity}, Migrations: m, SchemaSHA256: catalog(m)}
+	bridge, err := releasetrust.VerifyBridge(snapshot, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		at      time.Time
+		revoked []releaseidentity.Digest
+	}{"lapsed": {now.Add(48 * time.Hour), nil}, "revoked": {now, []releaseidentity.Digest{bridge.Digest()}}} {
+		if plan, err := upgradecompat.PlanRouteAt(snapshot, source, b.Identity, ns, []releasetrust.VerifiedBridge{bridge}, c.at, c.revoked); err == nil {
+			t.Errorf("%s bridge: the overridden ordinary edge became the route (mode %s, attestation %v)", name, plan.Steps()[0].Mode, plan.RequiresOperatorAttestation())
+		}
 	}
 }

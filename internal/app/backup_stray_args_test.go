@@ -70,7 +70,7 @@ func TestUpgradeVerbsNameStrayArguments(t *testing.T) {
 		},
 		"upgrade-drill": {
 			run: func(args []string) error {
-				return runUpgradeDrill(t.Context(), args, &bytes.Buffer{}, TrustContext{})
+				return runUpgradeDrill(t.Context(), nil, args, &bytes.Buffer{}, TrustContext{})
 			},
 			args: []string{"--out", t.TempDir(), "--from", "archive", "age1second"},
 		},

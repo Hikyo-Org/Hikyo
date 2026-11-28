@@ -146,6 +146,31 @@ read-only alongside the separately pinned `operator.pub` and any required
 backup evidence. The assembler's staging/output directories use mode 0700 and
 files use mode 0600, so assign runtime ownership during provisioning.
 
+A recovery bridge (v1.0.0 to the `recovery-2` release, see the
+[bridge ceremony](recovery-bridge-ceremony.md)) is time-limited and revocable.
+Its statement carries a signed `not_after` at most 30 days out; after it the
+route is refused offline ("no authenticated upgrade route") and the bundle must
+be rebuilt from a re-signed bridge; an upgrade admitted before `not_after` still
+finishes after it, and a security rollback is never blocked by expiry or
+revocation. When a plan uses a bridge, the server also
+fetches the signed revocation list (default: the `trust` release assets in
+`Hikyo-Org/Hikyo`, or the mirror in
+`HIKYO_UPGRADE_REVOCATION_URL`) and remembers the highest sequence it saw in
+`HIKYO_UPGRADE_STATE_DIR`, which is required for bridge routes. An unreachable
+endpoint falls back to `not_after` and logs a warning; a reachable but invalid answer
+refuses the route. `HIKYO_UPGRADE_REVOCATION_CHECK=off` skips the network and is
+your explicit decision to rely on `not_after` alone (also logged as a warning). The list is stored in `HIKYO_UPGRADE_STATE_DIR` as `bridge-revocations-store.json`. If it exists but
+does not verify (a damaged file or a list signed by another key), is behind the sequence floor (a removed store, a crash between the two writes) or is bound to another trust root, bridge routes are refused, including
+under `off` and when the endpoint is unreachable, because the revocations it held
+are lost. The way out: restore access so a verified list replaces it, whatever its age (lists are signed only when something
+is revoked, so an old list is normal and is only reported `stale`). It must not be below the
+trust root's floor in `bridge-revocations-floor.json`, which holds one record per trust root and which only a list stored under that root raises, and at the floor's
+sequence it must be the list the floor records. Otherwise, as an explicit operator action, stop the service and remove
+`bridge-revocations-store.json` and `bridge-revocations-floor.json`,
+accepting that revocations known only to that state are lost and that, without the floor (it holds every trust root's floor), the next check accepts any
+validly signed list the endpoint serves, even an older one (an old list is only reported `stale`). A security rollback is never blocked. `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` from the service environment file reach the upgrade child, so a proxy-only host can reach the endpoint. Ordinary upgrades never
+contact the endpoint.
+
 Fresh installation pins the configured operator public key before database
 mutation and binds the generated instance identity at bootstrap. An existing
 datastore with missing external installation custody refuses. Keep its private

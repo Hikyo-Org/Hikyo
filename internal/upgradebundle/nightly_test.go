@@ -2,12 +2,21 @@ package upgradebundle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"github.com/Hikyo-Org/hikyo/internal/bridgerevocation"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
@@ -103,13 +112,18 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if _, err := bundle.Plan(source, node.Identity()); err == nil {
 				t.Fatal("legacy route admitted without recovery bridge")
 			}
-			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
 			bridgeDigest := releaseidentity.Hash(bridge.Statement)
-			index.Bridges = []releaseidentity.Digest{bridgeDigest}
+			// The catalog also lists an expiry-free legacy v1 statement for the same pair, as
+			// the production catalog does: the bundle must still load, and it is never a route.
+			legacy := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+			legacyDigest := releaseidentity.Hash(legacy.Statement)
+			index.Bridges = []releaseidentity.Digest{bridgeDigest, legacyDigest}
 			fixture.Catalog.Sequence++
 			material = fixture.Material(t)
 			for name, raw := range map[string][]byte{"index.json": testfixture.JSON(t, index), "catalog.json": material.Catalog, "catalog.sigstore.json": material.CatalogSignature,
-				"bridges/" + string(bridgeDigest) + "/statement.json": bridge.Statement, "bridges/" + string(bridgeDigest) + "/statement.sigstore.json": bridge.Signature} {
+				"bridges/" + string(bridgeDigest) + "/statement.json": bridge.Statement, "bridges/" + string(bridgeDigest) + "/statement.sigstore.json": bridge.Signature,
+				"bridges/" + string(legacyDigest) + "/statement.json": legacy.Statement, "bridges/" + string(legacyDigest) + "/statement.sigstore.json": legacy.Signature} {
 				writeFixture(t, directory, name, raw)
 			}
 			bundle, err = Load(t.Context(), directory, fixture.Pinned, bundle.Snapshot().Floor())
@@ -131,13 +145,138 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if candidates := bridgeOnly.Sources(releaseidentity.Postgres); len(candidates) != 0 {
 				t.Fatal("bridge source leaked across engines")
 			}
-			plan, err := bundle.Plan(source, node.Identity())
+			if len(bundle.bridges) != 2 {
+				t.Fatalf("both catalogued bridges load, the expiry-free one included: %d", len(bundle.bridges))
+			}
+			if _, err := bundle.Plan(source, node.Identity()); err == nil || !strings.Contains(err.Error(), "no revocation lookup") {
+				t.Fatalf("a bridge route on a bundle with no revocation lookup must be refused: %v", err)
+			}
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return []releaseidentity.Digest{bridgeDigest}, nil }).Plan(source, node.Identity()); err == nil {
+				t.Fatal("with the v2 bridge revoked, the expiry-free v1 bridge on the same pair must not become the route")
+			}
+			plan, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).Plan(source, node.Identity())
 			if err != nil || !plan.Valid() || !plan.RequiresOperatorAttestation() {
 				t.Fatal("recovery-authorized nightly route refused or lost operator proof", err)
+			}
+			// A rollback to the journaled route is never blocked by the inventory, the
+			// expiry-free statement included, with no revocation lookup at all.
+			if rolled, err := bundle.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
+				t.Fatalf("rollback of the journaled route must not be blocked: %v", err)
+			}
+			// The expiry-free v1 statement is never a route today, but an older build routed it and the
+			// journal is an unauthenticated file: a journaled route through it never resumes, while a
+			// security rollback still matches it.
+			v1Steps := plan.Steps()
+			v1Steps[0].BridgeSHA256 = legacyDigest
+			v1Route := journaledRouteDigest(t, source, node.Identity(), v1Steps)
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil }).PlanAdmitted(source, node.Identity(), v1Route); !errors.Is(err, ErrLegacyBridgeCannotResume) || errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || strings.Contains(err.Error(), "recovery-1") {
+				t.Fatalf("a resume through the legacy v1 bridge must be refused: %v", err)
+			}
+			if rolled, err := bundle.PlanRollback(source, node.Identity(), v1Route); err != nil || rolled.Digest() != v1Route {
+				t.Fatalf("security rollback of a route through the legacy v1 bridge must stay permissive: %v", err)
+			}
+			// A resume is also refused when the revocation check cannot be made: no lookup, or a failing one.
+			if _, err := bundle.PlanAdmitted(source, node.Identity(), plan.Digest()); err == nil || !strings.Contains(err.Error(), "no revocation lookup") {
+				t.Fatalf("a resume with no revocation lookup must be refused: %v", err)
+			}
+			if _, err := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, errors.New("list unreadable") }).PlanAdmitted(source, node.Identity(), plan.Digest()); err == nil || !strings.Contains(err.Error(), "revocation check") {
+				t.Fatalf("a resume whose revocation lookup fails must be refused: %v", err)
+			}
+			// R2: under a root that still pins recovery-1 the routable v2 bridge and the inert v1
+			// bridge both load and count, a new admission is refused with the way out named, and a
+			// security rollback of the route journaled earlier is not affected.
+			sum := sha256.Sum256(fixture.Pinned.RecoveryPublicKey)
+			undo := releasetrust.DenyBridgeSignerForTest(hex.EncodeToString(sum[:]))
+			retired, err := Load(t.Context(), directory, fixture.Pinned, bundle.Snapshot().Floor())
+			undo()
+			if err != nil || len(retired.bridges) != 2 {
+				t.Fatalf("both bridges load under the recovery-1 root: %d %v", len(retired.bridges), err)
+			}
+			retired = retired.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) { return nil, nil })
+			if _, err := retired.Plan(source, node.Identity()); !errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || !strings.Contains(err.Error(), "recovery-2") || !strings.Contains(err.Error(), "recovery-bridge-ceremony.md") {
+				t.Fatalf("a new admission must say the root pins recovery-1 and name the runbook: %v", err)
+			}
+			if rolled, err := retired.PlanRollback(source, node.Identity(), plan.Digest()); err != nil || rolled.Digest() != plan.Digest() {
+				t.Fatalf("security rollback must not be affected by the recovery-1 denial: %v", err)
+			}
+			// A resume is not a rollback: the journal is an unauthenticated file, so a journaled route
+			// through a bridge under the recovery-1 root is refused with the same operator message.
+			if _, err := retired.PlanAdmitted(source, node.Identity(), plan.Digest()); !errors.Is(err, releasetrust.ErrRetiredBridgeSigner) || !strings.Contains(err.Error(), "recovery-2") || !strings.Contains(err.Error(), "recovery-bridge-ceremony.md") {
+				t.Fatalf("a resume through a recovery-1 bridge must be refused naming the owner prerequisite: %v", err)
+			}
+			// The legacy nightly bridge expires at its signed not_after like every bridge. An
+			// absent list (404) or an unreachable endpoint falls back to that expiry; a present
+			// but invalid list refuses; a revocation withdraws the bridge.
+			signedList := func(revoked ...releaseidentity.Digest) ([]byte, []byte) {
+				raw := testfixture.JSON(t, releasetrust.RevocationList{Schema: releasetrust.RevocationSchema, Sequence: 1, IssuedAt: time.Now().UTC().Add(-time.Hour).Truncate(time.Second).Format(time.RFC3339), TrustRootSHA256: releaseidentity.Hash(fixture.Pinned.Root), Revoked: revoked})
+				return raw, testfixture.Sign(t, fixture.RecoverySigner, raw)
+			}
+			goodList, goodSignature := signedList()
+			revokedList, revokedSignature := signedList(bridgeDigest)
+			unreachable := func(cause error) scriptedFetcher {
+				return scriptedFetcher{err: fmt.Errorf("%w: %w", bridgerevocation.ErrUnreachable, cause)}
+			}
+			cases := map[string]struct {
+				fetcher scriptedFetcher
+				want    string // empty: the route plans
+			}{
+				"list absent (404)":                {unreachable(errors.New("status 404")), ""},
+				"connection dropped (EOF)":         {unreachable(io.ErrUnexpectedEOF), ""},
+				"connection reset":                 {unreachable(syscall.ECONNRESET), ""},
+				"timeout":                          {unreachable(context.DeadlineExceeded), ""},
+				"valid list, nothing revoked":      {scriptedFetcher{list: goodList, signature: goodSignature}, ""},
+				"bridge revoked":                   {scriptedFetcher{list: revokedList, signature: revokedSignature}, "recovery bridge revoked"},
+				"present but badly signed":         {scriptedFetcher{list: goodList, signature: []byte("{}")}, "recovery bridge revocation check"},
+				"present but malformed":            {scriptedFetcher{list: []byte("{"), signature: goodSignature}, "recovery bridge revocation check"},
+				"reachable, unusable answer (403)": {scriptedFetcher{err: errors.New("revocation endpoint answered status 403")}, "recovery bridge revocation check"},
+			}
+			for name, c := range cases {
+				lookup := func() ([]releaseidentity.Digest, error) {
+					checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: c.fetcher, Directory: t.TempDir()}
+					return checker.Revoked(t.Context(), bundle.Snapshot())
+				}
+				_, err := bundle.WithBridgeRevocations(lookup).Plan(source, node.Identity())
+				if (c.want == "") != (err == nil) || (c.want != "" && !strings.Contains(err.Error(), c.want)) {
+					t.Fatalf("legacy nightly route, %s: want %q, got %v", name, c.want, err)
+				}
+			}
+			// With the list absent, expiry is the only limit: past not_after there is no route.
+			expired := bundle.WithBridgeRevocations(func() ([]releaseidentity.Digest, error) {
+				checker := bridgerevocation.Checker{Mode: bridgerevocation.Online, Fetcher: unreachable(errors.New("status 404")), Directory: t.TempDir()}
+				return checker.Revoked(t.Context(), bundle.Snapshot())
+			}).WithClock(func() time.Time { return time.Now().Add(48 * time.Hour) })
+			if _, err := expired.Plan(source, node.Identity()); err == nil || !strings.Contains(err.Error(), "no authenticated upgrade route") {
+				t.Fatalf("an expired legacy bridge must have no route even with the list absent: %v", err)
 			}
 			if _, err := bundle.MatchBuild(append(append([]byte{}, compatibility...), '\n')); err == nil {
 				t.Fatal("different embedded declaration bytes accepted")
 			}
 		})
 	}
+}
+
+// scriptedFetcher answers the revocation endpoint with fixed bytes or an error.
+type scriptedFetcher struct {
+	list, signature []byte
+	err             error
+}
+
+func (f scriptedFetcher) Fetch(context.Context) ([]byte, []byte, error) {
+	return f.list, f.signature, f.err
+}
+
+// journaledRouteDigest mirrors the planner's route digest (upgradecompat.makePlan), so a test can
+// name a route the planner would never build today but a journal could still hold.
+func journaledRouteDigest(t *testing.T, source upgradecompat.InstalledSource, target releaseidentity.Identity, steps []upgradecompat.Step) releaseidentity.Digest {
+	t.Helper()
+	raw, err := json.Marshal(struct {
+		Schema string                        `json:"schema"`
+		Source upgradecompat.InstalledSource `json:"source"`
+		Target releaseidentity.Identity      `json:"target"`
+		Steps  []upgradecompat.Step          `json:"steps"`
+	}{"hikyo.dev/upgrade-route/v1", source, target, steps}, jsonwire.Stable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return releaseidentity.Hash(raw)
 }

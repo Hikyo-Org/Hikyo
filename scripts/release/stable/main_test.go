@@ -112,7 +112,7 @@ func fullDraft(t *testing.T) (string, string) {
 	return trust, directory
 }
 
-func fullDraftFixture(t *testing.T) (string, string, *testfixture.Fixture, func([]byte, string, string) []byte) {
+func fullDraftFixture(t *testing.T, recoveryBridges ...releaseidentity.Digest) (string, string, *testfixture.Fixture, func([]byte, string, string) []byte) {
 	t.Helper()
 	f, delegated, _, sign := testfixture.StableWorkflow(t)
 	// Initial activation still has a recovery-signed snapshot and no stable
@@ -124,6 +124,7 @@ func fullDraftFixture(t *testing.T) (string, string, *testfixture.Fixture, func(
 	f.Metadata.HighestRelease, f.Metadata.HighestReleaseSequence = nil, nil
 	f.Catalog.Sequence = 1
 	f.Catalog.StablePolicySHA256 = ""
+	f.Catalog.Bridges = append(f.Catalog.Bridges, recoveryBridges...)
 	baseline := f.Material(t)
 	baseline.StablePolicy, baseline.StablePolicySignature, baseline.StableTrustedRoot = delegated.StablePolicy, delegated.StablePolicySignature, delegated.StableTrustedRoot
 	trust, directory := t.TempDir(), t.TempDir()
@@ -266,4 +267,54 @@ func chartArchive(t *testing.T, image, digest string) []byte {
 		t.Fatal(err)
 	}
 	return out.Bytes()
+}
+
+func TestPrepareWithdrawsBridgesOnlyARecoveryCatalogAuthorized(t *testing.T) {
+	// A recovery-signed catalog may list bridges the delegated policy does not;
+	// the next workflow-signed catalog must equal the policy's inventory, so
+	// preparing the release drops them and the result still verifies.
+	bridge := releaseidentity.Hash([]byte("recovery-only bridge"))
+	trust, directory, _, _ := fullDraftFixture(t, bridge)
+	var baseline releasetrust.Catalog
+	raw, err := os.ReadFile(filepath.Join(trust, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &baseline); err != nil || len(baseline.Bridges) != 1 {
+		t.Fatalf("fixture must start with the recovery-only bridge: %v %+v", err, baseline.Bridges)
+	}
+	var prepared releasetrust.Catalog
+	raw, err = os.ReadFile(filepath.Join(directory, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &prepared); err != nil || len(prepared.Bridges) != 0 {
+		t.Fatalf("prepared catalog must list exactly the policy's (empty) bridge inventory: %v %+v", err, prepared.Bridges)
+	}
+	args := []string{"verify", "--trust", trust, "--directory", directory, "--version", "1.0.0", "--commit", strings.Repeat("a", 40), "--state", filepath.Join(t.TempDir(), "state.json"), "--latest"}
+	if err := run(args, &bytes.Buffer{}); err != nil {
+		t.Fatalf("workflow-signed snapshot without the recovery-only bridge must verify: %v", err)
+	}
+}
+
+func TestRetainedBridgesRefusesResurrectingARevokedPolicyBridge(t *testing.T) {
+	listed, recoveryOnly := releaseidentity.Hash([]byte("policy bridge")), releaseidentity.Hash([]byte("recovery-only"))
+	kept, err := retainedBridges([]releaseidentity.Digest{listed, recoveryOnly}, []releaseidentity.Digest{listed})
+	if err != nil || len(kept) != 1 || kept[0] != listed {
+		t.Fatalf("a recovery-only bridge is withdrawn and a policy bridge kept: %v %v", kept, err)
+	}
+	if _, err := retainedBridges([]releaseidentity.Digest{recoveryOnly}, []releaseidentity.Digest{listed}); err == nil {
+		t.Fatal("a policy bridge the catalog revoked must not be restored")
+	}
+	// Production shape: two legacy policy bridges plus two recovery-only ones.
+	l1, l2 := releaseidentity.Hash([]byte("legacy 1")), releaseidentity.Hash([]byte("legacy 2"))
+	n1, n2 := releaseidentity.Hash([]byte("new 1")), releaseidentity.Hash([]byte("new 2"))
+	policy := []releaseidentity.Digest{l1, l2}
+	kept, err = retainedBridges([]releaseidentity.Digest{l1, l2, n1, n2}, policy)
+	if err != nil || len(kept) != 2 || kept[0] != l1 || kept[1] != l2 {
+		t.Fatalf("only the two policy bridges survive a workflow-signed snapshot: %v %v", kept, err)
+	}
+	if _, err := retainedBridges([]releaseidentity.Digest{l1, n1, n2}, policy); err == nil {
+		t.Fatal("a recovery-signed snapshot that dropped a legacy policy bridge must be refused")
+	}
 }

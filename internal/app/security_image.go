@@ -214,7 +214,7 @@ func stageSecurityImage(ctx context.Context, cfg *config.Config, expected releas
 	if err != nil || strings.TrimPrefix(digest, "sha256:") != string(target.BinarySHA256) {
 		return observed, errors.New("staging executable differs from authenticated image payload")
 	}
-	route, err := discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{securityDatabase(cfg)}, releaseidentity.Engine(cfg.Store.Engine), nil, true)
+	route, err := discoverReleaseRoute(ctx, cfg, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{securityDatabase(cfg)}, releaseidentity.Engine(cfg.Store.Engine), nil, true)
 	if err != nil {
 		return observed, err
 	}
@@ -336,7 +336,7 @@ func preparedSecurityImageRoute(ctx context.Context, cfg *config.Config, directo
 		return automaticRoute{}, true, errors.New("security preparation belongs to a different recovery incarnation")
 	}
 	cached := stagedSecurityInstaller{installer: installer, stage: stage, floor: state.Floor}
-	route, err := discoverReleaseRoute(ctx, cached, cached, target, pinned, automaticStore{securityDatabase(cfg)}, releaseidentity.Engine(cfg.Store.Engine), previous, true)
+	route, err := discoverReleaseRoute(ctx, cfg, cached, cached, target, pinned, automaticStore{securityDatabase(cfg)}, releaseidentity.Engine(cfg.Store.Engine), previous, true)
 	if err != nil {
 		return route, true, err
 	}

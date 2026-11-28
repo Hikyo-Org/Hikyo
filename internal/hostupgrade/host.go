@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 )
@@ -571,7 +572,7 @@ type RuntimeEvidence struct {
 func (h *Host) runtimeEnvironment(e RuntimeEvidence) (map[string]string, error) {
 	values := h.Environment()
 	for k := range values {
-		if strings.HasPrefix(k, "HIKYO_UPGRADE_") {
+		if strings.HasPrefix(k, "HIKYO_UPGRADE_") && !slices.Contains(config.UpgradePolicyVariables, k) {
 			delete(values, k)
 		}
 	}
@@ -652,12 +653,16 @@ func (h *Host) runRuntime(ctx context.Context, candidate string, args []string, 
 	return nil, fmt.Errorf("runtime %s failed: %w; its error output is in %s", args[0], err, log)
 }
 
+var proxyVariables = []string{"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy"}
+
 func environmentList(values map[string]string) []string {
 	// Do not inherit sudo, loader, signing passwords, or operator shell state.
 	result := []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}
 	keys := make([]string, 0, len(values))
 	for k := range values {
-		if strings.HasPrefix(k, "HIKYO_") {
+		// Proxy settings only route traffic. Without them a proxy-only host would see the
+		// revocation endpoint as unreachable; the signed list is verified either way.
+		if strings.HasPrefix(k, "HIKYO_") || slices.Contains(proxyVariables, k) {
 			keys = append(keys, k)
 		}
 	}

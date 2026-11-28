@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -68,15 +69,15 @@ type automaticReleasePreparer interface {
 // prepareAutomaticRoute follows only authenticated identity references. It
 // stops as soon as the actual source has a complete authenticated route, so a
 // recent installation does not download unrelated predecessor history.
-func prepareAutomaticRoute(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database upgrade.Config, previous *automaticJournal) (automaticRoute, error) {
-	return discoverAutomaticRoute(ctx, installer, source, target, pinned, automaticStore{database}, database.Engine, previous)
+func prepareAutomaticRoute(ctx context.Context, cfg *config.Config, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database upgrade.Config, previous *automaticJournal) (automaticRoute, error) {
+	return discoverAutomaticRoute(ctx, cfg, installer, source, target, pinned, automaticStore{database}, database.Engine, previous)
 }
 
-func discoverAutomaticRoute(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database automaticInspection, engine releaseidentity.Engine, previous *automaticJournal) (automaticRoute, error) {
-	return discoverReleaseRoute(ctx, installer, source, target, pinned, database, engine, previous, false)
+func discoverAutomaticRoute(ctx context.Context, cfg *config.Config, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database automaticInspection, engine releaseidentity.Engine, previous *automaticJournal) (automaticRoute, error) {
+	return discoverReleaseRoute(ctx, cfg, installer, source, target, pinned, database, engine, previous, false)
 }
 
-func discoverReleaseRoute(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database automaticInspection, engine releaseidentity.Engine, previous *automaticJournal, allowStable bool) (automaticRoute, error) {
+func discoverReleaseRoute(ctx context.Context, cfg *config.Config, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database automaticInspection, engine releaseidentity.Engine, previous *automaticJournal, allowStable bool) (automaticRoute, error) {
 	result := automaticRoute{Directory: target.BundleDirectory, Executables: map[releaseidentity.Identity]selfupdate.PreparedNightly{target.Identity: target}}
 	floor := releaseidentity.SnapshotFloor{}
 	control, err := database.Control(ctx)
@@ -94,10 +95,11 @@ func discoverReleaseRoute(ctx context.Context, installer automaticReleasePrepare
 		preferred = previous.Source.Identity
 	}
 	var lastPlanError error
+	revocations := onceRevocation(bridgeRevocation(cfg))
 	depths := map[releaseidentity.Identity]int{target.Identity: 0}
 	expandedDepth := 0
 	for {
-		result.Bundle, err = upgradebundle.Load(ctx, result.Directory, pinned, floor)
+		result.Bundle, err = loadGuardedBundleWith(ctx, revocations, result.Directory, pinned, floor)
 		if err != nil {
 			return result, err
 		}
@@ -108,12 +110,13 @@ func discoverReleaseRoute(ctx context.Context, installer automaticReleasePrepare
 			// Physical schema may already belong to an intermediate hop. Retain
 			// the original source and route; apply reconciliation measures its
 			// exact durable position before any process can migrate or serve.
-			plan, planErr := result.Bundle.Plan(previous.Source, target.Identity)
-			if planErr == nil && plan.Digest() == previous.Route {
+			plan, planErr := result.Bundle.PlanAdmitted(previous.Source, target.Identity, previous.Route)
+			if planErr == nil {
 				result.Plan, result.Instance = plan, previous.Instance
 				return completeAutomaticRouteExecutables(ctx, installer, source, result, allowStable)
 			}
-			lastPlanError = errors.New("unfinished upgrade no longer has its exact authenticated original route")
+			// Keep the cause: a revoked bridge must read as revoked to the operator.
+			lastPlanError = fmt.Errorf("unfinished upgrade no longer has its exact authenticated original route: %w", planErr)
 		} else {
 			for _, candidate := range result.Bundle.Sources(engine) {
 				actual, inspectErr := database.Installed(ctx, candidate.Migrations)

@@ -260,6 +260,69 @@ func RunSignedGateProcessFixture(t *testing.T, request Request, claim []byte) (R
 		return nil
 	})
 }
+
+// ErrFixtureInterrupted is returned by InterruptSignedGateFixtureAfterPrepare.
+var ErrFixtureInterrupted = errors.New("fixture interrupted the gate after its operation was prepared")
+
+// InterruptSignedGateFixtureAfterPrepare runs the gate and abandons it right after
+// the operation is durably Prepared: the in-flight upgrade a crash would leave.
+func InterruptSignedGateFixtureAfterPrepare(t *testing.T, request Request, claim []byte) (err error) {
+	t.Helper()
+	bundle, err := upgradebundle.Load(t.Context(), request.BundleDirectory, request.Pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		return err
+	}
+	node, err := bundle.MatchBuild(claim)
+	if err != nil {
+		return err
+	}
+	request.afterBoundary = func(point durableBoundary) {
+		if point == boundaryPrepared {
+			panic(ErrFixtureInterrupted)
+		}
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if recoveredError, ok := recovered.(error); !ok || !errors.Is(recoveredError, ErrFixtureInterrupted) {
+				panic(recovered)
+			}
+			err = ErrFixtureInterrupted
+		}
+	}()
+	_, err = run(t.Context(), request, claim, upgrade.Production, func(actual upgradecompat.VerifiedNode) error {
+		if !actual.Valid() || actual.Identity() != node.Identity() {
+			return errors.New("fixture executable differs from signed release")
+		}
+		return nil
+	})
+	return err
+}
+
+// PreflightSignedGateProcessFixture runs the startup configuration preflight (the
+// path the serving process takes) for the build the claim names.
+func PreflightSignedGateProcessFixture(t *testing.T, request Request, claim []byte, ciphertext string) error {
+	t.Helper()
+	bundle, err := upgradebundle.Load(t.Context(), request.BundleDirectory, request.Pinned, releaseidentity.SnapshotFloor{})
+	if err != nil {
+		return err
+	}
+	node, err := bundle.MatchBuild(claim)
+	if err != nil {
+		return err
+	}
+	custody, err := InspectCustodyDirectory(request.StateDirectory)
+	if err != nil {
+		return err
+	}
+	_, err = preflightConfiguration(t.Context(), ConfigurationPreflight{Request: request, InstalledCustody: custody, CiphertextPath: ciphertext}, claim, func(actual upgradecompat.VerifiedNode) error {
+		if !actual.Valid() || actual.Identity() != node.Identity() {
+			return errors.New("fixture executable differs from signed release")
+		}
+		return nil
+	}, false)
+	return err
+}
+
 func KillSignedGateProcessFixture(t *testing.T, request Request, claim []byte, point string) {
 	t.Helper()
 	boundaries := map[string]durableBoundary{"prepared": boundaryPrepared, "write-started": boundaryWriteStarted, "sql-complete": boundarySQLComplete, "schema-applied": boundarySchemaApplied, "healthy": boundaryHealthy}

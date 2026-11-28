@@ -323,7 +323,8 @@ bootstrap script.
 A pre-ledger database remains `legacy/v1`, identified by its inspected schema
 and exact migration inventory. It is never relabeled as a signed source release.
 An ordinary nightly declaration cannot admit it. The first hop needs a
-recovery-signed `hikyo.dev/legacy-nightly-bridge/v1` statement for its engine,
+recovery-signed `hikyo.dev/legacy-nightly-bridge/v2` statement (with a `not_after`
+at most 30 days out; an expiry-free `v1` statement still loads and counts toward the inventory, but is always expired and never routes) for its engine,
 exact legacy schema/migrations, signed target identity and target policy digest.
 It also needs the installation's fresh backup/drill attestation.
 
@@ -332,11 +333,15 @@ proposals from its reviewed legacy schema candidates:
 
 ```sh
 go run ./scripts/release/nightly legacy-bridges \
-  --directory /downloads/first-signed-nightly --out /review/legacy-bridges
+  --directory /downloads/first-signed-nightly --not-after 2026-12-20T00:00:00Z \
+  --out /review/legacy-bridges
 ```
 
-The command creates unsigned digest-named statements for both engines. During
-the offline recovery ceremony, sign each exact statement:
+`--not-after` is the owner's choice (canonical UTC, in the future, at most 30
+days out); the tool refuses anything else. The command creates unsigned
+digest-named statements for both engines. Only the owner signs them, offline,
+during the recovery ceremony; agents never sign, and a lapsed bridge is replaced
+by regenerating, signing and cataloguing a new statement. Sign each exact statement:
 
 ```sh
 cosign sign-blob --yes --new-bundle-format=false --tlog-upload=false \

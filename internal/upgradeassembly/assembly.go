@@ -56,48 +56,13 @@ func Assemble(ctx context.Context, o Options) error {
 		return errors.New("unsupported nightly platform")
 	}
 	pinned, floor := o.Pinned, o.Floor
-	snapshotNames := []string{"metadata.json", "metadata.sigstore.json", "catalog.json", "catalog.sigstore.json"}
-	if _, err := os.Lstat(filepath.Join(o.SnapshotDirectory, "stable-policy.json")); err == nil {
-		snapshotNames = append(snapshotNames, "stable-policy.json", "stable-policy.sigstore.json", "stable-trusted-root.json")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	snapshotFiles, err := readExact(o.SnapshotDirectory, snapshotNames)
+	snapshot, snapshotFiles, keys, keyIDs, err := authenticateSnapshot(pinned, floor, o.SnapshotDirectory, o.KeysDirectory, o.NightlyPolicy)
 	if err != nil {
 		return err
 	}
-	var metadata releasetrust.Metadata
-	if err := definitions.DecodeStrict(snapshotFiles["metadata.json"], &metadata); err != nil {
-		return err
-	}
-	if len(metadata.PrimaryKeys) == 0 || len(metadata.PrimaryKeys) > 256 {
-		return errors.New("invalid primary key count")
-	}
-	names := []string{}
-	index := upgradebundle.Index{Format: upgradebundle.IndexFormat, PrimaryKeyIDs: []string{}, Releases: []upgradebundle.ReleaseEntry{}, Bridges: []releaseidentity.Digest{}}
+	index := upgradebundle.Index{Format: upgradebundle.IndexFormat, PrimaryKeyIDs: keyIDs, Releases: []upgradebundle.ReleaseEntry{}, Bridges: []releaseidentity.Digest{}}
 	if o.NightlyPlatform != "" {
 		index.Format, index.NightlyPlatform = upgradebundle.PlatformIndexFormat, o.NightlyPlatform
-	}
-	idPattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-	for _, key := range metadata.PrimaryKeys {
-		if !releaseidentity.SafeName(key.PublicKey) || !idPattern.MatchString(key.ID) {
-			return errors.New("unsafe primary key locator")
-		}
-		names = append(names, key.PublicKey)
-		index.PrimaryKeyIDs = append(index.PrimaryKeyIDs, key.ID)
-	}
-	keyFiles, err := readExact(o.KeysDirectory, names)
-	if err != nil {
-		return err
-	}
-	keys := map[string][]byte{}
-	for _, key := range metadata.PrimaryKeys {
-		keys[key.ID] = keyFiles[key.PublicKey]
-	}
-	material := releasetrust.SnapshotMaterial{Metadata: snapshotFiles["metadata.json"], MetadataSignature: snapshotFiles["metadata.sigstore.json"], Catalog: snapshotFiles["catalog.json"], CatalogSignature: snapshotFiles["catalog.sigstore.json"], PrimaryKeys: keys, NightlyPolicy: o.NightlyPolicy, StablePolicy: snapshotFiles["stable-policy.json"], StablePolicySignature: snapshotFiles["stable-policy.sigstore.json"], StableTrustedRoot: snapshotFiles["stable-trusted-root.json"]}
-	snapshot, err := releasetrust.VerifySnapshot(pinned, material, floor)
-	if err != nil {
-		return fmt.Errorf("authenticate trust snapshot: %w", err)
 	}
 	output, err := filepath.Abs(o.OutputDirectory)
 	if err != nil {
@@ -218,6 +183,74 @@ func Assemble(ctx context.Context, o Options) error {
 		}
 	}
 	return nil
+}
+
+// authenticateSnapshot reads the trust snapshot and primary keys from their
+// directories and verifies them against the caller-pinned trust and floor.
+func authenticateSnapshot(pinned releasetrust.PinnedTrust, floor releaseidentity.SnapshotFloor, snapshotDirectory, keysDirectory string, nightlyPolicy []byte) (releasetrust.Snapshot, map[string][]byte, map[string][]byte, []string, error) {
+	snapshotNames := []string{"metadata.json", "metadata.sigstore.json", "catalog.json", "catalog.sigstore.json"}
+	if _, err := os.Lstat(filepath.Join(snapshotDirectory, "stable-policy.json")); err == nil {
+		snapshotNames = append(snapshotNames, "stable-policy.json", "stable-policy.sigstore.json", "stable-trusted-root.json")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return releasetrust.Snapshot{}, nil, nil, nil, err
+	}
+	snapshotFiles, err := readExact(snapshotDirectory, snapshotNames)
+	if err != nil {
+		return releasetrust.Snapshot{}, nil, nil, nil, err
+	}
+	var metadata releasetrust.Metadata
+	if err := definitions.DecodeStrict(snapshotFiles["metadata.json"], &metadata); err != nil {
+		return releasetrust.Snapshot{}, nil, nil, nil, err
+	}
+	if len(metadata.PrimaryKeys) == 0 || len(metadata.PrimaryKeys) > 256 {
+		return releasetrust.Snapshot{}, nil, nil, nil, errors.New("invalid primary key count")
+	}
+	names, ids := []string{}, []string{}
+	idPattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	for _, key := range metadata.PrimaryKeys {
+		if !releaseidentity.SafeName(key.PublicKey) || !idPattern.MatchString(key.ID) {
+			return releasetrust.Snapshot{}, nil, nil, nil, errors.New("unsafe primary key locator")
+		}
+		names = append(names, key.PublicKey)
+		ids = append(ids, key.ID)
+	}
+	keyFiles, err := readExact(keysDirectory, names)
+	if err != nil {
+		return releasetrust.Snapshot{}, nil, nil, nil, err
+	}
+	keys := map[string][]byte{}
+	for _, key := range metadata.PrimaryKeys {
+		keys[key.ID] = keyFiles[key.PublicKey]
+	}
+	material := releasetrust.SnapshotMaterial{Metadata: snapshotFiles["metadata.json"], MetadataSignature: snapshotFiles["metadata.sigstore.json"], Catalog: snapshotFiles["catalog.json"], CatalogSignature: snapshotFiles["catalog.sigstore.json"], PrimaryKeys: keys, NightlyPolicy: nightlyPolicy, StablePolicy: snapshotFiles["stable-policy.json"], StablePolicySignature: snapshotFiles["stable-policy.sigstore.json"], StableTrustedRoot: snapshotFiles["stable-trusted-root.json"]}
+	snapshot, err := releasetrust.VerifySnapshot(pinned, material, floor)
+	if err != nil {
+		return releasetrust.Snapshot{}, nil, nil, nil, fmt.Errorf("authenticate trust snapshot: %w", err)
+	}
+	return snapshot, snapshotFiles, keys, ids, nil
+}
+
+// LoadEvidence authenticates a trust snapshot and two stable release proof
+// directories exactly as Assemble does, for tools that derive statements
+// from published evidence without assembling a bundle.
+func LoadEvidence(ctx context.Context, pinned releasetrust.PinnedTrust, snapshotDirectory, keysDirectory string, releases ...string) (releasetrust.Snapshot, []releasetrust.VerifiedRelease, []upgradecompat.Declaration, error) {
+	snapshot, _, _, _, err := authenticateSnapshot(pinned, releaseidentity.SnapshotFloor{}, snapshotDirectory, keysDirectory, nil)
+	if err != nil {
+		return releasetrust.Snapshot{}, nil, nil, err
+	}
+	verified, declarations := []releasetrust.VerifiedRelease{}, []upgradecompat.Declaration{}
+	for _, directory := range releases {
+		release, files, err := readRelease(ctx, directory, snapshot)
+		if err != nil {
+			return releasetrust.Snapshot{}, nil, nil, err
+		}
+		declaration, err := upgradecompat.Parse(files["upgrade-compatibility.json"])
+		if err != nil {
+			return releasetrust.Snapshot{}, nil, nil, err
+		}
+		verified, declarations = append(verified, release), append(declarations, declaration)
+	}
+	return snapshot, verified, declarations, nil
 }
 
 func writeDocument(directory, name string, raw []byte) error {

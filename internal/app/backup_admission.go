@@ -46,7 +46,7 @@ func backupPublicBundle(ctx context.Context, cfg *config.Config) (upgradebundle.
 	} else if !errors.Is(err, upgrade.ErrAbsent) {
 		return upgradebundle.Bundle{}, upgradecompat.VerifiedNode{}, err
 	}
-	bundle, err := upgradebundle.Load(ctx, request.BundleDirectory, request.Pinned, floor)
+	bundle, err := loadGuardedBundle(ctx, cfg, request.BundleDirectory, request.Pinned, floor)
 	if err != nil {
 		return upgradebundle.Bundle{}, upgradecompat.VerifiedNode{}, err
 	}

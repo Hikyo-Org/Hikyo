@@ -301,10 +301,10 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 			return err
 		}
 		if !staged {
-			route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+			route, err = discoverReleaseRoute(ctx, cfg, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
 		}
 	} else {
-		route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+		route, err = discoverReleaseRoute(ctx, cfg, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
 	}
 	if err != nil {
 		return err

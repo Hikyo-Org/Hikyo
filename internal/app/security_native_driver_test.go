@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,11 +36,14 @@ type nativeDriverHost struct {
 	digest        releaseidentity.Digest
 	check         func()
 	failure       error
+	policy        map[string]string
 }
 
 func (h *nativeDriverHost) Config() hostupgrade.Config { return h.configuration }
 func (h *nativeDriverHost) Environment() map[string]string {
-	return map[string]string{"HIKYO_DB": "sqlite:fixture.db"}
+	environment := map[string]string{"HIKYO_DB": "sqlite:fixture.db"}
+	maps.Copy(environment, h.policy)
+	return environment
 }
 func (h *nativeDriverHost) CheckRunning(_ context.Context, digest string) error {
 	if h.check != nil {
@@ -621,5 +625,22 @@ func TestNativeSecurityReconcileRefusesUnfinishedHostJournal(t *testing.T) {
 	write("complete")
 	if err := f.driver.Reconcile(t.Context(), securitymaintenance.Observation{}); err != nil {
 		t.Fatalf("finished journal still refused: %v", err)
+	}
+}
+
+// The maintenance service loads no EnvironmentFile, so the operator's revocation policy
+// lives only in the host's environment; the process environment must not decide it.
+func TestNativeSecurityRevocationGuardReadsTheHostEnvironment(t *testing.T) {
+	t.Setenv("HIKYO_UPGRADE_REVOCATION_CHECK", "online")
+	t.Setenv("HIKYO_UPGRADE_REVOCATION_URL", "https://process.invalid/")
+	host := &nativeDriverHost{configuration: hostupgrade.Config{StateDirectory: "/var/lib/hikyo/upgrade"},
+		policy: map[string]string{"HIKYO_UPGRADE_REVOCATION_CHECK": "off", "HIKYO_UPGRADE_REVOCATION_URL": "https://mirror.invalid/list"}}
+	guard := nativeSecurityRevocationGuard(host)
+	if guard.Upgrade.RevocationCheck != "off" || guard.Upgrade.RevocationURL != "https://mirror.invalid/list" || guard.Upgrade.StateDirectory != "/var/lib/hikyo/upgrade" {
+		t.Fatalf("the host's hikyo.env policy must decide: %+v", guard.Upgrade)
+	}
+	unset := nativeSecurityRevocationGuard(&nativeDriverHost{})
+	if unset.Upgrade.RevocationCheck != "" || unset.Upgrade.RevocationURL != "" {
+		t.Fatalf("the process environment must not leak into the host policy: %+v", unset.Upgrade)
 	}
 }

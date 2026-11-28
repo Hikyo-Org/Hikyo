@@ -3,6 +3,7 @@ package upgradegate
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
@@ -26,9 +27,8 @@ func inspectMaintenanceConfiguration(ctx context.Context, session *upgrade.Sessi
 	if err != nil {
 		return Result{}, err
 	}
-	plan, err := bundle.Plan(source, node.Identity())
-	if err != nil || plan.Digest() != routeDigest {
-		return Result{}, upgrade.ErrConflict
+	if _, err := bundle.PlanAdmitted(source, node.Identity(), routeDigest); err != nil {
+		return Result{}, fmt.Errorf("%w: %w", upgrade.ErrConflict, err)
 	}
 	keys, err := session.MaintenanceConfigurationKeys(ctx, current)
 	if err != nil {

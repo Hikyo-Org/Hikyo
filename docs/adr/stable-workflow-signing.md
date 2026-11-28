@@ -89,6 +89,203 @@ the existing operator login avoids a new stored PAT or a second GitHub App. The
 helper checks the live setting before mutation and verifies the public release's
 immutable status afterward; it does not alter repository settings.
 
+## Recovery bridges (#1422)
+
+**Owner decisions 2026-11-24 on #1422.** Existing v1.0.0 installations have no
+ordinary edge to v1.1.0, so the owner chose a recovery-signed bridge per engine
+(option B), signed with a rotated `recovery-2` (R2), with signed expiry and an
+apply-time revocation list (options (a) and (c) on
+[#1422](https://github.com/Hikyo-Org/Hikyo/issues/1422)). Custody and review:
+
+- **R2:** a new offline or hardware key `recovery-2` is rotated in first and a
+  release that pins it ships. The bridge target is that release, and only
+  `recovery-2` signs the bridge. The `recovery-1` exception is not extended to
+  bridges, and the verifier enforces it: under a root that pins `recovery-1` every routable
+  bridge (`recovery-bridge/v2` and `legacy-nightly-bridge/v2`) verifies and counts, so
+  bundles load and a security rollback is unaffected, but it never routes a new
+  admission or resumes one, and the refusal names the owner prerequisite in the runbook (rotate to
+  `recovery-2`, sign with it, publish). The inert expiry-free
+  `legacy-nightly-bridge/v1` statements load, always expired. The owner holds the key alone and every signing is witnessed and logged
+  ([ceremony runbook](../operations/recovery-bridge-ceremony.md), #1560).
+  Solo custody ends before 1.2: signing (the key holder, offline) and publishing
+  the trust asset and merging the trust pull request (a second person without the
+  key) must be separate people by then.
+- An independent verifier (`scripts/release/verify-recovery-bridge.sh`, jq,
+  cosign and sha256 only, no shared code with the authoring tool) re-derives every
+  statement field from the published declarations and compares bytes and digests.
+  It is the merge gate for the trust pull request.
+- **Signed expiry (a).** A bridge statement is
+  `hikyo.dev/recovery-bridge/v2` with a required canonical-UTC `not_after`, at most
+  30 days after signing. The gate compares it with the host clock at plan time,
+  offline and without a grace period. An expired bridge drops out of route
+  planning, not out of snapshot loading, so ordinary routes and the complete
+  bridge inventory check are unaffected. The runtime never routes an
+  expiry-free statement: the recovery v1 form is refused, and the legacy nightly bridge v1
+  form verifies as an always-expired bridge (see the legacy nightly bridge decision below).
+  Admission also rejects a `not_after` more than 30 days plus one hour of clock skew
+  ahead of the host clock, so the bound holds at runtime and not only where it is signed. A lapsed bridge is replaced by authoring
+  and signing a new statement with `recovery-2` and removing the old digest from
+  the catalog in the same step (the re-sign path in the runbook; the verifier
+  refuses a new bridge whose engine, source and target pair is still catalogued).
+- **Revocation list (c).** Before a plan that uses a bridge is applied, the gate
+  fetches the list (schema `hikyo.dev/recovery-revocations/v1`): a sequenced list of revoked
+  statement digests, signed by the pinned recovery key and bound to the pinned
+  root, so the endpoint is only a transport. Once an installation has stored a list, its persisted
+  sequence floor refuses a lower sequence and a different list at the same
+  sequence. On an installation that has stored nothing (every v1.0.0 install
+  at its first bridge apply) the floor cannot tell a replay, so each list also
+  carries a signed `issued_at`: a list older than 7 days is `stale`, never
+  `checked`, and falls back to the signed expiry like an unreachable endpoint
+  (its entries still apply). The list is signed when a bridge is published and
+  whenever something is revoked, never on a schedule: the offline recovery key
+  is not exercised weekly because freshness buys no security (an endpoint
+  controller can force the unreachable path anyway, and stale entries still
+  apply). The residual is an endpoint that replays an older validly signed list
+  to such an installation, delaying a newer revocation until `not_after`. The
+  verifier refuses a future-dated list and one older than the newest bridge it
+  covers. If the endpoint is unreachable (DNS, dial or timeout, HTTP
+  502, 503 or 504), the check falls back to the signed expiry and the last
+  verified list, and records that locally. A reachable but invalid answer (other
+  status, a body cut short, oversized body, bad signature, wrong root, older
+  sequence, a redirect, certificate error) fails closed. A reset or EOF before any response is no
+  answer (unreachable) unless it is a TLS or certificate failure. `HIKYO_UPGRADE_REVOCATION_CHECK=off` is the explicit
+  operator opt-out, and `HIKYO_UPGRADE_REVOCATION_URL` points at a mirror.
+  The default endpoint is the two assets `recovery-revocations.json` and
+  `recovery-revocations.sigstore.json` of the fixed `trust` release in
+  `Hikyo-Org/Hikyo` (a stable GitHub release download URL). Publishing or
+  replacing those assets is part of the owner's signing step; agents never
+  publish them. GitHub serves release assets by redirect, so the fetcher follows
+  at most two redirects, each to https on `github.com`,
+  `objects.githubusercontent.com` or `release-assets.githubusercontent.com`; any
+  other redirect is a reachable but invalid answer. A 404 for the list asset
+  (nothing published yet) is no answer, like an unreachable endpoint: the route plans, a
+  warning is logged, and the signed `not_after` is the limit; a 404 at the end of a
+  redirect is judged the same way. A list that is
+  present without its signature (a 404 for the `.sigstore.json` asset), badly signed,
+  malformed or bound to another root fails closed. Once a list is stored, an absent
+  list falls back to the stored list and its sequence floor. The signature, not the
+  host, is the authority. A 429 or any other unlisted status stays a reachable but
+  invalid answer and fails closed.
+  The fetcher honors the proxy environment (`HTTPS_PROXY`, `NO_PROXY`): unlike the
+  fleet clients, which use only an explicit proxy setting, it sends no credentials,
+  a proxy-only host would otherwise see the endpoint as unreachable and fall back
+  to `not_after`, and whatever a proxy returns is still verified against the pinned
+  recovery key.
+  **Stored state.** The accepted list and its signature are stored as one file
+  (`bridge-revocations-store.json`, written by fsync, one rename and a directory
+  fsync), so a crash cannot leave a list beside
+  another list's signature. Losing known
+  revocations must never widen admission, so stored state that exists but does not
+  verify (a damaged file, a list signed by another
+  key) is unusable: bridge routes refuse under `off` and when the endpoint is unreachable,
+  with a message naming the files and the way out. **Owner decision 2026-11-27 on #1561
+  (option A):** a verified list fetched online replaces unusable state whatever its age,
+  provided its sequence is at or above a readable floor and, at the floor's sequence, its
+  digest is the floor's. Lists are signed only when something is revoked, so the endpoint
+  routinely serves an old list; refusing it would leave the operator a wait with no bound.
+  A list that replaces the state may still be reported `stale`, and its revocations apply.
+  Every other refusal stands: a bad signature, another root, an unreadable floor, a list
+  below the floor and another digest at the floor's sequence. The decision is made under
+  the persistence lock, from the state read there. Accepting a list of any age is safe only
+  because each trust root keeps its own floor. Two binaries pinning different roots can
+  share one state directory (a security rollback across a root rotation, then a bridge
+  upgrade): a root-A run stores its own list over root B's, and with one shared floor it
+  also rebound the floor to A, so B then treated the state as a first run and accepted an
+  old B list that drops a revocation B had stored (review of 255cbbd18). With a floor per
+  root, the A run raises only A's record; B's record stays, so B refuses (off, unreachable,
+  or a list below B's floor) until it fetches a list at or above its own floor. The operator
+  may instead remove both files, losing the revocations only they held and every root's
+  floor. The replacing list's sequence must be at or above
+  the high-water floor (`bridge-revocations-floor.json`: one record per trust root, each the
+  highest sequence and its digest, raised only when a list is stored under that root, under
+  the lock, never lowered and kept apart from the outcome log; a different list at the
+  floor's sequence is equivocation). A root with no floor record is on its first run under
+  that root, and an unreadable or malformed file refuses. A list that is
+  correctly signed by the current recovery key but bound to another (older) root was never
+  issued for this root, so it is unusable too (neither its revocations nor their absence can
+  be applied) until a verified list for this root replaces it. This root's floor is enforced
+  whenever it exists: a removed store, a store behind the floor (a crash
+  between the two writes) and a list that differs from the floor at its sequence are
+  unusable. The persistence lock is an operating system file lock, not a lock file.
+  Replacement is automatic: the next online check whose endpoint serves a verified list at
+  or above this root's floor replaces the state. Operator action is needed only when the
+  check is off, the endpoint is unreachable or the floor is unreadable: turn the check on,
+  restore access, or stop the service and remove the named files (including the floor
+  record), accepting that revocations known only to that list and every root's floor are
+  lost. A security rollback is never blocked.
+- **Admission time (F3).** A bridge's `not_after` and its revocation limit what
+  may be *admitted*, not what an admitted upgrade may finish. Every site that
+  holds the journaled route digest of an upgrade (the gate's in-flight and
+  recovery resume, the maintenance configuration, the automatic upgrade resume)
+  does not repeat the admission's search and compare: a fresh search over a
+  graph with other expiry and revocation facts can pick another route than the
+  one admitted. It checks that the journaled digest is the digest of some valid
+  path in the authenticated graph (ordinary edges and every verified bridge, with
+  parallel edges kept), ignoring expiry; an upgrade admitted before `not_after`
+  therefore finishes after it. A revoked bridge on that route still refuses a
+  forward resume, and so does a journaled route through an expiry-free legacy `v1`
+  bridge (an older build may have routed it; it can never resume, only a security
+  rollback may use it). A security rollback validates the journaled route the same way
+  with neither check, so neither expiry nor revocation ever blocks returning to
+  the journaled source. Journals carry no timestamp: their formats are strictly
+  decoded and an older image must still read them, so the journaled route digest
+  is the record of admission. A new admission skips an expired or revoked bridge;
+  if a revoked bridge and its re-signed replacement share a pair, the list picks
+  the live one (without the list that pair is a catalog error).
+  New admissions (backup preparation, bootstrap, export, drill, preflight and
+  automatic route discovery) check both.
+- **Legacy nightly bridge (owner decision, #1561).** The legacy nightly bridge carries
+  a signed `not_after` like every other bridge, at most 30 days after signing, so
+  expiry bounds it. Its schema is `hikyo.dev/legacy-nightly-bridge/v2`, which
+  requires a canonical UTC `not_after`; the expiry-free `.../v1` form verifies as an
+  always-expired bridge, because the catalog and every bundle list it and must load.
+  Migration path: the two `v1` statements in the committed catalog stay
+  until the owner re-signs `v2` statements offline at the ceremony and replaces
+  their digests in a new catalog; until then the runtime plans no legacy-nightly
+  route through them. The owner chooses `not_after` when signing
+  (`scripts/release/nightly legacy-bridges --not-after`); agents never sign or
+  publish one, and repository fixtures use throwaway keys only. With expiry in
+  place the revocation check treats a missing list (404) as no answer: the route
+  plans with a warning and expiry is the limit. An expired bridge is refused whatever
+  the list says, a present but invalid list refuses, and a revoked entry blocks a
+  forward resume while a security rollback is never blocked.
+  `HIKYO_UPGRADE_REVOCATION_CHECK=off` stays as the explicit operator opt-out; a
+  usable stored list still applies. Repository fixtures do not use it: they point
+  `HIKYO_UPGRADE_REVOCATION_URL` at an unresolvable host, so the unreachable path is
+  what they exercise. The native security maintenance service reads the policy from
+  the host's `hikyo.env` (it loads no `EnvironmentFile`), so `off` or a mirror URL
+  set there is honored at discovery too.
+  The two committed `v1` digests are policy-listed, so they cannot leave the catalog
+  without a policy rotation, an owner tidy-up and not a merge blocker; the runtime loads
+  `v1` as expired, so they stay inert and cannot admit a route, whatever they once allowed.
+  Ordinary upgrades never contact the endpoint. The snapshot revocation
+  (`recovery-bridge.sh revoke`, which drops the bridge from the catalog and never
+  re-signs the policy) remains and binds instances whose floor advanced.
+  A rehearsal with a throwaway key and a test root precedes the real ceremony,
+  and no other stable-policy change may be pending.
+
+**Constraints found while building it.**
+
+- Verifiers accept a recovery signature only from the key pinned in the running
+  binary's root. The shipped v1.1.0 pins `recovery-1`, so a `recovery-2` bridge
+  into it is refused. Hence R2: rotate first, ship the pinning release, and
+  bridge into that release.
+- Residual limits, accepted by the owner: an instance that never reaches the
+  endpoint is bounded by the 30-day expiry, not recalled sooner; the check record
+  is local and unsigned; the list endpoint is a GitHub release asset that only the
+  owner publishes; revocation does not recall bundles already distributed, but a
+  distributed bundle's bridge stops planning at `not_after` and when listed.
+- Each statement binds the stable policy digest. Listing the statements in the
+  policy changes that digest, so the policy is never re-signed. The bridges are
+  authorized by a recovery-shaped metadata and catalog (next sequences, no
+  workflow identity). The fixed policy is therefore an input of the statements.
+- A workflow-signed catalog must equal the policy's bridge list, so
+  `stable prepare` withdraws recovery-only bridges: the route lasts until the next
+  stable release. It refuses when the policy lists a bridge the catalog dropped
+  (restoring it would undo a revocation), and `revoke` refuses policy-listed
+  digests: both need a policy rotation. Until it ships, `install.sh` can report "trust rollback
+  refused" for new stable installs.
+
 ## Accepted limitations and alternatives
 
 Keyless signing removes recurring custody of a long-lived release signing key.

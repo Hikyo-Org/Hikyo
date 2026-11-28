@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
@@ -51,7 +52,7 @@ func testSignedNightlyApply(t *testing.T, stages bool, mutation string) {
 	trust, material, _ := testfixture.NightlyWithPayloads(t, claim, mutation == "wrong workflow commit", payloads, artifacts)
 	identity := releaseidentity.Identity{Profile: declaration.Profile, Version: declaration.Version, Sequence: declaration.Sequence, Commit: declaration.Commit, CompatibilitySHA256: releaseidentity.Hash(claim), ManifestSHA256: releaseidentity.Hash(material.Manifest)}
 	engine := declaration.Engines[0]
-	bridge := trust.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: identity, TargetPolicySHA256: releaseidentity.Hash(material.Policy), SourceMigrations: engine.Migrations, TargetMigrations: engine.Migrations, SourceSchemaSHA256: engine.SchemaSHA256, TargetSchemaSHA256: engine.SchemaSHA256, Mode: "maintenance"})
+	bridge := trust.AddBridge(t, releasetrust.BridgeStatement{Schema: releasetrust.LegacyNightlyBridgeSchemaV2, NotAfter: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second).Format(time.RFC3339), SourceGenesis: releaseidentity.LegacyGenesisV1, Target: identity, TargetPolicySHA256: releaseidentity.Hash(material.Policy), SourceMigrations: engine.Migrations, TargetMigrations: engine.Migrations, SourceSchemaSHA256: engine.SchemaSHA256, TargetSchemaSHA256: engine.SchemaSHA256, Mode: "maintenance"})
 	bridgePath := "bridges/" + string(releaseidentity.Hash(bridge.Statement)) + "/"
 	responses[trustURL(bridgePath+"statement.json")] = bridge.Statement
 	responses[trustURL(bridgePath+"statement.sigstore.json")] = bridge.Signature

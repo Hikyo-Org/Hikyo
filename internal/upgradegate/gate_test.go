@@ -3,6 +3,8 @@ package upgradegate
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/jsonwire"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -171,6 +174,49 @@ func TestFreshGateInvalidTrustAndRootHaveNoDatastoreEffects(t *testing.T) {
 				if _, err := os.Stat(request.Store.Path); !errors.Is(err, os.ErrNotExist) {
 					t.Fatal("refused trust created SQLite file")
 				}
+			}
+		})
+	}
+}
+
+// A resume re-derives the journaled route from its digest, and the journal's route length must
+// still agree with it: the journal is an unauthenticated row, and its length decides when
+// maintenance ends. A tampered length is a conflict and changes nothing.
+func TestResumeRefusesATamperedRouteLength(t *testing.T) {
+	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
+		t.Run(string(engine), func(t *testing.T) {
+			request, claim, verify := signedFreshGate(t, engine)
+			if _, err := run(t.Context(), request, claim, upgrade.Production, verify); err != nil {
+				t.Fatal(err)
+			}
+			stored, err := upgrade.InspectControl(t.Context(), request.Store)
+			if err != nil || stored.Pending == nil || stored.Pending.RouteLength != 1 {
+				t.Fatalf("the migrate run must leave a one-hop pending operation: %+v %v", stored.Pending, err)
+			}
+			tampered := *stored.Pending
+			tampered.RouteLength = 2
+			raw, err := json.Marshal(tampered, jsonwire.Stable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			driver, dsn := "pgx", request.Store.DSN
+			if engine == releaseidentity.SQLite {
+				driver, dsn = "sqlite", request.Store.Path
+			}
+			db, err := sql.Open(driver, dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			if _, err := db.ExecContext(t.Context(), `UPDATE upgrade_pending SET operation_json=$1 WHERE singleton=1`, string(raw)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := run(t.Context(), request, claim, upgrade.Production, verify); !errors.Is(err, upgrade.ErrConflict) {
+				t.Fatalf("a journaled route length that differs from the route must be a conflict: %v", err)
+			}
+			after, err := upgrade.InspectControl(t.Context(), request.Store)
+			if err != nil || after.Generation != stored.Generation || after.Pending.Phase != stored.Pending.Phase || after.Pending.RouteLength != 2 {
+				t.Fatalf("the refused resume changed the state: %+v %v", after.Pending, err)
 			}
 		})
 	}

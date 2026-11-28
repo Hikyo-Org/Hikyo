@@ -46,7 +46,7 @@ func RunUpgradeBackup(ctx context.Context, cfg *config.Config, args []string, ou
 	case "upgrade-export":
 		return runUpgradeExport(ctx, cfg, args[1:], out, trust)
 	case "upgrade-drill":
-		return runUpgradeDrill(ctx, args[1:], out, trust)
+		return runUpgradeDrill(ctx, cfg, args[1:], out, trust)
 	default:
 		return errors.New("usage: hikyo backup upgrade-export | upgrade-drill")
 	}
@@ -78,7 +78,7 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 	}
 	diagnostics.Printf(ctx, 1, "upgrade backup: verifying release bundle")
 	bundleDone := diagnostics.Time(ctx, "upgrade backup release verification")
-	bundle, err := upgradebundle.Load(ctx, *bundleDir, trust.Pinned, trust.Floor)
+	bundle, err := loadGuardedBundle(ctx, cfg, *bundleDir, trust.Pinned, trust.Floor)
 	bundleDone()
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func inspectBackupPlan(ctx context.Context, cfg upgrade.Config, bundle upgradebu
 	return upgradecompat.Plan{}, errors.New("actual source is absent from authenticated migration and schema candidates")
 }
 
-func runUpgradeDrill(ctx context.Context, args []string, out io.Writer, trust TrustContext) error {
+func runUpgradeDrill(ctx context.Context, cfg *config.Config, args []string, out io.Writer, trust TrustContext) error {
 	fs := flag.NewFlagSet("backup upgrade-drill", flag.ContinueOnError)
 	fs.SetOutput(out)
 	bundleDir := fs.String("bundle", trust.BundleDirectory, "verified offline release artifact directory")
@@ -173,7 +173,7 @@ func runUpgradeDrill(ctx context.Context, args []string, out io.Writer, trust Tr
 		return errors.New("upgrade-drill requires bundle, archive, receipt, separate custody files, signer, output and exactly one empty scratch target")
 	}
 	diagnostics.Printf(ctx, 1, "upgrade drill: verifying release bundle and receipt")
-	bundle, err := upgradebundle.Load(ctx, *bundleDir, trust.Pinned, trust.Floor)
+	bundle, err := loadGuardedBundle(ctx, cfg, *bundleDir, trust.Pinned, trust.Floor)
 	if err != nil {
 		return err
 	}

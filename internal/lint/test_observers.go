@@ -12,8 +12,9 @@ import (
 
 func defaultObserverInstallers() map[string][]string {
 	return map[string][]string{
-		Module + "/internal/store/authn": {"SetQueryObserver", "SetMutationFailureObserver"},
-		Module + "/internal/service":     {"SetSCIMPhaseObserver"},
+		Module + "/internal/store/authn":  {"SetQueryObserver", "SetMutationFailureObserver"},
+		Module + "/internal/service":      {"SetSCIMPhaseObserver"},
+		Module + "/internal/releasetrust": {"DenyBridgeSignerForTest"},
 	}
 }
 

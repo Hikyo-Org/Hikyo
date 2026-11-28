@@ -214,7 +214,8 @@ func newSecurityProcessDriver(t *testing.T, source upgradeDrillFixture, route au
 	publicPath := filepath.Join(work, "operator.pub")
 	automaticProcessPut(t, publicPath, operator.PrimaryPublic)
 	automaticProcessPut(t, filepath.Join(work, "root.key"), []byte(hikyocrypto.EncodeRootKey(source.root)))
-	host := &automaticProcessHost{work: work, installed: filepath.Join(work, "hikyo"), fenced: true, baseEnv: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + work, "HIKYO_DB=sqlite:" + source.cfg.Path, "HIKYO_EXTERNAL_ORIGIN=https://security-maintenance.fixture.invalid", "HIKYO_UPDATE_CHANNEL=off", "HIKYO_UPGRADE_STATE_DIR=" + installation}}
+	// The revocation check stays on (never off): an endpoint that cannot be reached is the unreachable fallback, so the route plans with a warning and the child never contacts a real host.
+	host := &automaticProcessHost{work: work, installed: filepath.Join(work, "hikyo"), fenced: true, baseEnv: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + work, "HIKYO_DB=sqlite:" + source.cfg.Path, "HIKYO_EXTERNAL_ORIGIN=https://security-maintenance.fixture.invalid", "HIKYO_UPDATE_CHANNEL=off", "HIKYO_UPGRADE_STATE_DIR=" + installation, "HIKYO_UPGRADE_REVOCATION_URL=https://revocation.fixture.invalid/recovery-revocations"}}
 	host.evidence = hostupgrade.RuntimeEvidence{BundleDirectory: route.Directory, OperatorPublicKey: publicPath, TargetManifest: string(route.Plan.Target().ManifestSHA256), LegacyWritersStopped: true}
 	driver := &securityProcessDriver{t: t, source: source, route: route, pinned: pinned, database: automaticStore{upgrade.Config{Engine: releaseidentity.SQLite, Path: source.cfg.Path}}, host: host, operator: operator}
 	t.Cleanup(func() {
@@ -283,6 +284,7 @@ func (d *securityProcessDriver) Prepare(ctx context.Context, target securitymain
 	if err != nil {
 		return securitymaintenance.Preparation{}, err
 	}
+	bundle = bundle.WithBridgeRevocations(noRevokedBridges)
 	manifest, err := d.route.Plan.SourceManifest(releaseidentity.SQLite)
 	if err != nil {
 		return securitymaintenance.Preparation{}, err
