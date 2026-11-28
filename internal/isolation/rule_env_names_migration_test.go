@@ -678,9 +678,11 @@ func testRuleEnvNamesMigrationKeepsDelegatedRevoke(t *testing.T, cfg store.Confi
 	lit := func(col string) string {
 		return `CASE WHEN ` + col + ` IS NULL THEN 'NULL' ELSE '''' || ` + col + ` || '''' END`
 	}
-	migrated := lines(`SELECT 'INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES (' || ` +
+	// env_fault is copied as stored: a faulted part revokes only by a manager
+	// over its whole scope, so dropping it would hand the live store a valid rule.
+	migrated := lines(`SELECT 'INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, env_fault, created_by, created_at) VALUES (' || ` +
 		lit("id") + ` || ', ''usr_rvtarget'', ' || ` + lit("capability") + ` || ', ''org_rv'', ' || ` + lit("project_mode") + ` || ', ' || ` +
-		lit("env_mode") + ` || ', ' || ` + lit("key_mode") + ` || ', ''usr_rvmgr'', ` + strings.ReplaceAll(at, "'", "''") + `)' FROM rules WHERE principal_id = 'usr_rvtarget' ORDER BY id`)
+		lit("env_mode") + ` || ', ' || ` + lit("key_mode") + ` || ', ' || ` + lit("env_fault") + ` || ', ''usr_rvmgr'', ` + strings.ReplaceAll(at, "'", "''") + `)' FROM rules WHERE principal_id = 'usr_rvtarget' ORDER BY id`)
 	migrated = append(migrated, lines(`SELECT 'INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_name, key_id, folder_path) VALUES (' || `+
 		lit("i.id")+` || ', ' || `+lit("i.rule_id")+` || ', ''org_rv'', ' || `+lit("i.axis")+` || ', ' || `+lit("i.project_id")+` || ', ' || `+
 		lit("i.env_name")+` || ', ' || `+lit("i.key_id")+` || ', ' || `+lit("i.folder_path")+` || ')' FROM rule_items AS i JOIN rules AS r ON r.id = i.rule_id
@@ -697,7 +699,7 @@ func testRuleEnvNamesMigrationKeepsDelegatedRevoke(t *testing.T, cfg store.Confi
 	svc := &service.Rules{DB: db}
 	var ids []string
 	for _, stmt := range migrated {
-		if id, ok := strings.CutPrefix(stmt, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('"); ok {
+		if id, ok := strings.CutPrefix(stmt, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, env_fault, created_by, created_at) VALUES ('"); ok {
 			ids = append(ids, id[:strings.Index(id, "'")])
 		}
 	}
