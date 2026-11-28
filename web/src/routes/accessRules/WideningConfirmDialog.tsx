@@ -62,10 +62,10 @@ export const ENV_WIDENING_COPY: WideningCopy = {
   keepHidden: 'To keep it from them, cancel and change their rules first, or pick a different name.',
 };
 
-/** The same confirmation for deleting an environment an `all` rule leaves out (#1447). */
+/** The same confirmation for deleting the last environment an `all` rule leaves out (#1447). */
 export const ENV_DELETE_WIDENING_COPY: WideningCopy = {
   ...ENV_WIDENING_COPY,
-  lede: 'Access rules select environments by name: rules that leave this environment out reach the rest of the project once it is deleted. They keep the name, so an environment created later with it is left out again.',
+  lede: 'Access rules select environments by name: a rule that leaves out this environment, and no other remaining one, reaches the project as a whole once it is deleted. It keeps the name, so an environment created later with it is left out again.',
   confirm: 'Delete and give access',
   busy: 'Deleting…',
   keepHidden: 'To keep it from them, cancel and change their rules first.',

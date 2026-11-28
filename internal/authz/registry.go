@@ -2659,7 +2659,7 @@ var operationTable = map[Operation]opSpec{
 			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
-		// Deleting the environment an `all` rule excepts widens it once
+		// Deleting the last environment an `all` rule excepts widens it once
 		// confirmed (#1447), and a gaining machine passes the widening gate.
 		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted,
 			audit.EventRuleEnvWideningConfirmed, audit.EventMachineGrantWidened},

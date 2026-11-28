@@ -970,13 +970,13 @@ export const reorderEnvironments = <ThrowOnError extends boolean = false>(option
  * Member access rules select environments by name, so deleting the
  * last environment carrying a name an `all` list excepts lets those
  * rules reach the project as a whole. Deleting one of several excepted
- * environments leaves the others excepted and gains nothing. A delete that gives any principal a permission is
- * refused with 409 `conflict` carrying `widening` until it is resent
- * with `confirm_widening` naming exactly those principals, machines
- * included. The rules already reached the remaining environments, so a
- * delete reveals no plaintext that was hidden before and asks for no
- * reauthentication. The rules keep the name, so a later environment of
- * that name is excepted again.
+ * environments leaves the others excepted and gains nothing. A delete
+ * that gives any principal a permission is refused with 409 `conflict`
+ * carrying `widening` until it is resent with `confirm_widening` naming
+ * exactly those principals, machines included. The rules already reached
+ * the remaining environments, so a delete reveals no plaintext that was
+ * hidden before and asks for no reauthentication. The rules keep the
+ * name, so a later environment of that name is excepted again.
  *
  */
 export const deleteEnvironment = <ThrowOnError extends boolean = false>(options: Options<DeleteEnvironmentData, ThrowOnError>): RequestResult<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError> => (options.client ?? client).delete<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError>({
