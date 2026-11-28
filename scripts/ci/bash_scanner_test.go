@@ -225,6 +225,12 @@ prefixes:
 			for len(words) > 0 { // env -S may hold the whole command line
 				option := codeText(words[0])
 				long, value, hasValue := strings.Cut(option, "=")
+				if strings.HasPrefix(long, "--") && len(long) > 2 {
+					long = envLongOption(long) // GNU env takes a unique prefix
+					if !hasValue {
+						option = long
+					}
+				}
 				switch {
 				case option == "-" || option == "--" || option == "EXPANSION" || envFlags.MatchString(option) || envLongFlags[long]:
 					words = words[1:] // an expanded word is taken for options
@@ -243,17 +249,21 @@ prefixes:
 						quoted, _ := syntax.Quote(codeText(arg), syntax.LangBash)
 						split += " " + quoted
 					}
-					// env performs no redirection, so a < in the string is only an argument.
+					// env performs no redirection: a < in the string is a word it passes on, which a
+					// shell reading stdin may take as its script file.
 					if f, perr := syntax.NewParser().Parse(strings.NewReader(split), ""); perr == nil && len(f.Stmts) == 1 {
 						if inner, ok := f.Stmts[0].Cmd.(*syntax.CallExpr); ok {
 							if innerName, _, _, innerStdin := handedCode(inner); innerStdin != noStdin {
+								if len(f.Stmts[0].Redirs) > 0 && innerStdin == readsStdin {
+									innerStdin = mayReadStdin
+								}
 								return innerName, "", nil, innerStdin // the heredoc env is fed goes to this shell
 							}
 						}
 					}
 					return "env", split, words[0], noStdin
 				case envValued.MatchString(option) || envLongValued[long] && hasValue:
-					words = words[1:] // -uNAME, -CDIR, --unset=NAME, --chdir=DIR
+					words = words[1:] // -uNAME, -CDIR, -aNAME, --unset=NAME, --chdir=DIR, --argv0=NAME
 				case (envValueNext.MatchString(option) || envLongValued[option]) && len(words) > 2:
 					words = words[2:]
 				default:
@@ -366,6 +376,23 @@ const (
 	mayReadStdin
 	readsStdin
 )
+
+// envLongOption is the GNU env long option name abbreviates uniquely, or name itself. No
+// option name is a prefix of another, so an exact name matches only itself.
+func envLongOption(name string) string {
+	var match []string
+	for _, known := range envLongNames {
+		if strings.HasPrefix(known, name) {
+			match = append(match, known)
+		}
+	}
+	if len(match) == 1 {
+		return match[0]
+	}
+	return name
+}
+
+var envLongNames = []string{"--ignore-environment", "--null", "--debug", "--default-signal", "--ignore-signal", "--block-signal", "--list-signal-handling", "--unset", "--chdir", "--argv0", "--env0-from", "--split-string"}
 
 // onStdin reports whether redirect applies to fd 0.
 func onStdin(redirect *syntax.Redirect) bool {
@@ -509,7 +536,13 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env --chdir /":                      "env --chdir / bash -c '[[ a == b ]]'\n",
 		"env -P":                             "env -P /bin bash -c '[[ a == b ]]'\n",
 		"env --split-string then words":      "env --split-string 'bash -c' '[[ a == b ]]'\n",
-		"env -S ignores <":                   "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
+		"env --argv0 n":                      "env --argv0 n bash -c '[[ a == b ]]'\n",
+		"env --env0-from f":                  "env --env0-from f bash -c '[[ a == b ]]'\n",
+		"env --arg= prefix":                  "env --arg=n bash -c '[[ a == b ]]'\n",
+		"env --ch prefix":                    "env --ch / bash -c '[[ a == b ]]'\n",
+		"env --spl prefix":                   "env --spl 'bash -c' '[[ a == b ]]'\n",
+		"env --ignore-env prefix":            "env --ignore-env bash -c '[[ a == b ]]'\n",
+		"env -S < as argument":               "env -S 'bash -s <f' <<'EOF'\n[[ a == b ]]\nEOF\nenv -S 'bash <f' <<'EOF'\n[[ a == b ]]\nEOF\n",
 		"env -aNAME":                         "env -an bash -c '[[ a == b ]]'\n",
 		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
 		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
@@ -630,6 +663,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"bash --version":                "bash --version\nsh --help\n",
 		"expanded script, flag, data":   "bash \"$script\" -e <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script, here-string":  "bash \"$script\" <<<'not ( shell'\n",
+		"env -S < script data":          "env -S 'bash <f' <<'EOF'\nnot ( shell\nEOF\n",
+		"env --i ambiguous":             "env --i bash -c '[[ a == b ]]'\n", // env refuses an ambiguous prefix
 		"expanded script, no stdin":     "bash \"$script\"\necho x | bash \"$script\"\n",
 		"env -S expanded script data":   "env -S 'bash \"$x\"' <<'EOF'\nnot ( shell\nEOF\n",
 		"expanded script fed data":      "bash \"$script\" <<'EOF'\nnot ( shell\nEOF\n",
@@ -742,7 +777,8 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"source /dev/stdin\n", ". /dev/fd/0\n", "source -- /proc/self/fd/0\n", "bash 3<<'EOF'\nx\nEOF\n", "bash <&3\n",
 		"{ bash; } <<'EOF'\n[[ a == b ]]\nEOF\n", "( bash -s ) <<'EOF'\nx\nEOF\n", "exec 0<<'EOF'\nx\nEOF\nbash\n", "run() { bash -s; }\n", "coproc bash\n",
 		"source /dev/stdin </dev/stdin\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
-		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed "bash </dev/stdin\n", "bash < <(printf x)\n",
+		"bash </dev/stdin\n", "bash < <(printf x)\n", "bash <<'EOF' <>f\nx\nEOF\n",
+		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed
 	} {
 		if _, err := bareTests(script); err == nil || !strings.Contains(err.Error(), "cannot be scanned") {
 			t.Errorf("%q: got %v, want a script read from stdin rejected", script, err)
