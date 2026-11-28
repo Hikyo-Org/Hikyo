@@ -869,13 +869,17 @@ export const listEnvironments = <ThrowOnError extends boolean = false>(options: 
  * is reached by every rule whose `only` list names its name. Such a
  * creation is refused with 409 `conflict` carrying `widening` until it
  * is resent with `confirm_widening` naming exactly those principals. A
- * creation that gives a machine plaintext access through an `only` name
- * is always refused with 409 `conflict` asking for reauthentication:
- * the gate asks for a window over the new environment's id, which no
- * session can hold before the environment exists. Create it under a
+ * creation that gives a machine secret plaintext (`read` with `reveal`
+ * or `reveal-history`) through an `only` name is always refused with
+ * 409 `conflict`: for want of the caller's `manage-identities` or
+ * matching disclosure capability, or else asking for reauthentication,
+ * since the gate asks for a window over the new environment's id, which
+ * no session can hold before the environment exists. Create it under a
  * name no `only` list names, reauthenticate over it, then rename it. A
- * rule reaching every environment, or every one except other names,
- * reaches the new one without confirmation.
+ * machine gaining other permissions, `read` without `reveal` included,
+ * needs the confirmation alone. A rule reaching every environment, or
+ * every one except other names, reaches the new one without
+ * confirmation.
  *
  */
 export const createEnvironment = <ThrowOnError extends boolean = false>(options: Options<CreateEnvironmentData, ThrowOnError>): RequestResult<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError>({
@@ -908,9 +912,11 @@ export const createEnvironment = <ThrowOnError extends boolean = false>(options:
  *
  * Access rules gain the clone as they gain any new environment, with
  * the same `confirm_widening` refusal: a clone that gives a machine
- * plaintext access through an `only` name is always refused with
- * 409 `conflict` asking for reauthentication. Clone under another name,
- * reauthenticate over it, then rename it.
+ * secret plaintext through an `only` name is always refused with
+ * 409 `conflict`, as a creation is. Clone under another name,
+ * reauthenticate over it, then rename it. A machine gaining other
+ * permissions, `read` without `reveal` included, needs the confirmation
+ * alone.
  *
  * It is a separate route rather than a flag on `createEnvironment`
  * because its RESPONSE is different: a clone has to report what it could
@@ -1349,11 +1355,11 @@ export const listOrgRules = <ThrowOnError extends boolean = false>(options: Opti
  * held there, unless org or instance authority permits unheld grants.
  * A workload or automation principal may hold a rule under its class's
  * allowlist and depth, in its owning project only, and never narrowed by
- * keys. A machine rule that makes plaintext newly reachable also needs
- * `manage-identities` on the project, the matching disclosure capability
- * and a live reauthentication window over each newly reachable
- * environment; a 409 names the environment to reauthenticate over. Use
- * replaceRules to edit a grouped rule card atomically.
+ * keys. A machine rule that makes secret plaintext newly reachable also
+ * needs `manage-identities` on the project, the matching disclosure
+ * capability and a live reauthentication window over each newly
+ * reachable environment; a 409 names the environment to reauthenticate
+ * over. Use replaceRules to edit a grouped rule card atomically.
  *
  */
 export const createRule = <ThrowOnError extends boolean = false>(options: Options<CreateRuleData, ThrowOnError>): RequestResult<CreateRuleResponses, CreateRuleErrors, ThrowOnError> => (options.client ?? client).post<CreateRuleResponses, CreateRuleErrors, ThrowOnError>({

@@ -287,8 +287,9 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   for every environment). Two explicit steps (revoke, then create) still drop
   such an exception; each is a proved manager's own action.
 - **Machines.** A gaining machine passes the #1473/#1480 gate. A create or
-  clone whose name gives a machine plaintext access to the new environment
-  through an *only* rule fails closed with reauthentication required, because
+  clone whose name gives a machine secret plaintext in the new environment
+  through an *only* rule fails closed: refused for want of `manage-identities`
+  or disclosure authority, or else with reauthentication required, because
   no window can name the new id; the workaround is to create it under another
   name and rename it. An `all` rule that does not except the name reaches the
   new environment by default, which needs no confirmation and no workaround.

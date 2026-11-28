@@ -722,6 +722,70 @@ func TestEnvironmentNameWideningGatesMixedDisclosureClasses(t *testing.T) {
 	})
 }
 
+// A create or clone giving machines `read` without any disclosure capability,
+// or `edit`, through an only name reaches no secret plaintext (#1447): it
+// needs the confirmation and no reauthentication window, and audits no
+// machine widening. Config plaintext through `read` alone is #1630.
+func TestEnvironmentNameWideningMachinesWithoutSecretPlaintext(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		ctx := t.Context()
+		for _, c := range []string{"definitions-edit", "read", "edit", "publish"} {
+			execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_idr_"+c+"', 'usr_idrev', '"+c+"', 'org_a', 'prj_a1', NULL, "+ts+")")
+		}
+		// The rule creator delegates edit, so it holds it.
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_ida_edit_prj', 'usr_ident', 'edit', 'org_a', 'prj_a1', NULL, "+ts+")")
+		identities := identitySvc(db)
+		var reader domain.PrincipalID
+		var confirm []domain.PrincipalID
+		for name, capability := range map[string]domain.Capability{"plain-reader": domain.CapRead, "plain-editor": domain.CapEdit} {
+			sa, err := identities.CreateServiceAccount(ctx, service.LocalPrincipal(identAdmin), prjScope(), name, domain.ClassAutomation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := (&service.Rules{DB: db, Auth: authWithWindow(db)}).Create(ctx, service.LocalPrincipal(identAdmin), service.RuleSpec{
+				Target: sa.Principal, Capability: capability, Org: orgA,
+				Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisOnly, EnvNames: []string{"uat", "uat-clone"}, KeyMode: domain.AxisAll}}); err != nil {
+				t.Fatalf("%s rule: %v", capability, err)
+			}
+			if capability == domain.CapRead {
+				reader = sa.Principal
+			}
+			confirm = append(confirm, sa.Principal)
+		}
+		slices.Sort(confirm)
+		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+		// No session window anywhere: success proves the machine gate asked nothing.
+		caller := service.LocalPrincipal(identRevatr)
+		var widening *service.EnvWideningError
+		if _, err := envs.CreateConfirming(ctx, caller, prjScope(), "uat", nil, nil); !errors.As(err, &widening) || !slices.Equal(widening.Principals, confirm) {
+			t.Fatalf("unconfirmed create = %v, want a refusal naming %v", err, confirm)
+		}
+		created, err := envs.CreateConfirming(ctx, caller, prjScope(), "uat", nil, confirm)
+		if err != nil {
+			t.Fatalf("confirmed create without a window: %v", err)
+		}
+		if _, _, err := envs.CloneConfirming(ctx, caller, prjScope(), "uat-clone", string(envA1), nil, nil); !errors.As(err, &widening) || !slices.Equal(widening.Principals, confirm) {
+			t.Fatalf("unconfirmed clone = %v, want a refusal naming %v", err, confirm)
+		}
+		cloned, _, err := envs.CloneConfirming(ctx, caller, prjScope(), "uat-clone", string(envA1), nil, confirm)
+		if err != nil {
+			t.Fatalf("confirmed clone without a window: %v", err)
+		}
+		for _, env := range []string{created.ID, cloned.ID} {
+			if !reachesEnv(t, db, reader, envScope(domain.EnvID(env))) {
+				t.Fatalf("the reading machine does not reach %s", env)
+			}
+			if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+env+"'"); n != 1 {
+				t.Fatalf("confirmations for %s = %d, want 1", env, n)
+			}
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'identity.grant_widened'"); n != 0 {
+			t.Fatalf("identity.grant_widened rows = %d, want 0", n)
+		}
+	})
+}
+
 // D7 with environment names (#1446, #1447): an all-projects rule also
 // reaches projects created later, so its names must be held over the
 // future-project witness too, by an org grant or another all-projects rule

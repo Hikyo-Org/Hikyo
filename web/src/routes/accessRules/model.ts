@@ -318,6 +318,10 @@ function envsIn(world: World, rule: Pick<Rule, 'envs'>, project: string): string
   return names === undefined ? items() : (envIdsNamed(world, project, names) ?? items());
 }
 
+/** The environment ids a rule's environment axis lists over every project it covers (see envsIn). */
+export const ruleEnvIds = (world: World, rule: Pick<Rule, 'projects' | 'envs'>): string[] =>
+  projectsOf(world, rule).flatMap((project) => envsIn(world, rule, project));
+
 export type Reach = { hit: false } | { hit: true; ok: true } | { hit: true; ok: false; why: string };
 
 const MISS: Reach = { hit: false };

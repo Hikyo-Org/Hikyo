@@ -339,15 +339,16 @@ apply when the implementing pull request merges.
   and a live reauthentication window over every such environment, audited as
   `identity.grant_widened`. This settles the 2026-11-20 question: the reauthentication conjunct
   applies to a later rename. **Limitation, disclosed:** a create or clone whose name gives a machine
-  plaintext access to the *new* environment through an *only* rule always fails closed. A machine
+  secret plaintext in the *new* environment through an *only* rule always fails closed: for want
+  of `manage-identities` or disclosure authority, or else of reauthentication. A machine
   whose `all` rule reaches it because it does not except the name gains nothing by name, so that
   create needs no confirmation and no workaround. The window must name the new
   environment's id, and no session can hold one before the environment exists. The way through is
   to create the environment under another name and rename it. A gain that reaches no secret plaintext passes
   the gate with nothing to reauthenticate: a machine's `edit`, and also its `read` without `reveal`
-  or `reveal-history`, which delivers config values but no secret plaintext. One option for a
-  later decision: exempt a plain create, since an empty environment holds no plaintext. A clone
-  copies values and cannot take that exemption.
+  or `reveal-history`, which delivers config values but no secret plaintext (that config gap is
+  the follow-up #1630). One option for a later decision: exempt a plain create, since an empty
+  environment holds no plaintext. A clone copies values and cannot take that exemption.
 - **Deleting an environment** no longer touches rules: a name stays the rule's. An *only* list
   whose environment is deleted keeps the name and reaches nothing there, where id binding revoked
   an emptied list. A recreated environment of that name is a create, confirmed as above.

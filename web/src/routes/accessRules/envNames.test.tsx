@@ -40,6 +40,24 @@ it('lists a named selector by its names, not by the projects that carry them (#1
   expect(view.container.textContent).not.toContain('payments/');
 });
 
+it('marks a name protected where any covered project protects it, not only the listed items (#1447)', async () => {
+  // A project-scoped listing returns payments/prod alone, yet the name also reaches web/prod.
+  const world = makeWorld();
+  const flipped = {
+    ...world,
+    projects: world.projects.map((p) => ({ ...p, envs: p.envs.map((e) => (e.name === 'prod' ? { ...e, protected: p.id === IDS.web } : e)) })),
+  };
+  const rule: Rule = {
+    ...newRule(IDS.chen),
+    projects: [IDS.payments, IDS.web],
+    envs: { mode: 'only', names: ['prod'], items: [{ project: IDS.payments, environment: IDS.payProd }] },
+  };
+  const view = await renderForm(<RuleWhere world={flipped} rule={rule} />);
+  unmount = view.unmount;
+  const envs = [...view.container.querySelectorAll('.access-where__value')][1];
+  expect(envs?.getAttribute('title')).toBe('prod (protected)');
+});
+
 it('removes one unmatched name and keeps the others (#1447)', async () => {
   const onSave = vi.fn();
   const rule: Rule = { ...newRule(IDS.chen), projects: [IDS.payments], envs: { mode: 'all', names: ['qa', 'retired'], items: [] } };

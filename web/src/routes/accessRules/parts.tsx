@@ -4,7 +4,7 @@ import { Alert } from '../../ui/Alert.tsx';
 import { Badge } from '../../ui/Badge.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { dotted } from '../dotted.tsx';
-import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
+import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, ruleEnvIds, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
 
 /** The icon on each Values permission's tag. */
 const VALUE_ICON: Partial<Record<PermId, GlyphName>> = { read: 'reveal', edit: 'edit', publish: 'arrow-up', pin: 'pin' };
@@ -124,16 +124,16 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   const projects = rule.projects === '*' ? 'all' : rule.projects.map((p) => projectName(world, p)).join(', ');
   // Names are the selector (D3, #1447): one label per name across every
   // project, a name no environment carries yet included; only a legacy
-  // selector without names is labelled by its project-bound items.
+  // selector without names is labelled by its project-bound items. A name
+  // is protected where any covered project's environment of it is, listed
+  // in this view or not.
+  const named = envs.names === undefined ? [] : ruleEnvIds(world, rule).map((id) => envById(world, id));
   const envList: Labels =
     envs.names === undefined
       ? envLabels(world, rule, envs.items)
       : envs.names.map((name) => ({
           label: name,
-          flag: envs.items.some((item) => {
-            const env = envById(world, item.environment);
-            return env?.name === name && env.protected === true;
-          }),
+          flag: named.some((env) => env?.name === name && env.protected === true),
         }));
   const keyList = keyLabels(world, rule, keys.items);
   const envText = labelsText(envList, 'protected');
