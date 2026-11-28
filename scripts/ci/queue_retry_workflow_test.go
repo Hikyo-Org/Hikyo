@@ -190,6 +190,17 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		// cost (42 reads) still leaves the reserve, the same rule the job itself defers on.
 		{"a non-group job one request short of cost plus reserve is held for the wait", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at cost plus reserve is rerun", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603", []int{1}, false, ""},
+		// The jobs listing spends requests after the first read, so the decision uses a fresh balance.
+		// A spent window stops before the listing spends anything: after it the balance would look healthy.
+		{"a spent window is handed on before the jobs listing", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "40 5000 1795475603|4000 5000 1795475603", nil, false, "40 of 5000"},
+		{"a listing that leaves the budget below a tenth hands nothing on when no job qualifies", []string{job(1, "group-"+head, "failure", "Set up job")}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, ""},
+		{"a group job the jobs listing leaves below a tenth is not rerun", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "100 1000 1795475603|99 1000 1795475603", nil, false, "99 of 1000"},
+		{"a failed second balance read fails the step", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "900 1000 1795475603|bad 1000 1795475603", nil, true, ""},
+		// 0x3e8 is 1000 to shell arithmetic, so only the number check stops it.
+		{"a balance that is not a decimal number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "\"0x3e8\" 1000 1795475603", nil, true, ""},
+		// A hex limit makes the floor's [ -lt ] fail inside its if, which errexit ignores: the check must stop it.
+		{"a limit that is not a decimal number fails the step", []string{job(1, "group-"+head, "failure", groupReconcile)}, "1", "50 \"0x3e8\" 1795475603", nil, true, ""},
+		{"a non-group job the jobs listing leaves one short is held", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "522 1000 1795475603|521 1000 1795475603", nil, false, "Held for the group reserve (521 of 1000"},
 		{"a non-group job at fifteen percent is deferred, not rerun into the reserve", []string{job(1, "publish-"+head, "failure", reconcile)}, "1", "150 1000 1795475603", nil, false, "Held for the group reserve (150 of 1000"},
 		{"a dev publisher is held below the reserve too", []string{job(1, "dev-publish-"+head, "failure", "Reconcile exact-head dev admission")}, "1", "521 1000 1795475603", nil, false, "Held for the group reserve"},
 		{"a group job below the reserve is rerun while the publisher waits", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "group-"+head, "failure", groupReconcile)}, "1", "249 1000 1795475603", []int{2}, false, "Held for the group reserve"},
@@ -201,6 +212,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		// Rerunning one would strand the other (the next attempt lists only its own jobs), so both are held for the wait.
 		{"several failed publishers that fit one by one but not together are all held", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "563 1000 1795475603", nil, false, "Held for the group reserve (563 of 1000"},
 		{"several failed publishers whose combined cost just fits use the run-level rerun", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "564 1000 1795475603", []int{runLevel}, false, ""},
+		{"several failed publishers the jobs listing leaves short together are all held", []string{job(1, "publish-"+head, "failure", reconcile), job(2, "publish-"+strings.Repeat("b", 40), "failure", reconcile)}, "1", "564 1000 1795475603|563 1000 1795475603", nil, false, "Held for the group reserve (563 of 1000"},
 		// 13 x 42 = 546 exceeds the 520 a fresh 1000-request window leaves above the reserve: the retry job never releases them
 		// (known limit, routed to #1598: the operator completes such a set).
 		{"a set no fresh window could afford together is held for the wait, never released here", manyPublishers(13), "1", "700 1000 1795475603", nil, false, "Held for the group reserve (700 of 1000"},
@@ -223,18 +235,30 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			calls := filepath.Join(dir, "calls")
-			rl := strings.Fields(tc.rateLimit)
-			graphql := ""
-			if len(rl) == 6 {
-				graphql = ",\"graphql\":{\"remaining\":" + rl[3] + ",\"limit\":" + rl[4] + ",\"reset\":" + rl[5] + "}"
+			// "before|after": the first balance answers rate_limit reads until the jobs listing has run
+			// (it spends requests), the second answers reads after it; one balance answers both.
+			balances := strings.Split(tc.rateLimit, "|")
+			if len(balances) > 2 {
+				t.Fatalf("rateLimit %q: at most a before and an after balance", tc.rateLimit)
+			}
+			for name, balance := range map[string]string{"before.json": balances[0], "after.json": balances[len(balances)-1]} {
+				rl := strings.Fields(balance)
+				graphql := ""
+				if len(rl) == 6 {
+					graphql = ",\"graphql\":{\"remaining\":" + rl[3] + ",\"limit\":" + rl[4] + ",\"reset\":" + rl[5] + "}"
+				}
+				body := "{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}" + graphql + "}}"
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			// The stub answers rate_limit and the jobs listing by applying the script's own --jq filter, and records reruns.
 			stub := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '" + calls + "'\n" +
 				"filter=\nfor a in \"$@\"; do if [ \"$prev\" = --jq ]; then filter=$a; fi; prev=$a; done\n" +
 				"case \"$*\" in\n" +
-				"  'api rate_limit '*) printf '%s' '{\"resources\":{\"core\":{\"remaining\":" + rl[0] + ",\"limit\":" + rl[1] + ",\"reset\":" + rl[2] + "}" + graphql + "}}' | jq -r \"$filter\" ;;\n" +
+				"  'api rate_limit '*) f='" + dir + "'/before.json; [ ! -f '" + dir + "/listed' ] || f='" + dir + "'/after.json; jq -r \"$filter\" < \"$f\" ;;\n" +
 				"  *--method\\ POST*) ;;\n" +
-				"  api*) printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
+				"  api*) : > '" + dir + "/listed'; printf '%s' '{\"jobs\":[" + strings.Join(tc.jobs, ",") + "]}' | jq -r \"$filter\" ;;\n" +
 				"esac\n"
 			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
