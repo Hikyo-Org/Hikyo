@@ -397,7 +397,6 @@ func envSplitWords(text string, pos syntax.Pos) []*syntax.Word {
 			quote = 0
 		case c == '\\' && i+1 < len(text) && (quote != '\'' || text[i+1] == '\\' || text[i+1] == '\''):
 			i++
-			inWord = true
 			switch next := text[i]; {
 			case next == 'c' && quote == 0:
 				flush()
@@ -411,6 +410,7 @@ func envSplitWords(text string, pos syntax.Pos) []*syntax.Word {
 			default:
 				word.WriteByte(next)
 			}
+			inWord = inWord || word.Len() > 0
 		case c == '$' && quote != '\'' && strings.HasPrefix(text[i:], "${"):
 			expanded, inWord = true, true
 		default:
@@ -601,6 +601,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"env -S expanded option":             "env -S 'bash ${OPT} -c \"[[ a == b ]]\"'\n",
 		"env -S \\\" in double quotes":       "env -S 'bash -c \"echo \\\"x\\\"; [[ a == b ]]\"'\n",
 		"env -S single-quoted backslash":     "env -S \"bash -c 'echo \\\\#; [[ a == b ]]'\"\n",
+		"env -S \\_ in quotes":               "env -S 'bash -c \"[[\\_a\\_==\\_b\\_]]\"'\n",
+		"env -S \\n escape":                  "env -S 'bash -c \"x=1\\n[[ a == b ]]\"'\n",
 		"env -aNAME":                         "env -an bash -c '[[ a == b ]]'\n",
 		"env -a":                             "env -a n bash -c '[[ a == b ]]'\n",
 		"env --argv0=":                       "env --argv0=n bash -c '[[ a == b ]]'\n",
@@ -838,7 +840,7 @@ func TestBareTestScannerClassifiesStatements(t *testing.T) {
 		"echo x | bash\n", "printf x | sh -s -- a\n", "echo x | bash >/dev/null\n", "echo x | bash 2>&1\n", "echo x |& bash\n",
 		"source /dev/stdin\n", ". /dev/fd/0\n", "source -- /proc/self/fd/0\n", "bash 3<<'EOF'\nx\nEOF\n", "bash <&3\n",
 		"{ bash; } <<'EOF'\n[[ a == b ]]\nEOF\n", "( bash -s ) <<'EOF'\nx\nEOF\n", "exec 0<<'EOF'\nx\nEOF\nbash\n", "run() { bash -s; }\n", "coproc bash\n",
-		"source /dev/stdin </dev/stdin\n", "echo x | env -S 'bash -s <f'\n", "echo x | env -S 'bash -s >/dev/null'\n", "env -S 'bash -s 2>/dev/null'\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
+		"source /dev/stdin </dev/stdin\n", "echo x | env -S 'bash -s <f'\n", "env -S 'bash #-c x'\n", "env -S 'bash \\c -c x'\n", "env -S 'bash \\_ -s'\n", "echo x | env -S 'bash -s >/dev/null'\n", "env -S 'bash -s 2>/dev/null'\n", "bash <<'EOF' 0<&3\nx\nEOF\n", "bash <<'EOF' <&3\nx\nEOF\n",
 		"bash </dev/stdin\n", "bash < <(printf x)\n", "bash <<'EOF' <>f\nx\nEOF\n",
 		"sh -c 'bash -s' <<'EOF'\nx\nEOF\n", // fails closed: a heredoc reaching handed code's shell is not followed
 	} {
