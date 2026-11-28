@@ -537,18 +537,37 @@ func (c *collector) truncateUnreachedRotations(rest []domain.PrincipalID, reache
 	return nil
 }
 
+// orgMemberCandidates reads the principals an org incident selects from: every
+// principal with a grant or a rule in the org, so a member who holds rules and no
+// grants is a candidate too. Machine principals hold grants too; the selection
+// keeps only those with an account. collectOrg lists from it and the rotation
+// halt checks against it, so the owner refuses exactly what the incident did not
+// select.
+func orgMemberCandidates(ctx context.Context, az *authz.TxAuthorizer, org domain.OrgID) ([]authz.GrantLine, []authz.RuleLine, []domain.PrincipalID, error) {
+	lines, err := az.GrantLinesInOrg(ctx, string(org))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	ruleLines, err := az.RuleLinesInOrg(ctx, org)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	candidates := make([]domain.PrincipalID, 0, len(lines)+len(ruleLines))
+	for _, l := range lines {
+		candidates = append(candidates, l.Principal)
+	}
+	for _, l := range ruleLines {
+		candidates = append(candidates, l.Principal)
+	}
+	return lines, ruleLines, candidates, nil
+}
+
 func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, a incidentAccess, now time.Time, c *collector) error {
 	scope := a.scope
 
-	// The members come from the org's footprint: every principal with a grant or
-	// a rule in it, so a member who holds rules and no grants is listed too. The
-	// grants and rules are counted, not revoked. Machine principals hold grants
-	// too; only human accounts are listed.
-	lines, err := az.GrantLinesInOrg(ctx, string(a.org))
-	if err != nil {
-		return err
-	}
-	ruleLines, err := az.RuleLinesInOrg(ctx, a.org)
+	// The members come from the org's grants and rules, which are counted, not
+	// revoked; only human accounts are listed.
+	lines, ruleLines, candidates, err := orgMemberCandidates(ctx, az, a.org)
 	if err != nil {
 		return err
 	}
@@ -558,13 +577,6 @@ func (s *Incidents) collectOrg(ctx context.Context, r store.Repos, az *authz.TxA
 	}
 	c.census = IncidentCensus{Grants: len(lines), Rules: len(ruleIDs)}
 
-	candidates := make([]domain.PrincipalID, 0, len(lines)+len(ruleLines))
-	for _, l := range lines {
-		candidates = append(candidates, l.Principal)
-	}
-	for _, l := range ruleLines {
-		candidates = append(candidates, l.Principal)
-	}
 	rotations, err := newRotationLister(ctx, r, az, a)
 	if err != nil {
 		return err

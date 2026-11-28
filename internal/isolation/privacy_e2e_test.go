@@ -289,7 +289,18 @@ func TestPrivacyManagerRestrictedBetweenReadAndLock(t *testing.T) {
 	// serializes after the restriction (nothing it read was written by it), so only
 	// the real revoke path, which reads the target's state, conflicts; that guard is
 	// the grants lockout test's subject.
-	removal := "UPDATE principals SET privacy_state='restricted' WHERE id='usr_manager_b'"
+	managerRemovedBetweenReadAndLock(t, "UPDATE principals SET privacy_state='restricted' WHERE id='usr_manager_b'")
+}
+
+// The same race with the other manager's principal deleted outright (its grants
+// first, as the foreign key needs): a holder whose row is gone at the lock holds
+// nothing, so the restriction refuses rather than count it.
+func TestPrivacyManagerDeletedBetweenReadAndLock(t *testing.T) {
+	managerRemovedBetweenReadAndLock(t, "DELETE FROM grant_origins WHERE grant_id='grant_usr_manager_b'; DELETE FROM grants WHERE principal_id='usr_manager_b'; DELETE FROM accounts WHERE principal_id='usr_manager_b'; DELETE FROM principals WHERE id='usr_manager_b'")
+}
+
+func managerRemovedBetweenReadAndLock(t *testing.T, removal string) {
+	t.Helper()
 	db := openPostgres(t)
 	auth := authService(t, db)
 	ctx := tctx(t)

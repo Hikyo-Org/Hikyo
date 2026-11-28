@@ -274,15 +274,30 @@ func (s *Incidents) containAccount(ctx context.Context, w ownerRun, target domai
 
 // sessionRevoke ends one session of the account an incident was opened on. The
 // principal is the incident's, never the item's, so a ledger row cannot name
-// another person's session.
+// another person's session. A revocation this call makes finishes as the account
+// holder's own explicit revocation does, in the same transaction: the developer
+// delegations minted from the session end, and the session event is recorded
+// under the incident's correlation.
 func (o *incidentOwners) sessionRevoke(ctx context.Context, actor Actor, item authz.IncidentItem) (IncidentOwnerResult, error) {
 	return o.inTx(ctx, actor, item, domain.ObjectKindSession, func(w ownerRun) (IncidentOwnerResult, error) {
 		if w.inc.ScopeKind != domain.IncidentScopeAccount {
 			return OwnerUnconfirmed, domain.ErrInvalid
 		}
 		principal := domain.PrincipalID(w.inc.ScopeID)
-		if _, err := w.az.RevokeSessionForPrincipal(ctx, item.ObjectID, principal); err != nil {
+		held, err := w.az.SessionsForPrincipal(ctx, principal)
+		if err != nil {
 			return OwnerUnconfirmed, err
+		}
+		if i := slices.IndexFunc(held, func(s authz.SessionSummary) bool { return s.ID == item.ObjectID }); i >= 0 {
+			did, err := w.az.RevokeSessionForPrincipal(ctx, item.ObjectID, principal)
+			if err != nil {
+				return OwnerUnconfirmed, err
+			}
+			if did {
+				if err := recordSessionRevocation(ctx, w.az, w.caller.Principal, held[i], w.now); err != nil {
+					return OwnerUnconfirmed, err
+				}
+			}
 		}
 		left, err := w.az.SessionsForPrincipal(ctx, principal)
 		if err != nil {
@@ -417,18 +432,32 @@ func (o *incidentOwners) rotationHalt(ctx context.Context, actor Actor, item aut
 			return OwnerUnconfirmed, err
 		}
 		// The recorded authority must be an account this incident selects: the
-		// incident's own, or a member of the org the incident was opened on.
+		// incident's own, or a member the org incident lists (a grant or a rule in
+		// the org, and a human). A principal tied to the org only through other
+		// rows, such as a SCIM user, is not selected. The human check reads the
+		// principal's kind, not the account reader, which hides a contained
+		// account: the halt must not depend on whether account.contain ran first.
 		authority := domain.PrincipalID(cur.AuthorityPrincipalID)
 		if w.inc.ScopeKind == domain.IncidentScopeAccount {
 			if string(authority) != w.inc.ScopeID {
 				return OwnerUnconfirmed, domain.ErrNotFound
 			}
 		} else {
-			footprint, err := w.az.PrincipalFootprintOrgs(ctx, authority)
+			// shortcut: reads the org's grant and rule lines per item, so the cost grows
+			// with the org's membership; upgrade to a per-principal read of the same
+			// predicate when org incidents list many rotations in large orgs.
+			_, _, candidates, err := orgMemberCandidates(ctx, w.az, w.inc.OrgID)
 			if err != nil {
 				return OwnerUnconfirmed, err
 			}
-			if !slices.Contains(footprint, w.inc.OrgID) {
+			if !slices.Contains(candidates, authority) {
+				return OwnerUnconfirmed, domain.ErrNotFound
+			}
+			class, err := w.az.PrincipalClass(ctx, authority)
+			if err != nil {
+				return OwnerUnconfirmed, err
+			}
+			if class != domain.ClassHuman {
 				return OwnerUnconfirmed, domain.ErrNotFound
 			}
 		}
