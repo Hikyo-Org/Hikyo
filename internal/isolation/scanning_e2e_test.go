@@ -86,7 +86,7 @@ func runScanningLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("create project: %v", err)
 	}
 	scope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(proj.ID)}
-	env, err := envs.Create(ctx, actor, scope, "scanning-env", nil)
+	env, err := envs.CreateConfirming(ctx, actor, scope, "scanning-env", nil, nil)
 	if err != nil {
 		t.Fatalf("create env: %v", err)
 	}

@@ -530,6 +530,95 @@ describe('EnvironmentLifecycleActions', () => {
     expect(done).toHaveBeenCalledWith('Environment dev deleted.');
   });
 
+  it('confirms a rename that widens access through rules by name, resending with the gainers (#1447)', async () => {
+    const gainer = 'mch_123e4567-e89b-12d3-a456-42661417000a';
+    const widening = { count: 1, gainers: [{ principal_id: gainer, principal_name: 'deployer', capability: 'read', environments: [DEV.id] }] };
+    const bodies: unknown[] = [];
+    const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      const request = requestFromCall(args);
+      if (request.method !== 'PATCH') throw new Error(`unexpected ${request.method} ${request.url}`);
+      bodies.push(await request.json());
+      const json = bodies.length === 1
+        ? { status: 409, body: { error: { code: 'conflict', message: 'widens access', widening } } }
+        : { status: 200, body: environment(DEV.id, 'staging', 0) };
+      return new Response(JSON.stringify(json.body), { status: json.status, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const done = vi.fn();
+    const { container } = await renderForm(
+      <EnvironmentLifecycleActions org="org_1" project="project_1" environment={DEV} environments={[DEV, PROD]} onDone={done} />,
+    );
+    const renameInput = container.querySelector('input[name="rename-environment"]');
+    if (!(renameInput instanceof HTMLInputElement)) throw new Error('rename input is missing');
+    await act(async () => typeInto(renameInput, 'staging'));
+    const renameButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Rename environment');
+    if (renameButton === undefined) throw new Error('rename button is missing');
+    await act(async () => renameButton.click());
+    await settleTask();
+    const dialog = [...container.querySelectorAll('dialog[open]')].find(
+      (candidate) => candidate.querySelector('.dialog__title')?.textContent === 'This gives people and machines new access',
+    );
+    if (!(dialog instanceof HTMLElement)) throw new Error('the widening confirmation is missing');
+    expect(dialog.textContent).toContain('Rename dev to staging');
+    expect(dialog.textContent).toMatch(/deployer ID ending …\S{6}: See \(staging\)/);
+    const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Continue and give access');
+    if (confirm === undefined) throw new Error('confirm missing');
+    await act(async () => confirm.click());
+    await settleTask();
+    expect(bodies).toEqual([{ name: 'staging' }, { name: 'staging', confirm_widening: [gainer] }]);
+    expect(done).toHaveBeenCalledWith('Environment dev renamed to staging.');
+  });
+
+  it('confirms a delete that widens access through an except rule, resending with the gainers (#1447)', async () => {
+    const gainer = 'mch_123e4567-e89b-12d3-a456-42661417000a';
+    const widening = { count: 1, gainers: [{ principal_id: gainer, principal_name: 'deployer', capability: 'read', environments: [] }] };
+    const queries: (string | null)[] = [];
+    // The confirmed resend is held until released, so the dialog's busy state shows.
+    let release = () => {};
+    const resent = new Promise<void>((resolve) => {
+      release = () => resolve();
+    });
+    const fetchMock = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      const request = requestFromCall(args);
+      if (request.method !== 'DELETE') throw new Error(`unexpected ${request.method} ${request.url}`);
+      queries.push(new URL(request.url).searchParams.get('confirm_widening'));
+      if (queries.length === 1) {
+        const body = { error: { code: 'conflict', message: 'widens access', widening } };
+        return new Response(JSON.stringify(body), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
+      await resent;
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const done = vi.fn();
+    const { container } = await renderForm(
+      <EnvironmentLifecycleActions org="org_1" project="project_1" environment={DEV} environments={[DEV, PROD]} onDone={done} />,
+    );
+    const confirmInput = container.querySelector(`input[placeholder="${DEV.name}"]`);
+    if (!(confirmInput instanceof HTMLInputElement)) throw new Error('delete confirmation input is missing');
+    await act(async () => typeInto(confirmInput, DEV.name));
+    const deleteButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Delete environment');
+    if (deleteButton === undefined) throw new Error('delete button is missing');
+    await act(async () => deleteButton.click());
+    await settleTask();
+    expect(done).not.toHaveBeenCalled();
+    const dialog = [...container.querySelectorAll('dialog[open]')].find(
+      (candidate) => candidate.querySelector('.dialog__title')?.textContent === 'This gives people and machines new access',
+    );
+    if (!(dialog instanceof HTMLElement)) throw new Error('the widening confirmation is missing');
+    expect(dialog.textContent).toContain('Delete dev');
+    expect(dialog.textContent).toContain('an environment created later with it is left out again');
+    const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Delete and give access');
+    if (confirm === undefined) throw new Error('confirm missing');
+    await act(async () => confirm.click());
+    await settleTask();
+    expect(confirm.textContent).toBe('Deleting…');
+    await act(async () => release());
+    await settleTask();
+    expect(queries).toEqual([null, gainer]);
+    expect(done).toHaveBeenCalledWith('Environment dev deleted.');
+  });
+
   it('renames and deletes through deliberate user controls', async () => {
     const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
       const request = requestFromCall(args);

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -48,6 +49,21 @@ var (
 	// caller whose Manage access does not cover projects created later (ADR
 	// D7): an organization-scope grant or another all-projects rule.
 	ErrRuleAllProjectsAuthority = fmt.Errorf("%w: service: a rule over all projects needs Manage access over every project, including projects created later", domain.ErrConflict)
+	// ErrRuleTooLarge refuses a named-projects rule whose listing, one
+	// environment item per name in each project, would pass the v1 selector
+	// bound (#1447).
+	ErrRuleTooLarge = fmt.Errorf("%w: service: a rule would list more than %d selector items", domain.ErrLimitExceeded, domain.MaxRuleItems)
+	// ErrRuleEnvItemsStale refuses a rule create whose environment items
+	// differ from the environments its names match now in the rule's
+	// projects: a client that read a different set, or a pre-revision-22
+	// client whose id list a name-bound rule cannot express exactly (#1447).
+	ErrRuleEnvItemsStale = fmt.Errorf("%w: service: a rule's environment items must be exactly the environments its names match in its projects", domain.ErrConflict)
+	// ErrRuleUnmatchedNamesDropped refuses an all rule sent without names (a
+	// client before revision 22, #1447) over a project where the principal's
+	// all rules except a name no environment there carries yet: that client
+	// cannot show the name, so the new rule would silently lack the exception
+	// and reach an environment created or renamed to it later.
+	ErrRuleUnmatchedNamesDropped = fmt.Errorf("%w: service: a rule's environment names that match no environment yet must be sent by name", domain.ErrConflict)
 )
 
 // MoveWideningError refuses a key folder move that gives people access
@@ -66,13 +82,25 @@ type MoveWideningError struct {
 	Gains      []WideningGain
 }
 
-// WideningGain is one capability a person gains on the moved key, with the
-// environments it newly reaches (empty for a project-wide atom only).
+// WideningGain is one capability a principal gains, with the environments it
+// newly reaches (empty for a project-wide atom only).
 type WideningGain struct {
 	Principal  domain.PrincipalID
 	Name       string
 	Capability domain.Capability
 	Envs       []domain.EnvID
+	// Keys is the key selector the gain reaches; nil is every key, and for a
+	// key folder move the moved key, which the refusal names already.
+	Keys *WideningKeys
+}
+
+// WideningKeys is a rule's key selector in Project: the keys a gain reaches.
+type WideningKeys struct {
+	Project domain.ProjectID
+	Mode    domain.AxisMode
+	Items   []domain.RuleKeyItem
+	// sel is keySelector(Mode, Items) when keysOf built it, so a merge need not encode it again.
+	sel string
 }
 
 func (e *MoveWideningError) Error() string {
@@ -146,13 +174,29 @@ func gainedPrincipals(gains []WideningGain) []domain.PrincipalID {
 	return out
 }
 
-// mergeGains unions b into a per (principal, capability), keeping the order
-// moveWidening produces.
+// mergeGains unions b into a per (principal, capability, key selector),
+// keeping the order moveWidening produces.
 func mergeGains(a, b []WideningGain) []WideningGain {
+	// Each selector is encoded once per call, not per comparison: one can
+	// hold 500 items.
+	sels := make([]string, len(a), len(a)+len(b))
+	for i := range a {
+		sels[i] = a[i].Keys.selector()
+	}
 	for _, g := range b {
-		i := slices.IndexFunc(a, func(x WideningGain) bool { return x.Principal == g.Principal && x.Capability == g.Capability })
+		sel := g.Keys.selector()
+		// A project-wide gain (no environments) stays its own entry, so a
+		// merge with an environment gain does not hide the project scope.
+		i := -1
+		for j, x := range a {
+			if x.Principal == g.Principal && x.Capability == g.Capability && (len(x.Envs) == 0) == (len(g.Envs) == 0) && sels[j] == sel {
+				i = j
+				break
+			}
+		}
 		if i < 0 {
-			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs)})
+			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs), Keys: g.Keys})
+			sels = append(sels, sel)
 			continue
 		}
 		for _, env := range g.Envs {
@@ -162,13 +206,72 @@ func mergeGains(a, b []WideningGain) []WideningGain {
 		}
 		slices.Sort(a[i].Envs)
 	}
-	slices.SortFunc(a, func(x, y WideningGain) int {
-		if c := strings.Compare(string(x.Principal), string(y.Principal)); c != 0 {
-			return c
-		}
-		return strings.Compare(string(x.Capability), string(y.Capability))
+	order := make([]int, len(a))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortFunc(order, func(i, j int) int {
+		x, y := a[i], a[j]
+		return cmp.Or(
+			strings.Compare(string(x.Principal), string(y.Principal)),
+			strings.Compare(string(x.Capability), string(y.Capability)),
+			cmp.Compare(min(len(x.Envs), 1), min(len(y.Envs), 1)), // the project gain first
+			strings.Compare(sels[i], sels[j]),                     // every key first
+		)
 	})
-	return a
+	out := make([]WideningGain, len(a))
+	for k, i := range order {
+		out[k] = a[i]
+	}
+	return out
+}
+
+// selector is k's canonical key selector; "" is every key.
+func (k *WideningKeys) selector() string {
+	if k == nil {
+		return ""
+	}
+	if k.sel != "" {
+		return k.sel
+	}
+	return keySelector(k.Mode, k.Items)
+}
+
+// gainAtom is one (principal, capability, environment, key selector) gain;
+// env "" is the project.
+type gainAtom struct {
+	principal  domain.PrincipalID
+	capability domain.Capability
+	env        domain.EnvID
+	// keys is the key selector (keySelector), kept so a plan attributes a gain
+	// over one selector to the change causing it; "" is every key.
+	keys string
+}
+
+// gainsOf merges atoms of project into gains for display and confirmation,
+// one per key selector; a gain over every key absorbs a narrowed one for the
+// same environment.
+func gainsOf(project domain.ProjectID, atoms map[gainAtom]bool) []WideningGain {
+	var gs []WideningGain
+	decoded := map[string]*WideningKeys{}
+	for a := range atoms {
+		every := a
+		every.keys = ""
+		if a.keys != "" && atoms[every] {
+			continue
+		}
+		keys, ok := decoded[a.keys]
+		if !ok {
+			keys = keysOf(project, a.keys)
+			decoded[a.keys] = keys
+		}
+		g := WideningGain{Principal: a.principal, Capability: a.capability, Keys: keys}
+		if a.env != "" {
+			g.Envs = []domain.EnvID{a.env}
+		}
+		gs = append(gs, g)
+	}
+	return mergeGains(nil, gs)
 }
 
 // MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
@@ -196,6 +299,11 @@ type RuleSpec struct {
 	// compared under the create transaction's project lock (owner decision
 	// R2, #1446). It is not stored.
 	ClaimedProjects []domain.ProjectID
+	// Environment selectors bind by name (#1447). Where.EnvNames non-nil
+	// means names were sent; Where.Envs is then empty or exactly the
+	// environments those names match now in the rule's projects. Without
+	// names (a client before revision 22) the names are derived from
+	// Where.Envs, which must match them exactly. Only names are stored.
 }
 
 // Create writes one rule. Manage access must cover its complete selector,
@@ -367,8 +475,35 @@ type preparedRule struct {
 // prepareRuleCreate validates authority before any rule or session mutation.
 func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor, spec RuleSpec, now time.Time) (preparedRule, error) {
 	rule := domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
-	if err := rule.Validate(); err != nil {
+	namesSent := spec.Where.EnvNames != nil
+	// Checks before the caller is proved read only the request: request
+	// stands in for rule with one name per environment id sent, so no
+	// refusal depends on which org, project or environment exists.
+	request := rule
+	if !namesSent {
+		request.Where.EnvNames = sentEnvStandIns(spec.Where.Envs)
+	}
+	// A sent name takes the environment name grammar: one an environment
+	// could never carry (padded, direction controls) would only look like it
+	// selects one.
+	for _, name := range spec.Where.EnvNames {
+		if err := checkName("environment name", name); err != nil {
+			return preparedRule{}, err
+		}
+	}
+	if err := request.Validate(); err != nil {
 		return preparedRule{}, err
+	}
+	// An environment item belongs to one of the rule's projects, refused from
+	// the request alone: read against the org's environments, an item of an
+	// unlisted project would tell its id and name apart before the caller
+	// is proved there.
+	if !spec.Where.AllProjects {
+		for p := range spec.Where.Envs {
+			if !slices.Contains(spec.Where.Projects, p) {
+				return preparedRule{}, fmt.Errorf("%w: an environment item names a project the rule does not list", domain.ErrInvalid)
+			}
+		}
 	}
 	for _, items := range spec.Where.Keys {
 		for _, it := range items {
@@ -392,15 +527,71 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 			return preparedRule{}, refuseAllProjectsWithoutProject(ctx, az, actor, spec.Org, now)
 		}
 	}
+	tooLarge := func(n int) error {
+		return &detailErr{err: ErrRuleTooLarge, detail: fmt.Sprintf(
+			"a rule is listed with one environment item per name in each of its %d projects: up to %d items, above the %d a rule carries",
+			len(projects), n, domain.MaxRuleItems)}
+	}
+	if !spec.Where.AllProjects {
+		// Before authorization only what was sent counts: its names, or the
+		// v1 selector of projects, environment ids and keys it carries.
+		n := request.Where.ListedItems()
+		if !namesSent {
+			v1 := request.Where
+			v1.EnvNames = nil
+			n = v1.ListedItems()
+			for _, ids := range spec.Where.Envs {
+				n += len(ids)
+			}
+		}
+		if n > domain.MaxRuleItems {
+			return preparedRule{}, tooLarge(n)
+		}
+	}
+	// Bind the names to the org's environments in this transaction (#1447),
+	// once the request alone is known to be well formed and in bounds.
+	// Nothing about them is disclosed before the caller is proved. A rule over
+	// one named project reads only that project's environments, the same
+	// statement whether or not it exists; every environment item names a
+	// listed project, checked above.
+	within := domain.ProjectID("")
+	if !spec.Where.AllProjects && len(spec.Where.Projects) == 1 {
+		within = spec.Where.Projects[0]
+	}
+	refs, err := az.RuleEnvRefs(ctx, spec.Org, within)
+	if err != nil {
+		return preparedRule{}, err
+	}
+	if !namesSent {
+		rule.Where.EnvNames = envNamesOf(refs, spec.Where.Envs)
+	}
+	rule.Where = rule.Where.BindEnvs(refs)
+	// The caller is proved over the sent ids as it would be over existing
+	// environments: an id matching none of its project's adds a name no
+	// environment can carry, which only an all-environments authority holds.
+	// Dropping it instead would let a narrow caller tell unknown ids apart.
+	proved := rule
+	if !namesSent {
+		proved.Where.EnvNames = append(slices.Clone(rule.Where.EnvNames), unmatchedEnvStandIns(refs, spec.Where.Envs)...)
+		proved.Where = proved.Where.BindEnvs(refs)
+	}
 	first := domain.Scope{Org: spec.Org, Project: projects[0]}
-	caller, proof, err := authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, rule, now)
+	caller, proof, err := authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, proved, now)
 	if err != nil {
 		return preparedRule{}, err
 	}
 	for _, project := range projects[1:] {
-		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, rule); err != nil {
+		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, proved); err != nil {
 			return preparedRule{}, err
 		}
+	}
+	// The names the sent ids carry, now that the caller is proved: an id no
+	// environment has leaves an only list naming nothing.
+	if err := rule.Validate(); err != nil {
+		return preparedRule{}, err
+	}
+	if n := rule.Where.ListedItems(); !spec.Where.AllProjects && n > domain.MaxRuleItems {
+		return preparedRule{}, tooLarge(n)
 	}
 	if spec.Where.AllProjects {
 		// Lock the org's projects so its last one cannot be deleted under the
@@ -416,7 +607,7 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 			if slices.Contains(projects, project) {
 				continue
 			}
-			if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, rule); err != nil {
+			if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, proved); err != nil {
 				return preparedRule{}, err
 			}
 		}
@@ -428,11 +619,21 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		if err := checkClaimedProjects(spec.ClaimedProjects, projects); err != nil {
 			return preparedRule{}, err
 		}
-		folders := len(spec.Where.Keys[domain.AnyProject])
-		if n := domain.AllProjectsExpansion(len(projects), folders); n > domain.MaxRuleItems {
+		folders, names := len(spec.Where.Keys[domain.AnyProject]), len(rule.Where.EnvNames)
+		if n := domain.AllProjectsExpansion(len(projects), folders, names); n > domain.MaxRuleItems {
 			return preparedRule{}, &detailErr{err: ErrRuleAllProjectsTooLarge, detail: fmt.Sprintf(
-				"a rule over all projects is listed with its %d folder items under each of the organization's %d projects: %d items, above the %d a rule carries",
-				folders, len(projects), n, domain.MaxRuleItems)}
+				"a rule over all projects is listed with its %d folder items and up to one environment item for each of its %d names under each of the organization's %d projects: up to %d items, above the %d a rule carries",
+				folders, names, len(projects), n, domain.MaxRuleItems)}
+		}
+	}
+	// Only after Manage access is proved in every covered project may the
+	// refusal name environments.
+	if err := checkClaimedEnvs(rule.Where, projects, spec.Where.Envs, namesSent); err != nil {
+		return preparedRule{}, err
+	}
+	if !namesSent {
+		if err := checkHiddenExceptionsKept(ctx, az, caller, spec.Org, spec.Target, rule.Where, projects, refs); err != nil {
+			return preparedRule{}, err
 		}
 	}
 	grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
@@ -500,6 +701,88 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 		covers = projects
 	}
 	return preparedRule{rule: rule, caller: caller, proof: proof, unheld: unheld, class: class, covers: covers}, nil
+}
+
+// envNamesOf derives the names of a pre-revision-22 request's environment
+// items. An id naming no environment contributes nothing, so the exact
+// comparison in checkClaimedEnvs refuses it.
+func envNamesOf(refs []domain.EnvRef, claimed map[domain.ProjectID][]domain.EnvID) []string {
+	var names []string
+	for _, e := range refs {
+		if slices.Contains(claimed[e.Project], e.ID) && !slices.Contains(names, e.Name) {
+			names = append(names, e.Name)
+		}
+	}
+	return names
+}
+
+// unmatchedEnvStandIns names each sent id no environment of its project has
+// with a name checkName refuses, so no environment ever matches it.
+func unmatchedEnvStandIns(refs []domain.EnvRef, claimed map[domain.ProjectID][]domain.EnvID) []string {
+	var names []string
+	for project, ids := range claimed {
+		for _, id := range ids {
+			if !slices.ContainsFunc(refs, func(e domain.EnvRef) bool { return e.Project == project && e.ID == id }) {
+				names = append(names, "\x00"+string(id))
+			}
+		}
+	}
+	return names
+}
+
+// sentEnvStandIns is one stand-in name per distinct environment id sent, so
+// a rule's shape and size are checked from the request alone.
+func sentEnvStandIns(claimed map[domain.ProjectID][]domain.EnvID) []string {
+	var names []string
+	for _, ids := range claimed {
+		for _, id := range ids {
+			if !slices.Contains(names, string(id)) {
+				names = append(names, string(id))
+			}
+		}
+	}
+	return names
+}
+
+// checkClaimedEnvs refuses a create whose environment items are not exactly
+// the environments the bound names match in the covered projects. With names
+// sent, an empty item list claims nothing.
+func checkClaimedEnvs(w domain.Where, projects []domain.ProjectID, claimed map[domain.ProjectID][]domain.EnvID, namesSent bool) error {
+	n := 0
+	for _, ids := range claimed {
+		n += len(ids)
+	}
+	if namesSent && n == 0 {
+		return nil
+	}
+	var missing, extra []string
+	for p, ids := range claimed {
+		for i, id := range ids {
+			if !slices.Contains(projects, p) || !slices.Contains(w.Envs[p], id) || slices.Contains(ids[:i], id) {
+				extra = append(extra, string(p)+"/"+string(id))
+			}
+		}
+	}
+	for _, p := range projects {
+		for _, id := range w.Envs[p] {
+			if !slices.Contains(claimed[p], id) {
+				missing = append(missing, string(p)+"/"+string(id))
+			}
+		}
+	}
+	if len(missing)+len(extra) == 0 {
+		return nil
+	}
+	slices.Sort(missing)
+	slices.Sort(extra)
+	var parts []string
+	if len(missing) > 0 {
+		parts = append(parts, "matched by its names but not listed "+strings.Join(missing, ", "))
+	}
+	if len(extra) > 0 {
+		parts = append(parts, "listed but not matched by its names "+strings.Join(extra, ", "))
+	}
+	return &detailErr{err: ErrRuleEnvItemsStale, detail: "a rule's environment items are the environments its names match in each of its projects: " + strings.Join(parts, "; ")}
 }
 
 // checkClaimedProjects refuses an all-projects create whose project list is
@@ -590,7 +873,9 @@ type RuleView struct {
 	PrincipalName string
 	Capability    domain.Capability
 	Org           domain.OrgID
-	Where         domain.Where
+	// Where is bound to the environments its names match now, so a response
+	// lists them per project (#1447).
+	Where domain.Where
 	// Covers lists, for an all-projects rule, the projects it reaches at read
 	// time: the org's current projects, or only the addressed one on a
 	// project listing. A v1 response renders them as `projects`.
@@ -598,6 +883,9 @@ type RuleView struct {
 	OtherProjects bool
 	CreatedBy     domain.PrincipalID
 	CreatedAt     time.Time
+	// Fault is the manager-facing reason the upgrade to environment names
+	// disabled the rule; such a rule reaches nothing until replaced.
+	Fault string
 }
 
 // ruleListOps is the rule listing's operation per addressed depth, mirroring
@@ -645,6 +933,16 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		if err != nil {
 			return err
 		}
+		// Listed environments are the ones each rule's names match now, in
+		// the listed project only on a project listing.
+		listed := domain.ProjectID("")
+		if level == domain.LevelProject {
+			listed = scope.Project
+		}
+		refs, err := az.RuleEnvRefs(ctx, scope.Org, listed)
+		if err != nil {
+			return err
+		}
 		// An all-projects rule spans more than the listed project as soon as
 		// the org has another one; it never names a project in its items.
 		var orgProjects []domain.ProjectID
@@ -668,7 +966,7 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		names := newPrincipalNames()
 		out = make([]RuleView, 0, len(lines))
 		for i, line := range lines {
-			where := lineWhere(line)
+			where := lineWhere(line).BindEnvs(refs)
 			other := line.OtherProjects || level == domain.LevelProject && line.AllProjects && othersInOrg
 			var lineCovers []domain.ProjectID
 			if line.AllProjects {
@@ -685,7 +983,7 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 			out = append(out, RuleView{
 				ID: line.ID, Principal: line.Principal, PrincipalName: name, Capability: line.Capability,
 				Org: scope.Org, Where: where, Covers: lineCovers, OtherProjects: other,
-				CreatedBy: line.CreatedBy, CreatedAt: line.CreatedAt,
+				CreatedBy: line.CreatedBy, CreatedAt: line.CreatedAt, Fault: line.Fault,
 			})
 		}
 		return insertGrantEvent(ctx, r, p, caller.Principal, level, grantEventInput{
@@ -742,11 +1040,6 @@ func checkRuleReferences(ctx context.Context, az *authz.TxAuthorizer, rule domai
 		scope := domain.Scope{Org: rule.Org, Project: project}
 		if _, err := az.ResolveChain(ctx, scope); err != nil {
 			return fmt.Errorf("%w: project %s is not in organization %s", domain.ErrInvalid, project, rule.Org)
-		}
-		for _, env := range rule.Where.Envs[project] {
-			if _, err := az.ResolveChain(ctx, domain.Scope{Org: rule.Org, Project: project, Env: env}); err != nil {
-				return fmt.Errorf("%w: environment %s is not in project %s", domain.ErrInvalid, env, project)
-			}
 		}
 		for _, it := range rule.Where.Keys[project] {
 			if it.IsFolder {
@@ -906,17 +1199,19 @@ func revokeRule(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p au
 }
 
 // whereFromItems rebuilds a Where from stored items for rendering only; it is
-// never evaluated.
+// never evaluated. Environment items are rule-wide names (#1447).
 func whereFromItems(items []authz.StoredRuleItem) domain.Where {
-	w := domain.Where{Envs: map[domain.ProjectID][]domain.EnvID{}, Keys: map[domain.ProjectID][]domain.RuleKeyItem{}}
+	w := domain.Where{Keys: map[domain.ProjectID][]domain.RuleKeyItem{}}
 	for _, it := range items {
-		// A project-less item is an all-projects rule's folder (AnyProject).
+		// A project-less item is a name or an all-projects rule's folder (AnyProject).
 		if it.Project != "" && !slices.Contains(w.Projects, it.Project) {
 			w.Projects = append(w.Projects, it.Project)
 		}
 		switch {
-		case it.Env != "":
-			w.Envs[it.Project] = append(w.Envs[it.Project], it.Env)
+		case it.Axis == "env":
+			if !slices.Contains(w.EnvNames, it.EnvName) {
+				w.EnvNames = append(w.EnvNames, it.EnvName)
+			}
 		case it.KeyID != "":
 			w.Keys[it.Project] = append(w.Keys[it.Project], domain.RuleKeyItem{KeyID: it.KeyID})
 		case it.Axis == "folder":
@@ -926,16 +1221,18 @@ func whereFromItems(items []authz.StoredRuleItem) domain.Where {
 	return w
 }
 
-// rulePayload renders a rule for its lifecycle events, as stable ids.
+// rulePayload renders a rule for its lifecycle events: projects and keys as
+// stable ids, environments as the names the rule stores, prefixed "name:" so
+// an entry is never mistaken for an id written before #1447.
 func rulePayload(rule domain.Rule) audit.Payload {
 	projects := []string{}
 	envs := []string{}
+	for _, n := range rule.Where.EnvNames {
+		envs = append(envs, "name:"+audit.SanitizeFreeText(n))
+	}
 	keys := []string{}
 	for _, project := range rule.Where.Projects {
 		projects = append(projects, string(project))
-		for _, e := range rule.Where.Envs[project] {
-			envs = append(envs, string(e))
-		}
 		for _, k := range rule.Where.Keys[project] {
 			if k.IsFolder {
 				keys = append(keys, "folder:"+string(project)+"/"+audit.SanitizeFreeText(k.Folder))
@@ -1009,18 +1306,6 @@ func pruneRules(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p au
 		}
 	}
 	return nil
-}
-
-// releaseEnvironmentRules prunes an environment being deleted out of every
-// rule naming it.
-func releaseEnvironmentRules(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, actor domain.PrincipalID, scope domain.Scope) error {
-	ids, err := az.RuleIDsForEnvironment(ctx, scope)
-	if err != nil {
-		return err
-	}
-	return pruneRules(ctx, r, az, p, actor, ids, func(it authz.StoredRuleItem) bool {
-		return it.Project == scope.Project && it.Env == scope.Env
-	})
 }
 
 // releaseKeyRules prunes a key being deleted out of every rule naming it.
@@ -1126,9 +1411,9 @@ func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scop
 		if a.env != "" {
 			g.Envs = []domain.EnvID{a.env}
 		}
-		gains = mergeGains(gains, []WideningGain{g})
+		gains = append(gains, g)
 	}
-	return gains, nil
+	return mergeGains(nil, gains), nil
 }
 
 // confirmMoveWidening refuses a widening move unless the confirmation names
@@ -1164,4 +1449,59 @@ func confirmMoveWidening(ctx context.Context, r store.Repos, az *authz.TxAuthori
 		return err
 	}
 	return r.Audit().InsertTenant(ctx, p, ev)
+}
+
+// checkHiddenExceptionsKept refuses ErrRuleUnmatchedNamesDropped when an
+// `all` rule sent without names leaves out a name that one of the target's
+// `all` rules (including any this replacement revokes, still stored) excepts
+// in a project both cover, and that no environment of that project carries.
+// A client before revision 22 sees exceptions only as environments, so it
+// could not have chosen to drop such a name. Only held rules the caller may
+// manage in the project count: the proof covers the submitted selector, not
+// the target's other rules, so a rule outside the caller's folders is neither
+// named nor lets the refusal reveal that it exists.
+func checkHiddenExceptionsKept(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, org domain.OrgID, target domain.PrincipalID,
+	w domain.Where, projects []domain.ProjectID, refs []domain.EnvRef) error {
+	if w.EnvMode != domain.AxisAll {
+		return nil
+	}
+	var hidden []string
+	for _, project := range projects {
+		census, err := az.RuleCensusForProject(ctx, org, project)
+		if err != nil {
+			return err
+		}
+		var candidates []domain.Rule
+		for _, cr := range census {
+			held := cr.Rule
+			if held.Principal != target || held.Where.EnvMode != domain.AxisAll || !held.Where.Names(project) {
+				continue
+			}
+			candidates = append(candidates, held)
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+		manageable, err := az.RulesManageable(ctx, caller, candidates, project)
+		if err != nil {
+			return err
+		}
+		for i, held := range candidates {
+			if !manageable[i] {
+				continue
+			}
+			for _, name := range held.Where.EnvNames {
+				carried := slices.ContainsFunc(refs, func(e domain.EnvRef) bool { return e.Project == project && e.Name == name })
+				if !carried && !slices.Contains(w.EnvNames, name) && !slices.Contains(hidden, name) {
+					hidden = append(hidden, name)
+				}
+			}
+		}
+	}
+	if len(hidden) == 0 {
+		return nil
+	}
+	slices.Sort(hidden)
+	return &detailErr{err: ErrRuleUnmatchedNamesDropped, detail: "this principal's rules except environment names no environment of these projects carries yet (" +
+		strings.Join(hidden, ", ") + "); send the rule's environments as names (API revision 22) to keep or drop them explicitly"}
 }

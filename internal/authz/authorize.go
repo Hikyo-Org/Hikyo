@@ -274,7 +274,11 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		// A key-aware call resolves its key from the database on this path
 		// whether or not any rule needs it: the denial's query count then
 		// depends on the operation, never on which rules or keys exist.
-		rules, err := a.callerRules(ctx, caller)
+		within := domain.ProjectID("")
+		if rulesWithinProject(op, spec, targetRule) {
+			within = chain.Project
+		}
+		rules, err := a.callerRules(ctx, caller, chain.Org, within)
 		if err != nil {
 			return nil, err
 		}
@@ -402,6 +406,18 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, owner: grantPrincipal, selfConfig: protected, key: bound, navigation: navigation}, nil
 }
 
+// rulesWithinProject reports whether the chokepoint binds the caller's rules
+// within the chain's project alone, reading that project's environments
+// rather than the org's. It holds for an ordinary project or environment
+// check: Reaches consults the chain's project only, and a rule bound within
+// it reaches nothing elsewhere, so the narrower read cannot widen reach.
+// Delegation compares complete selectors across projects and navigation
+// lists every project, so both keep the org-wide binding. It depends on the
+// operation alone, never on the chain, so a missing scope chooses the same.
+func rulesWithinProject(op Operation, spec authorizationSpec, targetRule *domain.Rule) bool {
+	return spec.level >= domain.LevelProject && targetRule == nil && !ruleNavigationOperation(op)
+}
+
 // missingScopeRefusalWork equalizes application-controlled query work with a
 // resolvable grant denial. Only the authenticated caller's grants/rules are
 // read; key metadata uses an empty decoy chain, never caller-asserted ancestry.
@@ -412,8 +428,24 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 		return err
 	}
 	if rulesApply(caller) && (ruleSatisfiable(spec.formula) || targetRule != nil || ruleNavigationOperation(op)) {
-		if _, err := a.callerRules(ctx, caller); err != nil {
+		// The same read as the refused path's: within the decoy project
+		// when that path would bind within the chain's, which holds no
+		// environment, so the statements match and nothing is learned.
+		within := domain.ProjectID("")
+		if rulesWithinProject(op, spec, targetRule) {
+			within = decoyProject
+		}
+		if _, err := a.callerRules(ctx, caller, "", within); err != nil {
 			return err
+		}
+		// A rule target binds its environment names against the project's
+		// environments (#1447): the decoy read over an empty scope, which
+		// holds none, so a missing project costs what a refused one does
+		// and runs the same per-project statement.
+		if targetRule != nil {
+			if _, err := a.r.RuleEnvRefs(ctx, "", decoyProject); err != nil {
+				return err
+			}
 		}
 		if key != nil {
 			_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key, caller.Principal)
@@ -430,6 +462,10 @@ func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Ident
 	}
 	return nil
 }
+
+// decoyProject is a project id no org holds, for decoy reads that must run
+// the per-project statement a resolvable refusal runs.
+const decoyProject = "-"
 
 // personalOwnerFallback names the two operations an owner may perform on
 // their own personal values without the formula: list masked and delete.

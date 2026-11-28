@@ -1,6 +1,18 @@
 package domain
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+// envRefs names environments whose ids double as their names, in one project.
+func envRefs(p ProjectID, names ...string) []EnvRef {
+	out := make([]EnvRef, 0, len(names))
+	for _, n := range names {
+		out = append(out, EnvRef{Project: p, ID: EnvID(n), Name: n})
+	}
+	return out
+}
 
 func TestRuleReachesFailsClosed(t *testing.T) {
 	const org, p1, p2 = OrgID("org"), ProjectID("p1"), ProjectID("p2")
@@ -11,9 +23,10 @@ func TestRuleReachesFailsClosed(t *testing.T) {
 	newInDB := &RuleKey{Folder: "db"}
 
 	reveal := Rule{ID: "r", Capability: CapReveal, Org: org, Where: Where{
-		Projects: []ProjectID{p1}, EnvMode: AxisAll, Envs: map[ProjectID][]EnvID{p1: {"prod"}},
+		Projects: []ProjectID{p1}, EnvMode: AxisAll, EnvNames: []string{"prod"},
 		KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{p1: {{Folder: "db", IsFolder: true}}},
 	}}
+	reveal.Where = reveal.Where.BindEnvs(append(envRefs(p1, "dev", "prod"), envRefs(p2, "dev", "prod")...))
 	if err := reveal.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -55,16 +68,20 @@ func TestRuleValidateRefusesWideningShapes(t *testing.T) {
 	base := func(c Capability, w Where) Rule { return Rule{ID: "r", Capability: c, Org: "org", Where: w} }
 	keys := map[ProjectID][]RuleKeyItem{"p": {{KeyID: "k"}}}
 	for name, r := range map[string]Rule{
-		"pin by key":           base(CapPin, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisOnly, Keys: keys}),
-		"settings by env":      base(CapProjectSettings, Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{"p": {"e"}}, KeyMode: AxisAll}),
-		"manage-projects":      base(CapManageProjects, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}),
-		"instance atom":        base(CapInstanceConfig, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}),
-		"empty only envs":      base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, KeyMode: AxisAll}),
-		"empty only keys":      base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisOnly}),
-		"no projects":          base(CapEdit, Where{EnvMode: AxisAll, KeyMode: AxisAll}),
-		"item outside project": base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll, Keys: map[ProjectID][]RuleKeyItem{"q": {{KeyID: "k"}}}}),
-		"unknown mode":         base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: "some", KeyMode: AxisAll}),
-		"no org":               {ID: "r", Capability: CapEdit, Where: Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}},
+		"pin by key":                 base(CapPin, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisOnly, Keys: keys}),
+		"settings by env":            base(CapProjectSettings, Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, EnvNames: []string{"e"}, KeyMode: AxisAll}),
+		"settings except env":        base(CapProjectSettings, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, EnvNames: []string{"e"}, KeyMode: AxisAll}),
+		"duplicate env name":         base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, EnvNames: []string{"e", "e"}, KeyMode: AxisAll}),
+		"empty env name":             base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, EnvNames: []string{""}, KeyMode: AxisAll}),
+		"all projects only no names": base(CapEdit, Where{AllProjects: true, EnvMode: AxisOnly, KeyMode: AxisAll}),
+		"manage-projects":            base(CapManageProjects, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}),
+		"instance atom":              base(CapInstanceConfig, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}),
+		"empty only envs":            base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, KeyMode: AxisAll}),
+		"empty only keys":            base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisOnly}),
+		"no projects":                base(CapEdit, Where{EnvMode: AxisAll, KeyMode: AxisAll}),
+		"item outside project":       base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll, Keys: map[ProjectID][]RuleKeyItem{"q": {{KeyID: "k"}}}}),
+		"unknown mode":               base(CapEdit, Where{Projects: []ProjectID{"p"}, EnvMode: "some", KeyMode: AxisAll}),
+		"no org":                     {ID: "r", Capability: CapEdit, Where: Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}},
 	} {
 		if r.Validate() == nil {
 			t.Errorf("%s: validated", name)
@@ -73,13 +90,17 @@ func TestRuleValidateRefusesWideningShapes(t *testing.T) {
 }
 
 func TestRuleValidateBoundsItems(t *testing.T) {
-	envs := make([]EnvID, MaxRuleItems)
+	envs := make([]string, MaxRuleItems)
 	for i := range envs {
-		envs[i] = EnvID("e" + string(rune('a'+i%26)) + string(rune('a'+i/26%26)) + string(rune('a'+i/676)))
+		envs[i] = "e" + string(rune('a'+i%26)) + string(rune('a'+i/26%26)) + string(rune('a'+i/676))
 	}
-	r := Rule{ID: "r", Capability: CapEdit, Org: "org", Where: Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{"p": envs}, KeyMode: AxisAll}}
+	r := Rule{ID: "r", Capability: CapEdit, Org: "org", Where: Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, EnvNames: envs, KeyMode: AxisAll}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("an oversized rule validated")
+	}
+	all := Rule{ID: "r", Capability: CapEdit, Org: "org", Where: Where{AllProjects: true, EnvMode: AxisOnly, EnvNames: append(envs, "one-more"), KeyMode: AxisAll}}
+	if err := all.Validate(); err == nil {
+		t.Fatal("an oversized all-projects rule validated")
 	}
 }
 
@@ -122,7 +143,7 @@ func TestRuleFolderSelectorsAreHierarchicalOnlyForExcepts(t *testing.T) {
 }
 
 func TestSeeIgnoresKeysButPublishDoesNot(t *testing.T) {
-	w := Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{"p": {"dev"}}, KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{"p": {{KeyID: "one"}}}}
+	w := Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, EnvNames: []string{"dev"}, KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{"p": {{KeyID: "one"}}}}.BindEnvs(envRefs("p", "dev", "prod"))
 	scope := Scope{Org: "org", Project: "p", Env: "dev"}
 	read := Rule{Org: "org", Capability: CapRead, Where: w}
 	publish := Rule{Org: "org", Capability: CapPublish, Where: w}
@@ -146,9 +167,14 @@ func TestSeeIgnoresKeysButPublishDoesNot(t *testing.T) {
 func TestSelectedEnvironmentDefinitionsOnlyProjectForNamedKey(t *testing.T) {
 	scope := Scope{Org: "org", Project: "project"}
 	rule := Rule{Org: scope.Org, Capability: CapDefinitionsEdit, Where: Where{
-		Projects: []ProjectID{scope.Project}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{scope.Project: {"staging"}},
+		Projects: []ProjectID{scope.Project}, EnvMode: AxisOnly, EnvNames: []string{"staging"},
 		KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{scope.Project: {{Folder: "db", IsFolder: true}}},
 	}}
+	unbound := rule
+	rule.Where = rule.Where.BindEnvs(envRefs(scope.Project, "staging", "prod"))
+	if unbound.Reaches(CapDefinitionsEdit, LevelProject, scope, &RuleKey{ID: "key", Folder: "db"}) {
+		t.Fatal("an unbound name-narrowed rule reached an atom")
+	}
 	key := &RuleKey{ID: "key", Folder: "db"}
 	if !rule.Reaches(CapDefinitionsEdit, LevelProject, scope, key) {
 		t.Fatal("named-key shared catalogue admission")
@@ -168,12 +194,8 @@ func TestSelectedEnvironmentDefinitionsOnlyProjectForNamedKey(t *testing.T) {
 
 func TestCheckMachineRule(t *testing.T) {
 	const org, p1, p2 = OrgID("org"), ProjectID("p1"), ProjectID("p2")
-	where := func(envMode AxisMode, envs []EnvID, projects ...ProjectID) Where {
-		w := Where{Projects: projects, EnvMode: envMode, KeyMode: AxisAll}
-		if len(envs) > 0 {
-			w.Envs = map[ProjectID][]EnvID{projects[0]: envs}
-		}
-		return w
+	where := func(envMode AxisMode, envs []string, projects ...ProjectID) Where {
+		return Where{Projects: projects, EnvMode: envMode, KeyMode: AxisAll, EnvNames: envs}
 	}
 	folder := where(AxisAll, nil, p1)
 	folder.Keys = map[ProjectID][]RuleKeyItem{p1: {{Folder: "db", IsFolder: true}}}
@@ -184,12 +206,12 @@ func TestCheckMachineRule(t *testing.T) {
 		want  MachineRuleFault
 	}{
 		"automation edit on one project":    {ClassAutomation, CapEdit, where(AxisAll, nil, p1), MachineRuleOK},
-		"automation read except an env":     {ClassAutomation, CapRead, where(AxisAll, []EnvID{"prod"}, p1), MachineRuleOK},
-		"workload read on listed envs":      {ClassWorkload, CapRead, where(AxisOnly, []EnvID{"dev"}, p1), MachineRuleOK},
+		"automation read except an env":     {ClassAutomation, CapRead, where(AxisAll, []string{"prod"}, p1), MachineRuleOK},
+		"workload read on listed envs":      {ClassWorkload, CapRead, where(AxisOnly, []string{"dev"}, p1), MachineRuleOK},
 		"workload read on every env":        {ClassWorkload, CapRead, where(AxisAll, nil, p1), MachineRuleDepth},
-		"workload read except an env":       {ClassWorkload, CapRead, where(AxisAll, []EnvID{"prod"}, p1), MachineRuleDepth},
+		"workload read except an env":       {ClassWorkload, CapRead, where(AxisAll, []string{"prod"}, p1), MachineRuleDepth},
 		"automation on two projects":        {ClassAutomation, CapRead, where(AxisAll, nil, p1, p2), MachineRuleDepth},
-		"workload edit":                     {ClassWorkload, CapEdit, where(AxisOnly, []EnvID{"dev"}, p1), MachineRuleCapability},
+		"workload edit":                     {ClassWorkload, CapEdit, where(AxisOnly, []string{"dev"}, p1), MachineRuleCapability},
 		"automation reveal":                 {ClassAutomation, CapReveal, where(AxisAll, nil, p1), MachineRuleCapability},
 		"automation reveal-history":         {ClassAutomation, CapRevealHistory, where(AxisAll, nil, p1), MachineRuleCapability},
 		"automation manage-members":         {ClassAutomation, CapManageMembers, where(AxisAll, nil, p1), MachineRuleCapability},
@@ -224,5 +246,91 @@ func TestAllProjectsRuleDoesNotReachOrgScope(t *testing.T) {
 	}
 	if all.Reaches(CapEdit, LevelOrg, Scope{Org: org}, nil) || all.Reaches(CapEdit, LevelEnv, Scope{Org: org}, nil) {
 		t.Fatal("an all-projects rule reached the organisation scope")
+	}
+}
+
+// Environment names match in every project a rule covers, including an
+// environment that carries the name only later (ADR D3, #1447): "except prod"
+// over two projects excludes both prod environments and a later one, and
+// "only prod" admits a prod created later.
+func TestRuleEnvironmentNamesMatchAcrossProjects(t *testing.T) {
+	const org, pay, web = OrgID("org"), ProjectID("payments"), ProjectID("web")
+	except := Rule{ID: "x", Capability: CapEdit, Org: org, Where: Where{Projects: []ProjectID{pay, web}, EnvMode: AxisAll, EnvNames: []string{"prod"}, KeyMode: AxisAll}}
+	only := Rule{ID: "o", Capability: CapEdit, Org: org, Where: Where{AllProjects: true, EnvMode: AxisOnly, EnvNames: []string{"prod"}, KeyMode: AxisAll}}
+	refs := []EnvRef{{pay, "e1", "prod"}, {pay, "e2", "dev"}, {web, "e3", "prod"}, {web, "e4", "dev"}}
+	later := append(refs, EnvRef{"api", "e5", "prod"}, EnvRef{"api", "e6", "dev"})
+	reach := func(r Rule, refs []EnvRef, p ProjectID, env EnvID) bool {
+		r.Where = r.Where.BindEnvs(refs)
+		return r.Validate() == nil && r.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: p, Env: env}, nil)
+	}
+	for name, tc := range map[string]struct {
+		got, want bool
+	}{
+		"except: payments prod":    {reach(except, refs, pay, "e1"), false},
+		"except: web prod":         {reach(except, refs, web, "e3"), false},
+		"except: web dev":          {reach(except, refs, web, "e4"), true},
+		"only: payments prod":      {reach(only, refs, pay, "e1"), true},
+		"only: payments dev":       {reach(only, refs, pay, "e2"), false},
+		"only: later project prod": {reach(only, later, "api", "e5"), true},
+		"only: later project dev":  {reach(only, later, "api", "e6"), false},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s: Reaches = %v, want %v", name, tc.got, tc.want)
+		}
+	}
+	// A prod created later in web joins the except: the project-wide atom
+	// holds while web has no prod and stops holding once it has one.
+	webOnly := []EnvRef{{web, "e4", "dev"}}
+	bound := except
+	bound.Where = except.Where.BindEnvs(webOnly)
+	if !bound.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
+		t.Fatal("except prod over a project without prod did not reach the project")
+	}
+	bound.Where = except.Where.BindEnvs(append(webOnly, EnvRef{web, "e7", "prod"}))
+	if bound.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: web, Env: "e7"}, nil) || bound.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
+		t.Fatal("a prod created later escaped except prod")
+	}
+	// Deleting the excepted environment leaves the project without prod, so
+	// the rule reaches the project-wide atom again, unconfirmed. Id binding
+	// did the same: deletion pruned the except item and left "all, except
+	// nothing" (ADR D3).
+	bound.Where = except.Where.BindEnvs(refs)
+	if bound.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
+		t.Fatal("except prod reached a project that has prod")
+	}
+	// Bound within payments alone, the rule knows no web environment, so it
+	// must reach nothing in web: unconfined, web's prod would be unknown and
+	// "all, except prod" would reach it. EnvName and WithEnvNames keep the
+	// confinement.
+	within := except
+	within.Where = except.Where.BindEnvsWithin(pay, refs[:2])
+	if !within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: pay, Env: "e2"}, nil) || within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: pay, Env: "e1"}, nil) {
+		t.Fatal("a rule bound within payments lost its payments reach")
+	}
+	if within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: web, Env: "e3"}, nil) || within.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
+		t.Fatal("a rule bound within payments reached web")
+	}
+	if within.Where = within.Where.WithEnvNames(nil); within.Reaches(CapEdit, LevelEnv, Scope{Org: org, Project: web, Env: "e4"}, nil) {
+		t.Fatal("WithEnvNames dropped the confinement")
+	}
+	if _, ok := within.Where.EnvName(web, "e3"); ok {
+		t.Fatal("EnvName answered for a project outside the binding")
+	}
+	bound.Where = except.Where.BindEnvs(slices.DeleteFunc(slices.Clone(refs), func(e EnvRef) bool { return e.ID == "e3" }))
+	if !bound.Reaches(CapEdit, LevelProject, Scope{Org: org, Project: web}, nil) {
+		t.Fatal("except prod did not reach web once its prod was deleted")
+	}
+}
+
+// A rule's listed size counts each name once per project, as the environment
+// item a v1 response lists there (#1447).
+func TestRuleListedItemsCountNames(t *testing.T) {
+	w := Where{Projects: []ProjectID{"a", "b"}, EnvNames: []string{"dev", "prod"},
+		Keys: map[ProjectID][]RuleKeyItem{"a": {{Folder: "db", IsFolder: true}}}}
+	if got := w.ListedItems(); got != 2*(1+2)+1 {
+		t.Fatalf("ListedItems = %d, want 7", got)
+	}
+	if got := AllProjectsExpansion(3, 2, 2); got != 3*(1+2+2) {
+		t.Fatalf("AllProjectsExpansion = %d, want 15", got)
 	}
 }

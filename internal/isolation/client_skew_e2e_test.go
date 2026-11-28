@@ -56,7 +56,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		projectScope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(project.ID)}
-		env, err := (&service.Environments{DB: db, Keyring: keyring}).Create(t.Context(), operator, projectScope, "skew-env", nil)
+		env, err := (&service.Environments{DB: db, Keyring: keyring}).CreateConfirming(t.Context(), operator, projectScope, "skew-env", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

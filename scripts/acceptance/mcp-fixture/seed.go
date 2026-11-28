@@ -228,7 +228,7 @@ func seed(ctx context.Context, dir string, db *store.DB, kr *crypto.Keyring) err
 		return errors.New("scanning rules unavailable")
 	}
 	environments := &service.Environments{DB: db, Keyring: kr, Scan: scan}
-	env, err := environments.Create(ctx, actor, f.projectScope(), "production", nil)
+	env, err := environments.CreateConfirming(ctx, actor, f.projectScope(), "production", nil, nil)
 	if err != nil {
 		return errors.New("supported environment creation refused")
 	}

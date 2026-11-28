@@ -94,14 +94,24 @@ func rulesApply(caller Identity) bool {
 	return caller.Class == "" || caller.Class == domain.ClassHuman || domain.IsServiceAccountKind(caller.Class)
 }
 
-// callerRules reads the rules the chokepoint may honour for caller. A machine
-// rule that fails its class's check reaches nothing, like a rule that does
-// not validate.
-func (a *TxAuthorizer) callerRules(ctx context.Context, caller Identity) ([]domain.Rule, error) {
+// callerRules reads the rules the chokepoint may honour for caller, bound
+// within project of org when it is set (authn.Resolver.RulesWithin), else to
+// each rule's org. A machine rule that fails its class's check reaches nothing, like a
+// rule that does not validate.
+func (a *TxAuthorizer) callerRules(ctx context.Context, caller Identity, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
 	if !domain.IsServiceAccountKind(caller.Class) {
+		if project != "" {
+			return a.r.RulesWithin(ctx, caller.Principal, org, project)
+		}
 		return a.r.Rules(ctx, caller.Principal)
 	}
-	rules, err := a.r.MachineRules(ctx, caller.Principal)
+	var rules []domain.Rule
+	var err error
+	if project != "" {
+		rules, err = a.r.MachineRulesWithin(ctx, caller.Principal, org, project)
+	} else {
+		rules, err = a.r.MachineRules(ctx, caller.Principal)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -195,13 +205,39 @@ type (
 
 // RulesForProject is the folder-move widening census: every rule of a human
 // principal naming this project, a superset of what the chokepoint honours
-// (a currently restricted principal is still named).
+// (a currently restricted principal is still named), bound within the
+// project: a rule reaches nothing outside it.
 func (a *TxAuthorizer) RulesForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
+	census, err := a.r.RulesForProject(ctx, string(org), string(project))
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.Rule
+	for _, c := range census {
+		if !c.Machine {
+			out = append(out, c.Rule)
+		}
+	}
+	return out, nil
+}
+
+// CensusRule is re-exported for the environment widening census.
+type CensusRule = authn.CensusRule
+
+// RuleCensusForProject is the environment rename, create and delete census
+// (#1447): every rule naming this project, people's and machines', with the
+// same superset gates as RulesForProject. A machine's rules are counted
+// without its class's live rule check, so a rule the check refuses today is
+// still confirmed; the machine widening gate re-reads them through
+// MachineRulesOf, which applies it.
+func (a *TxAuthorizer) RuleCensusForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]CensusRule, error) {
 	return a.r.RulesForProject(ctx, string(org), string(project))
 }
 
-func (a *TxAuthorizer) RuleIDsForEnvironment(ctx context.Context, s domain.Scope) ([]string, error) {
-	return a.r.RuleIDsForEnvironment(ctx, string(s.Org), string(s.Project), string(s.Env))
+// RuleEnvRefs reads the environments rule names bind to in one project (or
+// the whole org when project is empty), in the caller's transaction.
+func (a *TxAuthorizer) RuleEnvRefs(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.EnvRef, error) {
+	return a.r.RuleEnvRefs(ctx, string(org), string(project))
 }
 
 func (a *TxAuthorizer) RuleIDsForKey(ctx context.Context, s domain.Scope, keyID string) ([]string, error) {
@@ -230,8 +266,9 @@ func (a *TxAuthorizer) LockOrgProjectsForDelete(ctx context.Context, org domain.
 }
 
 // AllProjectsRulesInOrg lists the org's all-projects rules with their stored
-// item counts; the org's last project cannot be deleted while one exists, and
-// no project may be created that lists one past the v1 bounds.
+// folder and environment-name item counts; the org's last project cannot be
+// deleted while one exists, and no project may be created that lists one past
+// the v1 bounds.
 func (a *TxAuthorizer) AllProjectsRulesInOrg(ctx context.Context, org domain.OrgID) ([]domain.RuleItemCount, error) {
 	return a.r.AllProjectsRulesInOrg(ctx, string(org))
 }

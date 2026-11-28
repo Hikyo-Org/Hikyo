@@ -108,7 +108,7 @@ func runEnvironmentDeleteLiveLease(t *testing.T, db *store.DB) {
 	// leases and their effects.
 	for _, state := range []string{"active", "minting", "renewing", "revoking", "unknown"} {
 		execRaw(t, db, `UPDATE dynamic_leases SET state='`+state+`' WHERE id='`+live+`'`)
-		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+		err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 		if !errors.Is(err, service.ErrEnvironmentHasLiveLease) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), live) {
 			t.Fatalf("delete with a %s lease = %v (%q)", state, err, safeError(err))
 		}
@@ -121,7 +121,7 @@ func runEnvironmentDeleteLiveLease(t *testing.T, db *store.DB) {
 
 	// Terminal leases and their effects go with the environment.
 	execRaw(t, db, `UPDATE dynamic_leases SET state='revoked' WHERE id='`+live+`'`)
-	if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()); err != nil {
+	if err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil); err != nil {
 		t.Fatalf("delete with only terminal leases: %v", err)
 	}
 	for _, table := range []string{"dynamic_leases", "dynamic_effects", "environments"} {
@@ -144,7 +144,7 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	project := string(f.project)
 	refused := func(label, id string) {
 		t.Helper()
-		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+		err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 		if !errors.Is(err, service.ErrEnvironmentHasLiveCertificate) || !errors.Is(err, domain.ErrPKICertificateRetention) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), id) {
 			t.Fatalf("delete with %s = %v (%q)", label, err, safeError(err))
 		}
@@ -171,7 +171,7 @@ func runEnvironmentDeleteCertificates(t *testing.T, db *store.DB) {
 	// Only terminal history is left: it is purged with the environment, the
 	// issuer survives, and the delete audit event records the purge count.
 	execRaw(t, db, `UPDATE pki_certificates SET not_after=`+pkiStamp(db, now.Add(-time.Minute))+` WHERE id='`+project+`_revoked'`)
-	if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()); err != nil {
+	if err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil); err != nil {
 		t.Fatalf("delete with only terminal certificate history: %v", err)
 	}
 	if got := certificatesIn(t, db, f); got != 0 {
@@ -201,7 +201,7 @@ func runEnvironmentDeleteAdapterTargets(t *testing.T, db *store.DB) {
 	execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
 
 	// A tombstoned target still refuses, by name.
-	err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+	err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 	if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), "tgt_"+project) {
 		t.Fatalf("delete with a tombstoned adapter target = %v (%q)", err, safeError(err))
 	}
@@ -225,7 +225,7 @@ func runEnvironmentDeleteOrphanConfigureFence(t *testing.T, db *store.DB) {
 	project := string(f.project)
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	execRaw(t, db, `INSERT INTO adapter_configure_fences (target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','environment','acme','app','staging',1,'eff_`+project+`',`+ts+`,'failed',`+ts+`)`)
-	err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+	err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 	if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || !errors.Is(err, domain.ErrConflict) || !strings.Contains(safeError(err), "tgt_"+project) {
 		t.Fatalf("delete with an orphan configure fence = %v (%q)", err, safeError(err))
 	}
@@ -245,7 +245,7 @@ func TestEnvironmentDeleteRefusalTruncates(t *testing.T) {
 			execRaw(t, db, `INSERT INTO dynamic_leases (id,org_id,project_id,environment_id,provider_id,principal_id,principal_class,provider_handle,state,max_ttl_seconds,last_transition_at,next_attempt_at,created_at) VALUES ('`+id+`','org_a','`+project+`','`+f.env+`','dpr_`+project+`','usr_alice','human','h_`+id+`','active',3600,`+ts+`,`+ts+`,`+ts+`)`)
 		}
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+		err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 		detail := safeError(err)
 		if !errors.Is(err, service.ErrEnvironmentHasLiveLease) || !strings.Contains(detail, "(first 10 shown)") ||
 			strings.Contains(detail, project+"_more_09") || !strings.Contains(detail, project+"_more_08") {
@@ -359,7 +359,7 @@ func TestEnvironmentDeleteReportsEveryBlockingKind(t *testing.T) {
 		execRaw(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_`+project+`','org_a','`+project+`','`+f.env+`','adp_`+project+`','repository','acme','app',42,'',1,'tombstoned','never',`+ts+`)`)
 		execRaw(t, db, `INSERT INTO ssh_cas (id,org_id,project_id,environment_id,name,state,authority_principal_id,created_at) VALUES ('ssh_`+project+`','org_a','`+project+`','`+f.env+`','ca','active','usr_alice',`+ts+`)`)
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-		err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+		err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 		detail := safeError(err)
 		if !strings.Contains(detail, "live SSH CA") {
 			t.Errorf("combined refusal %q lacks the SSH CA kind", detail)
@@ -398,7 +398,7 @@ func TestEnvironmentDeleteRefusalRollsBackCertificatePurge(t *testing.T) {
 				execRaw(t, db, `INSERT INTO ssh_cas (id,org_id,project_id,environment_id,name,state,authority_principal_id,created_at) VALUES ('ssh_`+project+`','org_a','`+project+`','`+f.env+`','ca','active','usr_alice',`+ts+`)`)
 			}
 			envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-			err := envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope())
+			err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
 			if !errors.Is(err, service.ErrEnvironmentHasAdapterTargets) || errors.Is(err, store.ErrSSHLiveCA) != withSSH {
 				t.Fatalf("delete (ssh=%v) = %v", withSSH, err)
 			}

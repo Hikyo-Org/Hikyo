@@ -165,7 +165,7 @@ func sqlText(s string) string {
 
 func mustEnv(t *testing.T, envs *service.Environments, actor service.Actor, scope domain.Scope, name string) domain.Scope {
 	t.Helper()
-	env, err := envs.Create(t.Context(), actor, scope, name, nil)
+	env, err := envs.CreateConfirming(t.Context(), actor, scope, name, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,7 +579,7 @@ func scenarioValueClone(t *testing.T, db *store.DB) {
 		{"publish", domain.Scope{Org: scope.Org}},
 		{"definitions-edit", domain.Scope{Org: scope.Org}},
 	})
-	_, _, err := envs.Clone(t.Context(), service.LocalPrincipal(noReveal), scope, "clone-aborted", string(source.Env), nil)
+	_, _, err := envs.CloneConfirming(t.Context(), service.LocalPrincipal(noReveal), scope, "clone-aborted", string(source.Env), nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "REQUIRED_TOKEN") {
 		t.Fatalf("a clone stranding a required secret did not abort naming it: %v", err)
 	}
@@ -596,7 +596,7 @@ func scenarioValueClone(t *testing.T, db *store.DB) {
 	// scenario sees the environment it expects.
 	restoreToken := corruptValueCiphertext(t, db, string(source.Env), requiredToken.ID)
 	disclosuresBefore := disclosureEvents(t, db, string(source.Env))
-	_, _, corruptErr := envs.Clone(t.Context(), service.LocalPrincipal(noReveal), scope, "clone-corrupt", string(source.Env), nil)
+	_, _, corruptErr := envs.CloneConfirming(t.Context(), service.LocalPrincipal(noReveal), scope, "clone-corrupt", string(source.Env), nil, nil)
 	if corruptErr == nil || !strings.Contains(corruptErr.Error(), "REQUIRED_TOKEN") || !errors.Is(corruptErr, domain.ErrInvalid) {
 		t.Fatalf("a gate-blocked clone over corrupted source material did not abort naming the key: %v", corruptErr)
 	}
@@ -626,7 +626,7 @@ func scenarioValueClone(t *testing.T, db *store.DB) {
 		}, nil); err != nil {
 		t.Fatal(err)
 	}
-	env, result, err := envs.Clone(t.Context(), service.LocalPrincipal(noReveal), scope, "clone-partial", string(source.Env), nil)
+	env, result, err := envs.CloneConfirming(t.Context(), service.LocalPrincipal(noReveal), scope, "clone-partial", string(source.Env), nil, nil)
 	if err != nil {
 		t.Fatalf("clone with a blocked source gate should proceed: %v", err)
 	}
@@ -650,7 +650,7 @@ func scenarioValueClone(t *testing.T, db *store.DB) {
 	}
 
 	// The full-authority clone takes everything, re-sealed per row.
-	full, result, err := envs.Clone(t.Context(), actor, scope, "clone-full", string(source.Env), nil)
+	full, result, err := envs.CloneConfirming(t.Context(), actor, scope, "clone-full", string(source.Env), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

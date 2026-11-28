@@ -1392,8 +1392,9 @@ export type Error = {
         /**
          * Present on `bad_request` and `unprocessable`, where it names
          * the offending request member, and on a `conflict` whose refusal
-         * names the caller's own state or, for a key folder move that
-         * widens access, what `widening` carries. On
+         * names the caller's own state or, for a key folder move or an
+         * environment rename or creation that widens access, what
+         * `widening` carries. On
          * `cli_login_factor_required`, it carries sign-in guidance.
          * `null` and absent are
          * equivalent; every other error code omits the member entirely.
@@ -2313,6 +2314,14 @@ export type EntityName = string;
 export type RenameRequest = {
     name: EntityName;
     acknowledgements?: Acknowledgements;
+    /**
+     * Read only by an environment rename (revision 22): confirms the
+     * principals the rename gives access through member access rules,
+     * an `only` list naming the new name or an `all` list excepting the
+     * old one. Omitted, no widening is confirmed. Other renames ignore it.
+     *
+     */
+    confirm_widening?: ConfirmWidening;
 };
 
 export type CreateProjectRequest = {
@@ -2347,12 +2356,26 @@ export type ProjectList = {
 export type CreateEnvironmentRequest = {
     name: EntityName;
     acknowledgements?: Acknowledgements;
+    /**
+     * Confirms the principals the new environment gives access through
+     * member access rules whose `only` list names its name (revision
+     * 22). Omitted, no widening is confirmed.
+     *
+     */
+    confirm_widening?: ConfirmWidening;
 };
 
 export type CloneEnvironmentRequest = {
     name: EntityName;
     source_environment_id: Id;
     acknowledgements?: Acknowledgements;
+    /**
+     * Confirms the principals the new environment gives access through
+     * member access rules whose `only` list names its name (revision
+     * 22). Omitted, no widening is confirmed.
+     *
+     */
+    confirm_widening?: ConfirmWidening;
 };
 
 export type ClonedEnvironment = {
@@ -4656,8 +4679,8 @@ export type RuleAxisMode = 'all' | 'only';
 
 /**
  * `only` reaches the listed `projects`. `all` reaches every project of
- * the organisation, including projects created later; such a rule covers
- * every environment and narrows keys by folder only. Omitted, a rule's
+ * the organisation, including projects created later; such a rule
+ * narrows environments by name and keys by folder only. Omitted, a rule's
  * project mode is `only`. The default is stated here rather than as a
  * schema `default`, so generated clients never add the property to a
  * request: a server before revision 21 refuses it.
@@ -4671,19 +4694,24 @@ export type RuleProjectMode = 'all' | 'only';
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * Environments are selected by name (revision 22): see
+ * `RuleEnvironmentAxis`.
+ *
  * With `project_mode` `all` the rule reaches every project of the
  * organisation, including projects created later. A response lists the
  * organisation's current projects (a project listing: only that
  * project), with the rule's folder items repeated under each, so
  * `projects` is never empty; an organisation listing's or a create's
  * `where` is a valid create request. A create lists exactly the organisation's current
- * projects (otherwise 409), keeps the environment axis `all` without
- * items, and repeats the same folder items, never single keys, under
- * every project.
+ * projects (otherwise 409), and repeats the same folder items, never
+ * single keys, under every project. Its environment axis selects by
+ * name like any rule's.
  *
- * The 500 bound counts the rule as it is listed: every current project
- * plus its folder items repeated under each. A create that would list
- * more is refused with 409 `limit_exceeded`. A project creation that
+ * The 500 bound counts the rule as it can be listed. A rule over named
+ * projects counts `projects × (1 + names) + key items`; a rule with
+ * `project_mode` `all` counts `projects × (1 + folders + names)` over
+ * every current project. A create that would list more is refused with
+ * 409 `limit_exceeded`. A project creation that
  * would list an existing rule over all projects past it is refused with
  * 409 `conflict`, whose detail names the blocking rules to a member
  * manager. A listing is never truncated.
@@ -4699,8 +4727,34 @@ export type RuleWhere = {
     keys: RuleKeyAxis;
 };
 
+/**
+ * Environments are selected by name (member-access-rules ADR D3,
+ * revision 22): `names` match in every project the rule covers,
+ * including environments created or renamed to a name later. A
+ * response carries `names` and, in `items`, the environments they match
+ * now in each listed project.
+ *
+ * A create may send `names` with `items` empty, or with `items` exactly
+ * the environments those names match now in the rule's projects
+ * (otherwise 409 `conflict` naming the difference). A create without
+ * `names` (a client before revision 22) names environments by `items`
+ * alone: their names become the rule's, and it is refused with 409
+ * `conflict` unless those names match exactly `items` in the rule's
+ * projects. An `all` create without `names`, for a principal whose
+ * `all` rules except a name no environment of one of the create's
+ * projects carries yet, is refused with 409 `conflict` naming them, so
+ * a client before revision 22 cannot drop an exception silently.
+ *
+ */
 export type RuleEnvironmentAxis = {
     mode: RuleAxisMode;
+    /**
+     * The environment names the axis lists (revision 22). Omitted on a
+     * create, the names of `items` (see above); a server before
+     * revision 22 refuses the property.
+     *
+     */
+    names?: Array<EntityName>;
     items: Array<RuleEnvironmentItem>;
 };
 
@@ -4802,6 +4856,13 @@ export type Rule = {
     other_projects: boolean;
     created_by: Id;
     created_at: Timestamp;
+    /**
+     * Present only on a rule the upgrade to environment names
+     * (revision 22) could not keep exactly: why it was disabled. Such a
+     * rule reaches no environment; revoke it and create it again.
+     *
+     */
+    fault?: string;
 };
 
 export type RuleList = {
@@ -4813,9 +4874,11 @@ export type RuleList = {
 };
 
 /**
- * A key folder move that gives people access through their member access
- * rules (member-access-rules ADR D9). `count` is always present; the
- * people and what they gain are named only to a caller holding
+ * A key folder move (member-access-rules ADR D9), or an environment
+ * rename, creation or deletion (revision 22), alone or in a definitions
+ * plan, that gives principals access through their member access
+ * rules. `count` is always present; the people and
+ * machines and what they gain are named only to a caller holding
  * `manage-members` on the project, who confirms by resending the request
  * with `confirm_widening` listing exactly those principal ids.
  *
@@ -4830,15 +4893,28 @@ export type WideningGainer = {
     principal_name?: string;
     capability: RuleCapability;
     /**
-     * The environment ids newly reached; empty for a project-wide capability only.
+     * The environment ids newly reached; empty when only the project
+     * is, as for a project-wide capability or a deletion that leaves no
+     * environment the rule excepts.
+     *
      */
     environments: Array<Id>;
+    /**
+     * Present when the gain reaches only the keys this selector names in
+     * the project, as for a rule narrowed to folders or keys; absent,
+     * every key (for a key folder move, the moved key). A principal
+     * gaining one environment over several selectors has one gainer per
+     * selector.
+     *
+     */
+    keys?: RuleKeyAxis;
 };
 
 /**
- * The principal ids a key folder move gives access through their member
- * access rules, confirming it (member-access-rules ADR D9). It must name
- * exactly the people the refusal's `widening` names.
+ * The principal ids a key folder move, or an environment rename,
+ * creation or deletion, gives access through their member access rules, confirming
+ * it (member-access-rules ADR D9). It must name exactly the principals
+ * the refusal's `widening` names.
  *
  */
 export type ConfirmWidening = Array<Id>;
@@ -7235,9 +7311,10 @@ export type AccessQueueWritable = {
 };
 
 /**
- * The principal ids a key folder move gives access through their member
- * access rules, confirming it (member-access-rules ADR D9). It must name
- * exactly the people the refusal's `widening` names.
+ * The principal ids a key folder move, or an environment rename,
+ * creation or deletion, gives access through their member access rules, confirming
+ * it (member-access-rules ADR D9). It must name exactly the principals
+ * the refusal's `widening` names.
  *
  */
 export type ConfirmWideningWritable = Array<Id>;
@@ -10899,11 +10976,27 @@ export type DeleteEnvironmentData = {
          */
         environment: Id;
     };
-    query?: never;
+    query?: {
+        /**
+         * Revision 22: the principal ids the delete gives access through
+         * member access rules, comma-separated, confirming it
+         * (member-access-rules ADR D9). It must name exactly the principals
+         * the refusal's `widening` names. Omitted, no widening is confirmed.
+         *
+         */
+        confirm_widening?: Array<Id>;
+    };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}';
 };
 
 export type DeleteEnvironmentErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts

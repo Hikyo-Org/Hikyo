@@ -865,6 +865,22 @@ export const listEnvironments = <ThrowOnError extends boolean = false>(options: 
  * with `limit_exceeded`, decided against a count read inside the creating
  * transaction.
  *
+ * Member access rules select environments by name, so a new environment
+ * is reached by every rule whose `only` list names its name. Such a
+ * creation is refused with 409 `conflict` carrying `widening` until it
+ * is resent with `confirm_widening` naming exactly those principals. A
+ * creation that gives a machine secret plaintext (`read` with `reveal`
+ * or `reveal-history`) through an `only` name is always refused with
+ * 409 `conflict`: for want of the caller's `manage-identities` or
+ * matching disclosure capability, or else asking for reauthentication,
+ * since the gate asks for a window over the new environment's id, which
+ * no session can hold before the environment exists. Create it under a
+ * name no `only` list names, reauthenticate over it, then rename it. A
+ * machine gaining other permissions, `read` without `reveal` or
+ * `reveal-history` included, needs the confirmation alone. A rule
+ * reaching every environment, or every one except other names, reaches
+ * the new one without confirmation.
+ *
  */
 export const createEnvironment = <ThrowOnError extends boolean = false>(options: Options<CreateEnvironmentData, ThrowOnError>): RequestResult<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -893,6 +909,14 @@ export const createEnvironment = <ThrowOnError extends boolean = false>(options:
  * under a `mode: all` rule ABORTS the creation, naming the keys, because
  * an environment born invalid is exactly what the atomicity rule
  * forbids.
+ *
+ * Access rules gain the clone as they gain any new environment, with
+ * the same `confirm_widening` refusal: a clone that gives a machine
+ * secret plaintext through an `only` name is always refused with
+ * 409 `conflict`, as a creation is. Clone under a name no `only` list
+ * names, reauthenticate over it, then rename it. A machine gaining other
+ * permissions, `read` without `reveal` or `reveal-history` included,
+ * needs the confirmation alone.
  *
  * It is a separate route rather than a flag on `createEnvironment`
  * because its RESPONSE is different: a clone has to report what it could
@@ -943,8 +967,20 @@ export const reorderEnvironments = <ThrowOnError extends boolean = false>(option
  * a protected environment. Deletion removes values, drafts, pins and
  * revision payloads; audit events remain subject to audit retention.
  *
+ * Member access rules select environments by name, so deleting the
+ * last environment carrying a name an `all` list excepts lets those
+ * rules reach the project as a whole. Deleting one of several excepted
+ * environments leaves the others excepted and gains nothing. A delete
+ * that gives any principal a permission is refused with 409 `conflict`
+ * carrying `widening` until it is resent with `confirm_widening` naming
+ * exactly those principals, machines included. The rules already reached
+ * the remaining environments, so a delete reveals no plaintext that was
+ * hidden before and asks for no reauthentication. The rules keep the
+ * name, so a later environment of that name is excepted again.
+ *
  */
 export const deleteEnvironment = <ThrowOnError extends boolean = false>(options: Options<DeleteEnvironmentData, ThrowOnError>): RequestResult<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError> => (options.client ?? client).delete<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError>({
+    querySerializer: { parameters: { confirm_widening: { array: { explode: false } } } },
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}',
     ...options
@@ -964,6 +1000,18 @@ export const getEnvironment = <ThrowOnError extends boolean = false>(options: Op
  *
  * Environment topology, so it carries `definitions-edit` rather than
  * `edit`: renaming is a change to the project's shape, not to a value.
+ *
+ * Member access rules select environments by name, so a rename can give
+ * people or machines access through their rules: renamed out of an
+ * `all` list's exceptions, or into an `only` list. Such a rename is
+ * refused with 409 `conflict` carrying `widening` until it is resent
+ * with `confirm_widening` naming exactly those principals. A machine
+ * that newly reaches secret plaintext (`read` with `reveal` or
+ * `reveal-history`) also needs the caller's `manage-identities`, the
+ * matching disclosure capability and a fresh reauthentication over the
+ * environment; a machine gaining only other permissions needs the
+ * confirmation alone. A rename that only narrows access needs no
+ * confirmation.
  *
  */
 export const renameEnvironment = <ThrowOnError extends boolean = false>(options: Options<RenameEnvironmentData, ThrowOnError>): RequestResult<RenameEnvironmentResponses, RenameEnvironmentErrors, ThrowOnError> => (options.client ?? client).patch<RenameEnvironmentResponses, RenameEnvironmentErrors, ThrowOnError>({
@@ -1309,11 +1357,11 @@ export const listOrgRules = <ThrowOnError extends boolean = false>(options: Opti
  * held there, unless org or instance authority permits unheld grants.
  * A workload or automation principal may hold a rule under its class's
  * allowlist and depth, in its owning project only, and never narrowed by
- * keys. A machine rule that makes plaintext newly reachable also needs
- * `manage-identities` on the project, the matching disclosure capability
- * and a live reauthentication window over each newly reachable
- * environment; a 409 names the environment to reauthenticate over. Use
- * replaceRules to edit a grouped rule card atomically.
+ * keys. A machine rule that makes secret plaintext newly reachable also
+ * needs `manage-identities` on the project, the matching disclosure
+ * capability and a live reauthentication window over each newly
+ * reachable environment; a 409 names the environment to reauthenticate
+ * over. Use replaceRules to edit a grouped rule card atomically.
  *
  */
 export const createRule = <ThrowOnError extends boolean = false>(options: Options<CreateRuleData, ThrowOnError>): RequestResult<CreateRuleResponses, CreateRuleErrors, ThrowOnError> => (options.client ?? client).post<CreateRuleResponses, CreateRuleErrors, ThrowOnError>({

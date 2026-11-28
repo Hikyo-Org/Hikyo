@@ -184,7 +184,9 @@ func TestSingleKeyGroupAssignmentDoesNotRevealOtherMembersPresence(t *testing.T)
 func TestOnlyEnvironmentSeeDoesNotNavigateUnselectedProject(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		f := seedRulesFixture(t, db)
-		where := domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisOnly, Envs: map[domain.ProjectID][]domain.EnvID{prjA1: {envA1}}, KeyMode: domain.AxisAll}
+		// Rules select environments by name in every covered project (#1447):
+		// only prj_a1 has a "prod", so the rule selects nothing in prj_a2.
+		where := domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisOnly, EnvNames: []string{"prod"}, KeyMode: domain.AxisAll}
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapRead, Org: orgA, Where: where})
 		project := scopeProject(orgA, prjA1)
 		groups := &service.KeyGroups{DB: db}

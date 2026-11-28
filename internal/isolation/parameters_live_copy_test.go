@@ -23,7 +23,7 @@ func TestParameterCopyAndCloneUseLiveSource(t *testing.T) {
 				projectScope := domain.Scope{Org: orgA, Project: prjA1}
 				sourceScope := scopeEnv(orgA, prjA1, envA1)
 				envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-				destination, err := envs.Create(t.Context(), actor, projectScope, "live-copy-destination", nil)
+				destination, err := envs.CreateConfirming(t.Context(), actor, projectScope, "live-copy-destination", nil, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -33,7 +33,7 @@ func TestParameterCopyAndCloneUseLiveSource(t *testing.T) {
 				}
 				want := template
 				if state == "never-published" {
-					source, err := envs.Create(t.Context(), actor, projectScope, "unpublished-live-source", nil)
+					source, err := envs.CreateConfirming(t.Context(), actor, projectScope, "unpublished-live-source", nil, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -102,7 +102,7 @@ func TestParameterCopyAndCloneUseLiveSource(t *testing.T) {
 					}
 					assertLiveParameterCopyURL(t, db, domain.EnvID(destination.ID), want)
 				}
-				clone, _, err := envs.Clone(t.Context(), actor, projectScope, "live-source-clone", string(sourceScope.Env), nil)
+				clone, _, err := envs.CloneConfirming(t.Context(), actor, projectScope, "live-source-clone", string(sourceScope.Env), nil, nil)
 				if refuseCopy || state == "pending-draft" {
 					if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "cannot clone a parameterized environment") {
 						t.Fatalf("clone did not refuse live declarations: %v", err)

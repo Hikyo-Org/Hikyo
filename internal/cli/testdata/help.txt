@@ -84,6 +84,8 @@ hierarchy:
   hikyo env param delete --env <id> --name <NAME>
   hikyo env create --name <name> [--clone-from <env>]   clone copies that env's values
   hikyo env rename <env> --name <new-name>
+      env create, rename and delete take [--confirm-widening <principal>]...:
+      the principals the change gives access through their access rules
   hikyo env reorder <env-id,env-id,...>             the whole ordered set, once each
   hikyo folder list|show|create|rename|delete       --org/--project select the project
   hikyo folder create --path <path>
@@ -494,7 +496,8 @@ access:
   hikyo access grant template --principal <id> --template <name>
   hikyo access rule list [--org O] [--project P] [-o table|json]
   hikyo access rule add --principal <id> --capability <atom> [--in-project P... | --all-projects]
-      [--only-env E | --except-env E]... [--only-folder F | --only-key K]...
+      [--only-env E | --except-env E | --only-env-name N | --except-env-name N]...
+      [--only-folder F | --only-key K]...
       [--except-folder F | --except-key K]...   (items: [PROJECT:]ID or [PROJECT:]PATH)
   hikyo access rule remove <rule>
   hikyo access member list [--org O] [--project P] [-o table|json]

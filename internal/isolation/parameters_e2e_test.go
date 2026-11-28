@@ -33,7 +33,7 @@ func TestEnvironmentParametersDeliveryAndHistory(t *testing.T) {
 			t.Fatalf("declaration activated before publication: %v", err)
 		}
 		publishDeliveryValues(t, db, envA1, map[string]string{"DATABASE_URL": "https://pr-${PR_NUMBER}.preview.example.com", "DATABASE_PASSWORD": "literal-${PR_NUMBER}"})
-		_, _, cloneErr := envs.Clone(t.Context(), actor, domain.Scope{Org: orgA, Project: prjA1}, "unresolved-parameter-clone", string(envA1), nil)
+		_, _, cloneErr := envs.CloneConfirming(t.Context(), actor, domain.Scope{Org: orgA, Project: prjA1}, "unresolved-parameter-clone", string(envA1), nil, nil)
 		if !errors.Is(cloneErr, domain.ErrInvalid) {
 			t.Fatalf("clone of template source did not refuse: %v", cloneErr)
 		}

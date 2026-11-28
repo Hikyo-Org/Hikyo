@@ -82,7 +82,7 @@ func newDeliveryPollFixture(t testing.TB, cfg store.Config, count, renderBytes i
 		f.entries = append(f.entries, ImportEntry{Key: name, Value: strings.Repeat("x", size)})
 	}
 	envs := &Environments{DB: self.DB, Keyring: self.Keyring}
-	env, err := envs.Create(ctx, admin, scope, "development", nil)
+	env, err := envs.CreateConfirming(ctx, admin, scope, "development", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

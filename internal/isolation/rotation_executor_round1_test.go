@@ -690,7 +690,7 @@ func TestRotationAbandonPublishedRunWithoutSupersededSettlesDone(t *testing.T) {
 		if _, err := x.dyn.Delete(tctx(t), provider, domain.Scope{Org: orgA, Project: prjA1}, x.provider, false); err != nil {
 			t.Fatalf("provider delete after the abandon: %v", err)
 		}
-		if err := envs.Delete(tctx(t), provider, x.scope); err != nil {
+		if err := envs.DeleteConfirming(tctx(t), provider, x.scope, nil); err != nil {
 			t.Fatalf("environment delete after the abandon: %v", err)
 		}
 	})

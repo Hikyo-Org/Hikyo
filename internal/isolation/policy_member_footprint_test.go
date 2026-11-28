@@ -272,7 +272,7 @@ func newFootprintFixture(t *testing.T, db *store.DB) *footprintFixture {
 		if err != nil {
 			t.Fatalf("project: %v", err)
 		}
-		e, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Create(ctx, rootActor, domain.Scope{Org: domain.OrgID(o.ID), Project: domain.ProjectID(p.ID)}, name+"-e", nil)
+		e, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).CreateConfirming(ctx, rootActor, domain.Scope{Org: domain.OrgID(o.ID), Project: domain.ProjectID(p.ID)}, name+"-e", nil, nil)
 		if err != nil {
 			t.Fatalf("environment: %v", err)
 		}

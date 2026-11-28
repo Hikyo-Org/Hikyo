@@ -111,7 +111,7 @@ func scenarioAdvisoryHTTP(t *testing.T, db *store.DB) {
 			if preamble := awaitAdvisoryFrame(t, frames); !strings.HasPrefix(preamble, "retry: ") {
 				t.Fatalf("missing retry: %q", preamble)
 			}
-			if _, err := envs.Rename(t.Context(), actor, dev, "before-cancel", nil); err != nil {
+			if _, err := envs.RenameConfirming(t.Context(), actor, dev, "before-cancel", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			frame := awaitAdvisoryFrame(t, frames)
@@ -140,7 +140,7 @@ func scenarioAdvisoryHTTP(t *testing.T, db *store.DB) {
 			if err := auth.Logout(t.Context(), artifact); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := envs.Rename(t.Context(), actor, dev, "after-revocation", nil); err != nil {
+			if _, err := envs.RenameConfirming(t.Context(), actor, dev, "after-revocation", nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			awaitAdvisoryReadEnd(t, closed, false)

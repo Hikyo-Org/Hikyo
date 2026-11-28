@@ -90,12 +90,13 @@ export class RuleReauthFailure extends Error {
 const WIDENING = /reauthenticate over the environments this operation makes reachable, then retry \(([^)\s]+)\)/;
 
 /**
- * The environment a refused machine rule change makes newly reachable in
- * plaintext, which the caller must reauthenticate over before a retry (the
- * machine widening gate's 409), or undefined for any other outcome.
+ * The environment a refused machine rule change (or another `operation`, such
+ * as an environment rename, #1447) makes newly reachable in plaintext, which
+ * the caller must reauthenticate over before a retry (the machine widening
+ * gate's 409), or undefined for any other outcome.
  */
-export function wideningEnvironment(error: unknown): string | undefined {
-  if (!(error instanceof ApiError) || error.operation !== replaceRulesOp || error.status !== 409) return undefined;
+export function wideningEnvironment(error: unknown, operation: object = replaceRulesOp): string | undefined {
+  if (!(error instanceof ApiError) || error.operation !== operation || error.status !== 409) return undefined;
   return WIDENING.exec(error.detail ?? '')?.[1];
 }
 
@@ -116,26 +117,46 @@ export async function saveRule(org: string, before: Rule | null, draft: Rule, or
     revoke: [...plan.revoke],
     create: plan.create.map((capability) => createBody(draft, capability, orgProjects)),
   };
+  try {
+    await withWideningReauth(
+      replaceRulesOp,
+      () => parsed(replaceRulesOp, { path: { org }, body }),
+      (environment, ceremonyError) => new RuleReauthFailure(environment, ceremonyError),
+    );
+  } catch (error) {
+    if (error instanceof RuleReauthFailure) throw error;
+    // A 4xx from this transaction proves atomic refusal. A session check can
+    // itself return ApiError after a successful write, so preserve provenance.
+    if (error instanceof ApiError && error.operation === replaceRulesOp && error.status >= 400 && error.status < 500) throw error;
+    throw new RuleSaveFailure('atomic', error);
+  }
+}
+
+/**
+ * Sends a change, and while the server refuses it until the caller
+ * reauthenticates over an environment (the machine widening gate's 409), runs
+ * one passkey ceremony per such environment and sends it again. A second
+ * refusal over the same environment is thrown as the server's own 409; a
+ * failed ceremony is thrown as ceremonyFailed makes it.
+ */
+export async function withWideningReauth<T>(
+  operation: object,
+  send: () => Promise<T>,
+  ceremonyFailed: (environment: string, error: unknown) => unknown = (_environment, error) => error,
+): Promise<T> {
   const reauthenticated = new Set<string>();
   for (;;) {
     try {
-      await parsed(replaceRulesOp, { path: { org }, body });
-      return;
+      return await send();
     } catch (error) {
-      const environment = wideningEnvironment(error);
-      if (environment !== undefined && !reauthenticated.has(environment)) {
-        reauthenticated.add(environment);
-        try {
-          await runPasskeyCeremony({ operation: 'mint', environmentId: environment, keyIds: [] });
-        } catch (ceremonyError) {
-          throw new RuleReauthFailure(environment, ceremonyError);
-        }
-        continue;
+      const environment = wideningEnvironment(error, operation);
+      if (environment === undefined || reauthenticated.has(environment)) throw error;
+      reauthenticated.add(environment);
+      try {
+        await runPasskeyCeremony({ operation: 'mint', environmentId: environment, keyIds: [] });
+      } catch (ceremonyError) {
+        throw ceremonyFailed(environment, ceremonyError);
       }
-      // A 4xx from this transaction proves atomic refusal. A session check can
-      // itself return ApiError after a successful write, so preserve provenance.
-      if (error instanceof ApiError && error.operation === replaceRulesOp && error.status >= 400 && error.status < 500) throw error;
-      throw new RuleSaveFailure('atomic', error);
     }
   }
 }

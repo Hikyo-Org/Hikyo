@@ -135,6 +135,14 @@ export type Axis<T> = { readonly mode: 'all' | 'only'; readonly items: readonly 
 
 export const ALL: Axis<never> = { mode: 'all', items: [] };
 
+/**
+ * Environments are selected by name in every project a rule covers (D3,
+ * #1447). `names` are the rule's own; `items` are the environments they
+ * match now, for display and picking. Absent `names` (a legacy grant, a
+ * fresh draft) mean the names of `items`.
+ */
+export type EnvAxis = Axis<EnvItem> & { readonly names?: readonly string[] };
+
 type RuleSource =
   /** Server rules, one per permission; `otherProjects` when a project listing hides part of the Where. */
   | { readonly kind: 'rule'; readonly parts: readonly { readonly perm: PermId; readonly id: string }[]; readonly otherProjects: boolean }
@@ -147,9 +155,11 @@ export type Rule = {
   readonly perms: readonly PermId[];
   /** `'*'` is all projects, including later ones: an organisation grant, or a rule with `project_mode: all` (#1446). */
   readonly projects: '*' | readonly string[];
-  readonly envs: Axis<EnvItem>;
+  readonly envs: EnvAxis;
   readonly keys: Axis<KeyItem>;
   readonly source: RuleSource;
+  /** Why the upgrade to environment names disabled this rule (#1447): it reaches nothing. */
+  readonly fault?: string;
 };
 
 export type Key = { readonly id: string; readonly name: string; readonly folder: string; readonly secret: boolean };
@@ -216,15 +226,17 @@ const keyById = (world: World, id: string) => world.projects.flatMap((p) => p.ke
 
 const isFolder = (item: KeyItem): item is FolderItem => 'folder' in item;
 
+const folderLabel = (folder: string) => (folder === '' ? '(no folder)' : `${folder}/`);
+
 /** How a key axis item reads: `db/` for a folder, `stripe/STRIPE_SECRET_KEY` for a key, its id when the name is not readable. */
 export function itemLabel(world: World, item: KeyItem): { text: string; secret: boolean } {
-  if (isFolder(item)) return { text: item.folder === '' ? '(no folder)' : `${item.folder}/`, secret: false };
+  if (isFolder(item)) return { text: folderLabel(item.folder), secret: false };
   const key = keyById(world, item.key);
   if (key === undefined) return { text: item.key, secret: false };
   return { text: key.folder === '' ? key.name : `${key.folder}/${key.name}`, secret: key.secret };
 }
 
-const narrowEnvs = (rule: Pick<Rule, 'envs'>) => rule.envs.mode === 'only' || rule.envs.items.length > 0;
+const narrowEnvs = (rule: Pick<Rule, 'envs'>) => rule.envs.mode === 'only' || rule.envs.items.length > 0 || (rule.envs.names?.length ?? 0) > 0;
 export const narrowKeys = (rule: Pick<Rule, 'keys'>) => rule.keys.mode === 'only' || rule.keys.items.length > 0;
 
 type Shaped = Pick<Rule, 'envs' | 'keys'>;
@@ -289,6 +301,27 @@ const KEY_AWARE: ReadonlySet<PermId> = new Set(['edit', 'publish', 'reveal', 're
 /** The resolver asks about one environment; only project permissions need every environment. */
 const atProject = (id: PermId) => perm(id).shape === 'project';
 
+/** The ids of a project's environments carrying these names now, as the server binds them (#1447); undefined for a project unknown here. */
+const envIdsNamed = (world: World, project: string, names: readonly string[]): string[] | undefined =>
+  projectById(world, project)
+    ?.envs.filter((e) => names.includes(e.name))
+    .map((e) => e.id);
+
+/**
+ * The environment ids a rule's environment axis lists in one project: those
+ * its names match, whatever part of the rule a listing returned. A legacy
+ * grant, with no names, keeps its items, as does a project unknown here.
+ */
+function envsIn(world: World, rule: Pick<Rule, 'envs'>, project: string): string[] {
+  const items = () => rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
+  const { names } = rule.envs;
+  return names === undefined ? items() : (envIdsNamed(world, project, names) ?? items());
+}
+
+/** The environment ids a rule's environment axis lists over every project it covers (see envsIn). */
+export const ruleEnvIds = (world: World, rule: Pick<Rule, 'projects' | 'envs'>): string[] =>
+  projectsOf(world, rule).flatMap((project) => envsIn(world, rule, project));
+
 export type Reach = { hit: false } | { hit: true; ok: true } | { hit: true; ok: false; why: string };
 
 const MISS: Reach = { hit: false };
@@ -304,7 +337,7 @@ const OK: Reach = { hit: true, ok: true };
 export function reach(world: World, rule: Rule, id: PermId, project: string, env: string, key: Key | undefined): Reach {
   if (!effective(rule).includes(id)) return MISS;
   if (!projectsOf(world, rule).includes(project)) return MISS;
-  const envs = rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
+  const envs = envsIn(world, rule, project);
   if (atProject(id)) {
     if (rule.envs.mode === 'only') return MISS;
     if (envs.length > 0) return { hit: true, ok: false, why: `except ${envs.map((e) => envName(world, e)).join(', ')}` };
@@ -380,6 +413,35 @@ export function resolve(world: World, member: string, id: PermId, project: strin
   return { state: 'no' };
 }
 
+/** What a rule picks up when created later: projects, and every environment but its excepted names, or those with its names. */
+type Growth = {
+  readonly projects: boolean;
+  readonly environments: { readonly every: true; readonly except: readonly string[] } | { readonly every: false; readonly named: readonly string[] };
+};
+
+function envGrowth(rule: Rule): Growth['environments'] | null {
+  const names = [...(rule.envs.names ?? [])].sort();
+  if (rule.envs.mode === 'all') return { every: true, except: names };
+  // An only list's names also match environments created or renamed to them later.
+  if (names.length > 0) return { every: false, named: names };
+  return null;
+}
+
+function growthOf(rule: Rule): Growth | null {
+  const environments = envGrowth(rule);
+  // An only list without names reaches nothing later: it is empty, or legacy ids that never match a new environment.
+  if (environments === null) return null;
+  return { projects: rule.projects === '*', environments };
+}
+
+function growthText(g: Growth): string {
+  const projects = g.projects ? 'projects and ' : '';
+  const envs = g.environments;
+  if (!envs.every) return `new ${projects}environments named ${envs.named.join(', ')} included`;
+  const except = envs.except.length > 0 ? `, except those named ${envs.except.join(', ')}` : '';
+  return `new ${projects}environments included${except}`;
+}
+
 type ReachSummary = {
   environments: number;
   /** Keys the rule reaches, or null when a key catalogue it names cannot be read. */
@@ -388,13 +450,13 @@ type ReachSummary = {
   secrets: number | null;
   protectedEnvs: number;
   /** Things created later that the rule picks up. */
-  grows: 'projects' | 'environments' | null;
+  grows: Growth | null;
 };
 
 /** What a rule covers, counted. */
 export function reachOf(world: World, rule: Rule): ReachSummary {
   const pairs = projectsOf(world, rule).flatMap((project) => {
-    const envs = rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
+    const envs = envsIn(world, rule, project);
     return (projectById(world, project)?.envs ?? [])
       .filter((e) => (rule.envs.mode === 'all' ? !envs.includes(e.id) : envs.includes(e.id)))
       .map((env) => ({ project, env }));
@@ -416,7 +478,7 @@ export function reachOf(world: World, rule: Rule): ReachSummary {
     keys: readable ? keys.size : null,
     secrets: readable && effective(rule).includes('reveal') ? secrets : null,
     protectedEnvs: pairs.filter((pair) => pair.env.protected === true).length,
-    grows: rule.projects === '*' ? 'projects' : rule.envs.mode === 'all' ? 'environments' : null,
+    grows: growthOf(rule),
   };
 }
 
@@ -428,7 +490,7 @@ export function reachText(r: ReachSummary): string {
     r.keys === null ? 'keys not readable' : plural(r.keys, 'key'),
     ...(r.secrets === null ? [] : [`can reveal ${r.secrets} secret values`]),
     r.protectedEnvs > 0 ? `${r.protectedEnvs} protected` : 'no protected environment',
-    ...(r.grows === null ? [] : [`new ${r.grows} included`]),
+    ...(r.grows === null ? [] : [growthText(r.grows)]),
   ].join(' · ');
 }
 
@@ -439,12 +501,14 @@ type ServerRule = {
   readonly principal_id: string;
   readonly capability: PermId;
   readonly other_projects: boolean;
+  readonly fault?: string;
   readonly where: {
     /** Absent from servers before API revision 21, which means `only`. */
     readonly project_mode?: 'all' | 'only';
     /** For `all`, the org's projects at read time, folder items repeated under each. */
     readonly projects: readonly string[];
-    readonly environments: Axis<EnvItem>;
+    /** `names` is absent from servers before API revision 22. */
+    readonly environments: EnvAxis;
     readonly keys: { readonly mode: 'all' | 'only'; readonly items: readonly { readonly project: string; readonly folder?: string; readonly key?: string }[] };
   };
 };
@@ -458,6 +522,15 @@ type ServerGrant = {
 const keyItemOf = (item: ServerRule['where']['keys']['items'][number]): KeyItem =>
   item.key !== undefined ? { project: item.project, key: item.key } : { project: item.project, folder: item.folder ?? '' };
 
+/** A widening gain's key selector in words, "only db/" or "all except app/, key_…"; a key reads as its id, as the dialog has no key names. */
+export function keyScopeText(keys: ServerRule['where']['keys']): string {
+  const items = keys.items.map((item) => {
+    const k = keyItemOf(item);
+    return isFolder(k) ? folderLabel(k.folder) : k.key;
+  });
+  return `${keys.mode === 'only' ? 'only' : 'all except'} ${items.join(', ')}`;
+}
+
 const itemKey = (item: EnvItem | KeyItem) => JSON.stringify(
   'environment' in item
     ? [item.project, 'environment', item.environment]
@@ -470,7 +543,10 @@ const itemKey = (item: EnvItem | KeyItem) => JSON.stringify(
 function whereKey(rule: Pick<Rule, 'projects' | 'envs' | 'keys'>): string {
   const sorted = (items: readonly (EnvItem | KeyItem)[]) => items.map(itemKey).sort();
   const projects = rule.projects === '*' ? '*' : [...rule.projects].sort();
-  return JSON.stringify([projects, [rule.envs.mode, sorted(rule.envs.items)], [rule.keys.mode, sorted(rule.keys.items)]]);
+  // Names select the environments (D3, #1447); items only mirror them as far
+  // as the page's topology reads, so they do not tell two named Wheres apart.
+  const envs = rule.envs.names === undefined ? sorted(rule.envs.items) : [...rule.envs.names].sort();
+  return JSON.stringify([projects, [rule.envs.mode, rule.envs.names === undefined, envs], [rule.keys.mode, sorted(rule.keys.items)]]);
 }
 
 /** Server rules, one capability each, grouped into the rules a person reads: one per principal and Where (D1). */
@@ -478,15 +554,19 @@ export function rulesFromServer(items: readonly ServerRule[]): Rule[] {
   const groups = new Map<string, { rule: Rule; parts: { perm: PermId; id: string }[]; other: boolean }>();
   for (const item of items) {
     const projects: Rule['projects'] = item.where.project_mode === 'all' ? '*' : item.where.projects;
+    const { mode, items: envItems, names } = item.where.environments;
     const base = {
       projects,
-      envs: item.where.environments,
+      envs: names === undefined ? { mode, items: envItems } : { mode, items: envItems, names },
       keys: { mode: item.where.keys.mode, items: item.where.keys.items.map(keyItemOf) },
     };
-    const id = `${item.principal_id}#${whereKey(base)}`;
+    // A disabled rule never merges with a working one of the same Where, nor
+    // with a disabled one for another reason: each reason stays shown.
+    const id = `${item.principal_id}#${whereKey(base)}${item.fault === undefined ? '' : `#fault#${item.fault}`}`;
     const group = groups.get(id);
     if (group === undefined) {
-      groups.set(id, { rule: { id, member: item.principal_id, perms: [], ...base, source: { kind: 'draft' } }, parts: [{ perm: item.capability, id: item.id }], other: item.other_projects });
+      const fault = item.fault === undefined ? {} : { fault: item.fault };
+      groups.set(id, { rule: { id, member: item.principal_id, perms: [], ...base, ...fault, source: { kind: 'draft' } }, parts: [{ perm: item.capability, id: item.id }], other: item.other_projects });
     } else {
       group.parts.push({ perm: item.capability, id: item.id });
       group.other ||= item.other_projects;
@@ -535,7 +615,7 @@ export function rulesFromGrants(grants: readonly ServerGrant[]): Rule[] {
 export const newRule = (member: string): Rule => ({ id: '', member, perms: ['read'], projects: [], envs: ALL, keys: ALL, source: { kind: 'draft' } });
 
 export const hasWhere = (rule: Pick<Rule, 'projects' | 'envs' | 'keys'>) =>
-  (rule.projects === '*' || rule.projects.length > 0) && (rule.envs.mode === 'all' || rule.envs.items.length > 0) && (rule.keys.mode === 'all' || rule.keys.items.length > 0);
+  (rule.projects === '*' || rule.projects.length > 0) && (rule.envs.mode === 'all' || rule.envs.items.length > 0 || (rule.envs.names?.length ?? 0) > 0) && (rule.keys.mode === 'all' || rule.keys.items.length > 0);
 
 export const setMode = <T>(axis: Axis<T>, mode: Axis<T>['mode']): Axis<T> => (axis.mode === mode ? axis : { mode, items: [] });
 
@@ -553,27 +633,82 @@ export function toggleItems<T extends EnvItem | KeyItem>(axis: Axis<T>, items: r
 
 /** Toggle a project; its environment and key items leave with it (the server refuses items outside the projects). */
 export function toggleProject(rule: Rule, project: string): Rule {
-  if (rule.projects === '*') return { ...rule, projects: [project], envs: ALL, keys: ALL };
+  if (rule.projects === '*')
+    return {
+      ...rule,
+      projects: [project],
+      // Its environment names and folders stay: dropping an except one would widen the rule.
+      // Without names (a legacy grant) its items are its names, so they all stay.
+      envs: rule.envs.names === undefined ? rule.envs : { ...rule.envs, items: rule.envs.items.filter((e) => e.project === project) },
+      keys: { mode: rule.keys.mode, items: rule.keys.items.filter((k) => k.project === project) },
+    };
   const list = rule.projects;
   if (!list.includes(project)) return { ...rule, projects: [...list, project] };
   return {
     ...rule,
     projects: list.filter((p) => p !== project),
-    envs: { mode: rule.envs.mode, items: rule.envs.items.filter((e) => e.project !== project) },
+    // The rule's environment names stay: they are not the project's.
+    envs: { ...rule.envs, items: rule.envs.items.filter((e) => e.project !== project) },
     keys: { mode: rule.keys.mode, items: rule.keys.items.filter((k) => k.project !== project) },
   };
 }
 
 /**
  * Toggle "All projects" (#1446): a rule over every project of the
- * organisation, including later ones. It covers every environment and keeps
- * only folder items, the same folders in every project.
+ * organisation, including later ones. It keeps its environment names (#1447),
+ * which then match in every project, and only folder items, the same folders
+ * in every project.
  */
 export function toggleAllProjects(rule: Rule, projects: readonly string[]): Rule {
-  if (rule.projects === '*') return { ...rule, projects: [], envs: ALL, keys: ALL };
+  // Its environment names stay (#1447): dropping an except name would widen the rule.
+  if (rule.projects === '*') return { ...rule, projects: [], envs: rule.envs.names === undefined ? rule.envs : { ...rule.envs, items: [] }, keys: ALL };
   const folders = folderNames(rule);
   const keys = folders.length === 0 && rule.keys.mode === 'only' ? ALL : { mode: rule.keys.mode, items: everyProject(projects, folders) };
-  return { ...rule, projects: '*', envs: ALL, keys };
+  return { ...rule, projects: '*', keys };
+}
+
+/** The distinct names of these environment items, as far as `world` can read them. */
+const namesOfItems = (world: World, items: readonly EnvItem[]): string[] => {
+  const all = world.projects.flatMap((p) => p.envs);
+  return [...new Set(items.flatMap((item) => all.filter((e) => e.id === item.environment).map((e) => e.name)))].sort();
+};
+
+/**
+ * The environment names a rule sends (D3, #1447). Its own names are
+ * authoritative: neither the topology nor a project change drops one, since a
+ * dropped `except` name would widen the rule. Without names (a legacy grant),
+ * the names of its items.
+ */
+export const envNamesOf = (world: World, rule: Pick<Rule, 'envs'>): string[] =>
+  rule.envs.names === undefined ? namesOfItems(world, rule.envs.items) : [...rule.envs.names].sort();
+
+/**
+ * The rule after an environment chip tap or mode switch. A tap adds or
+ * removes exactly the names of the items it moved; a mode switch starts the
+ * list afresh, as for items, so an `except` name never becomes an `only` one.
+ */
+export function pickEnvs(world: World, rule: Rule, next: Axis<EnvItem>): Rule {
+  if (next.mode !== rule.envs.mode) return { ...rule, envs: { mode: next.mode, items: next.items, names: namesOfItems(world, next.items) } };
+  const before = namesOfItems(world, rule.envs.items);
+  const after = namesOfItems(world, next.items);
+  const names = new Set([...envNamesOf(world, rule).filter((n) => !before.includes(n) || after.includes(n)), ...after]);
+  return { ...rule, envs: { mode: next.mode, items: next.items, names: [...names].sort() } };
+}
+
+/** A rule's own names no environment of its projects carries now: shown, since no chip picks them. */
+export function unmatchedEnvNames(world: World, rule: Pick<Rule, 'projects' | 'envs'>): string[] {
+  const covered = projectsOf(world, rule).flatMap((p) => projectById(world, p)?.envs ?? []);
+  return (rule.envs.names ?? []).filter((name) => !covered.some((e) => e.name === name));
+}
+
+/**
+ * A rule's environment items re-bound to its names over the projects it
+ * covers, so adding a project picks up its same-named environments (D3).
+ */
+export function bindEnvNames(world: World, rule: Rule): Rule {
+  const names = envNamesOf(world, rule);
+  const items = projectsOf(world, rule).flatMap((project) => (envIdsNamed(world, project, names) ?? []).map((environment) => ({ project, environment })));
+  return { ...rule, envs: { mode: rule.envs.mode, items, names } };
 }
 
 /**
@@ -594,7 +729,7 @@ const folderNames = (rule: Rule): string[] => [...new Set(rule.keys.items.filter
 export const everyProject = (projects: readonly string[], folders: readonly string[]): FolderItem[] =>
   projects.flatMap((project) => folders.map((folder) => ({ project, folder })));
 
-/** Environments of these projects by name: same-named environments are picked together (D3), stored by id. */
+/** Environments of these projects by name: same-named environments are picked together and stored by name (D3). */
 export function envChoices(world: World, projects: readonly string[]): { name: string; items: EnvItem[]; protected: boolean }[] {
   const out = new Map<string, { name: string; items: EnvItem[]; protected: boolean }>();
   for (const project of projects) {
@@ -637,16 +772,25 @@ export function keyChoices(world: World, projects: readonly string[], rule: Pick
  * (owner decision R2, #1446).
  */
 export function createBody(rule: Rule, id: PermId, orgProjects: readonly string[] = []) {
+  // Names alone select the environments (#1447); a rule without them sends its
+  // items, whose names the server takes. Every environment is sent as no
+  // names, so the server does not take this page for an old client.
+  const names = rule.envs.names ?? (rule.envs.mode === 'all' && rule.envs.items.length === 0 ? [] : undefined);
+  const environments =
+    names === undefined
+      ? { mode: rule.envs.mode, items: rule.envs.items.map((e) => ({ project: e.project, environment: e.environment })) }
+      : { mode: rule.envs.mode, names: [...names], items: [] };
   if (rule.projects === '*') {
     if (orgProjects.length === 0) throw new Error("a rule over all projects lists the organisation's projects");
-    if (rule.envs.items.length > 0 || rule.keys.items.some((k) => !isFolder(k))) throw new Error('a rule over all projects narrows keys by folder only');
+    if (rule.keys.items.some((k) => !isFolder(k))) throw new Error('a rule over all projects narrows keys by folder only');
+    if (rule.envs.names === undefined && rule.envs.items.length > 0) throw new Error('a rule over all projects selects environments by name');
     return {
       principal: rule.member,
       capability: id,
       where: {
         project_mode: 'all' as const,
         projects: [...orgProjects],
-        environments: { mode: 'all' as const, items: [] },
+        environments,
         keys: { mode: rule.keys.mode, items: everyProject(orgProjects, folderNames(rule)) },
       },
     };
@@ -656,7 +800,7 @@ export function createBody(rule: Rule, id: PermId, orgProjects: readonly string[
     capability: id,
     where: {
       projects: [...rule.projects],
-      environments: { mode: rule.envs.mode, items: rule.envs.items.map((e) => ({ project: e.project, environment: e.environment })) },
+      environments,
       keys: { mode: rule.keys.mode, items: rule.keys.items.map((k) => (isFolder(k) ? { project: k.project, folder: k.folder } : { project: k.project, key: k.key })) },
     },
   };

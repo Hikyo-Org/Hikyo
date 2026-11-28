@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -513,7 +514,7 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 		// A throwaway environment in an only-list and an except-list.
 		_, _, envs := services(t, db)
-		env, err := envs.Create(t.Context(), service.LocalPrincipal(alice), project, "tmp", nil)
+		env, err := envs.CreateConfirming(t.Context(), service.LocalPrincipal(alice), project, "tmp", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -522,26 +523,38 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		onlyEnv := f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapRead, Org: orgA, Where: whereIn(mode, only, domain.AxisAll)})
 		exceptEnv := f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapReveal, Org: orgA,
 			Where: whereIn(domain.AxisAll, map[domain.ProjectID][]domain.EnvID{prjA1: {envID}}, domain.AxisAll)})
-		if err := envs.Delete(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, prjA1, envID)); err != nil {
+		// The except-list rule would reach the whole project once tmp is gone:
+		// the delete fails closed until that gain is confirmed (2026-11-27).
+		var widening *service.EnvWideningError
+		if err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, prjA1, envID), nil); !errors.As(err, &widening) || widening.Count != 1 {
+			t.Fatalf("unconfirmed delete env: %v, want a widening refusal for one principal", err)
+		}
+		// Only a member manager may confirm it.
+		execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm_tmp', 'usr_alice', 'manage-members', 'org_a', NULL, NULL, "+ts+")")
+		seedOrigins(t, db)
+		if err := envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, prjA1, envID), []domain.PrincipalID{gina}); err != nil {
 			t.Fatalf("delete env: %v", err)
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE id = '"+onlyEnv+"'"); n != 0 {
-			t.Fatal("a rule whose only environment was deleted survived")
+		// Rules name environments (D3, #1447): deleting one touches no rule,
+		// and an only list keeps its name, reaching nothing until an
+		// environment of that name is created again (confirmed as a widening).
+		for _, id := range []string{onlyEnv, exceptEnv} {
+			if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE id = '"+id+"'"); n != 1 {
+				t.Fatalf("rule %s naming the deleted environment was removed", id)
+			}
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE id = '"+exceptEnv+"'"); n != 1 {
-			t.Fatal("a rule that merely excepted the deleted environment was removed")
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.revoked' AND object_id = '"+onlyKey+"' AND payload LIKE '%\"cause\":\"emptied-by-deletion\"%'"); n != 1 {
+			t.Fatalf("rule.revoked for the emptied key rule recorded %d times, want 1 with cause emptied-by-deletion", n)
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.revoked'"); n < 3 {
-			t.Fatalf("rule.revoked recorded %d times, want the revoke and both emptied rules", n)
-		}
-		// No item references anything that no longer exists.
+		// No item references a key that no longer exists (environments are
+		// named, not referenced, since #1447).
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM rule_items i WHERE
-			(i.env_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM environments e WHERE e.id = i.env_id)) OR
-			(i.key_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM keys k WHERE k.id = i.key_id))`); n != 0 {
+			i.key_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM keys k WHERE k.id = i.key_id)`); n != 0 {
 			t.Fatalf("%d rule items reference deleted objects", n)
 		}
-		// Leave gina rule-less for the query-count checks below.
-		for _, id := range []string{exceptKey, exceptEnv} {
+		// Leave gina only the read rule frank delegated, for the query-count
+		// checks below.
+		for _, id := range []string{exceptKey, onlyEnv, exceptEnv} {
 			if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, id); err != nil {
 				t.Fatal(err)
 			}
@@ -549,28 +562,52 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 	})
 
 	t.Run("query_counts", func(t *testing.T) {
-		// A grant-less principal authorized by a rule costs one read more than
-		// a grant-authorized one: chain + grants + rules.
-		if n, err := countedAuthorize(t, db, carol, dev); err != nil || n != 3 {
-			t.Fatalf("rule-authorized env read: %d queries, err %v; want 3", n, err)
+		// A grant-less principal authorized by a rule costs two reads more
+		// than a grant-authorized one: chain + grants + rules + the checked
+		// project's environment names the rules bind to (D3, #1447; no cache).
+		if n, err := countedAuthorize(t, db, carol, dev); err != nil || n != 4 {
+			t.Fatalf("rule-authorized env read: %d queries, err %v; want 4", n, err)
 		}
-		// A key-aware denial costs chain + grants + rules + key, whether the
-		// key exists or not.
-		for _, key := range []string{"DB_PASSWORD", "NO_SUCH_KEY"} {
-			n, err := countedAuthorizeKey(t, db, gina, dev, authz.KeyByName(key))
-			if !errors.Is(err, domain.ErrNotFound) || n != 4 {
-				t.Fatalf("key-aware denial on %s: %d queries, err %v; want 4 and not found", key, n, err)
+		// A key-aware denial costs chain + grants + rules + environment
+		// names (gina's delegated read rule binds) + key, whether the key
+		// exists or not. The names are the checked project's environments,
+		// never the org's: a publish checks every changed key, so an org-wide
+		// read would cost keys x org environments (#1447).
+		want, err := countedAuthorizeKey(t, db, gina, dev, authz.KeyByName("DB_PASSWORD"))
+		if !errors.Is(err, domain.ErrNotFound) || len(want) != 5 || !slices.Contains(want, "ListRuleEnvRefsInProject") || slices.Contains(want, "ListRuleEnvRefsInOrg") {
+			t.Fatalf("key-aware denial: statements %v, err %v; want 5 reading one project's environments, not found", want, err)
+		}
+		// A missing key, and a missing project (the decoy), issue the same
+		// statements.
+		missing := scopeEnv(orgA, "prj_missing", "env_missing")
+		for name, c := range map[string]struct {
+			scope domain.Scope
+			key   string
+		}{"missing key": {dev, "NO_SUCH_KEY"}, "missing project": {missing, "DB_PASSWORD"}} {
+			got, err := countedAuthorizeKey(t, db, gina, c.scope, authz.KeyByName(c.key))
+			if !errors.Is(err, domain.ErrNotFound) || !slices.Equal(got, want) {
+				t.Fatalf("key-aware denial, %s: statements %v, err %v; want %v and not found", name, got, err, want)
 			}
+		}
+		// A machine holding a rule (mchA1's edit rule) binds within the
+		// project too, and a missing project issues the same statements.
+		machine, err := countedAuthorizeKey(t, db, mchA1, dev, authz.KeyByName("DB_PASSWORD"), domain.ClassAutomation)
+		if !errors.Is(err, domain.ErrNotFound) || !slices.Contains(machine, "ListRuleEnvRefsInProject") || slices.Contains(machine, "ListRuleEnvRefsInOrg") {
+			t.Fatalf("machine key-aware denial: statements %v, err %v; want one project's environments, not found", machine, err)
+		}
+		if got, err := countedAuthorizeKey(t, db, mchA1, missing, authz.KeyByName("DB_PASSWORD"), domain.ClassAutomation); !errors.Is(err, domain.ErrNotFound) || !slices.Equal(got, machine) {
+			t.Fatalf("machine key-aware denial, missing project: statements %v, err %v; want %v and not found", got, err, machine)
 		}
 	})
 }
 
 // countedAuthorizeKey is countedAuthorize for the key-aware entry point, on
 // value.reveal.
-func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget, classes ...domain.PrincipalClass) (int, error) {
+func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, key authz.KeyTarget, classes ...domain.PrincipalClass) ([]string, error) {
 	t.Helper()
 	ctx := t.Context()
 	count := 0
+	var names []string
 	tok := authz.NewTxToken()
 	defer tok.Invalidate()
 	var r *authn.Resolver
@@ -580,7 +617,7 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 			t.Fatal(err)
 		}
 		defer func() { _ = pgtx.Rollback(ctx) }()
-		var dbtx pggen.DBTX = countingPGTx{tx: pgtx, n: &count}
+		var dbtx pggen.DBTX = countingPGTx{tx: pgtx, n: &count, names: &names}
 		r = authn.NewPG(dbtx)
 	} else {
 		sqtx, err := db.SQLiteRead().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -588,7 +625,7 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 			t.Fatal(err)
 		}
 		defer func() { _ = sqtx.Rollback() }()
-		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count}
+		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count, names: &names}
 		r = authn.NewSQLite(dbtx)
 	}
 	caller := authz.Identity{Principal: principal}
@@ -596,7 +633,7 @@ func countedAuthorizeKey(t *testing.T, db *store.DB, principal domain.PrincipalI
 		caller.Class = classes[0]
 	}
 	_, err := authz.NewTxAuthorizer(r, tok).AuthorizeKey(ctx, caller, authz.OpValueReveal, scope, key)
-	return count, err
+	return names, err
 }
 
 // runRuleAuditLifecycle drives every rule audit event once for the
@@ -633,6 +670,22 @@ func runRuleAuditLifecycle(t *testing.T, db *store.DB) {
 	if err := rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, created.ID); err != nil {
 		t.Fatal(err)
 	}
+	// An environment created under a name a rule selects widens that rule:
+	// the confirmation is audited (#1447).
+	named, err := rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), service.RuleSpec{
+		Target: grantee, Capability: domain.CapEdit, Org: orgA,
+		Where: domain.Where{Projects: []domain.ProjectID{prjA2}, EnvMode: domain.AxisOnly, EnvNames: []string{"audit-named"}, KeyMode: domain.AxisAll},
+	})
+	if err != nil {
+		t.Fatalf("rule naming the new environment: %v", err)
+	}
+	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
+	if _, err := envs.CreateConfirming(t.Context(), service.LocalPrincipal(alice), project, "audit-named", nil, []domain.PrincipalID{grantee}); err != nil {
+		t.Fatalf("confirmed create: %v", err)
+	}
+	if err := rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, named.ID); err != nil {
+		t.Fatalf("revoking the named rule: %v", err)
+	}
 }
 
 // grantCustodianMemberManagement gives the custodian legacy manage-members on
@@ -647,4 +700,64 @@ func revokeCustodianMemberManagement(t *testing.T, db *store.DB) {
 	t.Helper()
 	execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_cu_mm_tmp'")
 	execRaw(t, db, "DELETE FROM grants WHERE id = 'g_cu_mm_tmp'")
+}
+
+// A census rule is bound to its project's environments alone, so it must
+// reach nothing in another project (#1447): bound against prj_a1, an `all
+// except prod` rule knows no environment of prj_a2, and unconfined it would
+// reach prj_a2's prod, which it excepts.
+func TestRuleCensusIsConfinedToItsProject(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		const otherProd = domain.EnvID("env_a2prod")
+		execRaw(t, db, "INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('"+string(otherProd)+"', 'org_a', 'prj_a2', 'prod', '', "+ts+", 1)")
+		w := domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisAll, EnvNames: []string{"prod"}, KeyMode: domain.AxisAll}
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapRead, Org: orgA, Where: w})
+
+		ctx := t.Context()
+		var r *authn.Resolver
+		if db.Engine() == store.EnginePostgres {
+			pgtx, err := db.PG().BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = pgtx.Rollback(ctx) }()
+			r = authn.NewPG(pgtx)
+		} else {
+			sqtx, err := db.SQLiteRead().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = sqtx.Rollback() }()
+			r = authn.NewSQLite(sqtx)
+		}
+		census, err := r.RulesForProject(ctx, string(orgA), string(prjA1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rule *domain.Rule
+		for i := range census {
+			if census[i].Rule.Principal == frank {
+				rule = &census[i].Rule
+			}
+		}
+		if rule == nil {
+			t.Fatalf("frank's rule is missing from the census %+v", census)
+		}
+		reaches := func(project domain.ProjectID, env domain.EnvID) bool {
+			return rule.Reaches(domain.CapRead, domain.LevelEnv, domain.Scope{Org: orgA, Project: project, Env: env}, nil)
+		}
+		// Control: within its project the rule reaches dev and excepts prod.
+		if !reaches(prjA1, envA1) || reaches(prjA1, envProd) {
+			t.Fatalf("in prj_a1: dev %v, prod %v; want true, false", reaches(prjA1, envA1), reaches(prjA1, envProd))
+		}
+		for _, env := range []domain.EnvID{envA2, otherProd} {
+			if reaches(prjA2, env) {
+				t.Fatalf("a census rule bound in prj_a1 reaches %s in prj_a2", env)
+			}
+		}
+		if rule.Reaches(domain.CapRead, domain.LevelProject, domain.Scope{Org: orgA, Project: prjA2}, nil) {
+			t.Fatal("a census rule bound in prj_a1 reaches prj_a2 itself")
+		}
+	})
 }

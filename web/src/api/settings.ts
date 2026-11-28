@@ -33,6 +33,7 @@ import {
   setOrgRetentionOp,
   setProjectRetentionOp,
 } from '@hikyo/operations';
+import { wideningEnvironment, withWideningReauth } from './rules.ts';
 import {
   zEnvironmentList,
   zEnvironmentSettings,
@@ -588,12 +589,20 @@ export function environmentTopologyMutationKey(org: string, project: string) {
   return ['environment-topology', org, project] as const;
 }
 
+/**
+ * `confirm_widening` for an environment create, rename or clone that gives
+ * principals access through rules selecting environments by name (#1447),
+ * omitted when nothing is confirmed.
+ */
+const confirming = (principals: readonly string[] | undefined) =>
+  principals === undefined || principals.length === 0 ? {} : { confirm_widening: [...principals] };
+
 export function useCreateEnvironment(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
     mutationKey: environmentTopologyMutationKey(org, project),
-    mutationFn: (input: { name: string }) =>
-      parsed(createEnvironmentOp, { path: { org, project }, body: { name: input.name } }),
+    mutationFn: (input: { name: string; confirmWidening?: readonly string[] }) =>
+      parsed(createEnvironmentOp, { path: { org, project }, body: { name: input.name, ...confirming(input.confirmWidening) } }),
     onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
   });
 }
@@ -613,21 +622,62 @@ function invalidateEnvironmentTopology(
   );
 }
 
-/** Rename one environment and refresh every project view keyed by its topology. */
+/**
+ * A rename the server refused until the caller reauthenticates, whose passkey
+ * ceremony over `environment` did not complete. The rename was not resent, so
+ * nothing was renamed.
+ */
+export class RenameReauthFailure extends Error {
+  override readonly cause: unknown;
+
+  constructor(
+    readonly environment: string,
+    cause: unknown,
+  ) {
+    super(`reauthentication over ${environment} did not complete`, { cause });
+    this.name = 'RenameReauthFailure';
+    this.cause = cause;
+  }
+}
+
+/**
+ * Send a rename, running one passkey ceremony per environment the server
+ * asks to reauthenticate over. A ceremony that does not complete throws
+ * RenameReauthFailure, so its error is never read as the rename's own.
+ */
+export function renameWithReauth<T>(send: () => Promise<T>): Promise<T> {
+  return withWideningReauth(renameEnvironmentOp, send, (environment, error) => new RenameReauthFailure(environment, error));
+}
+
+/**
+ * Rename one environment and refresh every project view keyed by its
+ * topology. A confirmed rename that gives a machine plaintext access through
+ * its rules is refused once per such environment until the caller
+ * reauthenticates over it (#1447); each takes one passkey ceremony and the
+ * same rename is sent again. A second refusal over the same environment is
+ * thrown as the server's own 409.
+ */
 export function useRenameEnvironment(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
     mutationKey: environmentTopologyMutationKey(org, project),
-    mutationFn: (input: { environment: string; name: string }) =>
-      parsed(renameEnvironmentOp, {
-        path: { org, project, environment: input.environment },
-        body: { name: input.name },
-      }),
+    mutationFn: (input: { environment: string; name: string; confirmWidening?: readonly string[] }) =>
+      renameWithReauth(() =>
+        parsed(renameEnvironmentOp, {
+          path: { org, project, environment: input.environment },
+          body: { name: input.name, ...confirming(input.confirmWidening) },
+        }),
+      ),
     onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
   });
 }
 
-/** Delete one environment and refresh every cache for the topology it removes. */
+/**
+ * Delete one environment and refresh every cache for the topology it removes.
+ * Deleting the last environment an `all` rule excepts widens that rule to the
+ * project (#1447), so the server refuses it until the gainers are confirmed. A delete reveals no
+ * plaintext that was hidden before, so it needs no reauthentication.
+ */
 export function useDeleteEnvironment(
   org: string,
   project: string,
@@ -636,8 +686,11 @@ export function useDeleteEnvironment(
   const queries = useQueryClient();
   return useMutation({
     mutationKey: environmentTopologyMutationKey(org, project),
-    mutationFn: (input: { environment: string }) =>
-      ok(deleteEnvironmentOp, { path: { org, project, environment: input.environment } }),
+    mutationFn: ({ environment, confirmWidening = [] }: { environment: string; confirmWidening?: readonly string[] }) =>
+      ok(deleteEnvironmentOp, {
+        path: { org, project, environment },
+        ...(confirmWidening.length === 0 ? {} : { query: { confirm_widening: [...confirmWidening] } }),
+      }),
     // Announce only once the list no longer holds the deleted environment:
     // "Environment X deleted." must not be readable beside a row still naming
     // X, and a reader acting on that notice would be acting on a stale list.
@@ -671,10 +724,10 @@ export function useCloneEnvironment(org: string, project: string) {
   const queries = useQueryClient();
   return useMutation({
     mutationKey: environmentTopologyMutationKey(org, project),
-    mutationFn: (input: { sourceEnvironment: string; name: string }) =>
+    mutationFn: (input: { sourceEnvironment: string; name: string; confirmWidening?: readonly string[] }) =>
       parsed(cloneEnvironmentOp, {
         path: { org, project },
-        body: { source_environment_id: input.sourceEnvironment, name: input.name },
+        body: { source_environment_id: input.sourceEnvironment, name: input.name, ...confirming(input.confirmWidening) },
       }),
     onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
   });
@@ -716,7 +769,16 @@ type EnvironmentLifecycleRefusal = {
   readonly invalid: string;
   readonly conflict: string;
   readonly uncertain: string;
+  /**
+   * A create or clone whose new environment a machine's rules make
+   * plaintext-reachable (#1447): the reauthentication it needs is over an
+   * environment that does not exist yet, so no ceremony can satisfy it.
+   */
+  readonly reauth?: { readonly operation: object; readonly text: string };
 };
+
+const NEW_ENVIRONMENT_REAUTH =
+  'A machine gains access to secrets in the new environment through its access rules, which needs you to confirm it is you over that environment, and it does not exist yet. Create it under a name that no access rule lists in its only list, then rename it to this one.';
 
 function environmentLifecycleRefusalText(
   error: unknown,
@@ -729,7 +791,10 @@ function environmentLifecycleRefusalText(
       401: commonRefusalText.sessionEnded,
       403: environmentLifecyclePermission(refusal.action),
       404: environmentLifecyclePermission(refusal.action),
-      409: (error) => error.detail ?? refusal.conflict,
+      409: (error) =>
+        refusal.reauth !== undefined && wideningEnvironment(error, refusal.reauth.operation) !== undefined
+          ? refusal.reauth.text
+          : (error.detail ?? refusal.conflict),
       429: commonRefusalText.attempts,
     },
     refusal.uncertain,
@@ -745,13 +810,23 @@ export function createEnvironmentRefusalText(error: unknown): string {
     action: 'create an environment here',
     invalid: 'The environment name is invalid.',
     conflict: 'This environment name is already in use.',
+    reauth: { operation: createEnvironmentOp, text: NEW_ENVIRONMENT_REAUTH },
     uncertain:
       'The server failed; whether the environment was created is unknown: reload to check.',
   });
 }
 
-/** Refusal text for environment rename, including uncertain network outcomes. */
+/**
+ * Refusal text for environment rename, including uncertain network outcomes.
+ * A reauthentication that did not complete is certain: the server refused the
+ * rename before the ceremony, and it was not resent.
+ */
 export function renameEnvironmentRefusalText(error: unknown): string {
+  if (error instanceof RenameReauthFailure) {
+    return error.cause instanceof Error && error.cause.name === 'NotAllowedError'
+      ? 'The passkey prompt was dismissed or timed out. The environment was not renamed.'
+      : 'The passkey reauthentication could not be completed. The environment was not renamed.';
+  }
   return environmentLifecycleRefusalText(error, {
     action: 'rename this environment',
     invalid: 'The environment name is invalid.',
@@ -788,6 +863,7 @@ export function cloneEnvironmentRefusalText(error: unknown): string {
     action: 'clone this environment',
     invalid: 'The cloned environment name or source is invalid.',
     conflict: 'The clone conflicts with the current environment state.',
+    reauth: { operation: cloneEnvironmentOp, text: NEW_ENVIRONMENT_REAUTH },
     uncertain:
       'The server failed; whether the environment was cloned is unknown: reload to check.',
   });

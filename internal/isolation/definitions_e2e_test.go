@@ -163,7 +163,7 @@ func definitionsPins(t *testing.T, db *store.DB) {
 		f := seedDefinitionsProject(t, db, "pintopology", true)
 		svc := definitionsService(t, db)
 		plan := planDefinitions(t, svc, f, exportDefinitions(t, svc, f))
-		if _, err := cloneSvc(t, db).Create(t.Context(), service.LocalPrincipal(alice), f.scope(), "created-later", nil); err != nil {
+		if _, err := cloneSvc(t, db).CreateConfirming(t.Context(), service.LocalPrincipal(alice), f.scope(), "created-later", nil, nil); err != nil {
 			t.Fatal(err)
 		}
 		before := captureDefinitionsState(t, db, f.project)
@@ -270,22 +270,24 @@ func definitionsGitMode(t *testing.T, db *store.DB) {
 		}},
 		{"group delete", func() error { return groups.Delete(t.Context(), service.LocalPrincipal(alice), f.scope(), f.group) }},
 		{"environment create", func() error {
-			_, err := envs.Create(t.Context(), service.LocalPrincipal(alice), f.scope(), "new-env", nil)
+			_, err := envs.CreateConfirming(t.Context(), service.LocalPrincipal(alice), f.scope(), "new-env", nil, nil)
 			return err
 		}},
 		{"environment clone", func() error {
-			_, _, err := envs.Clone(t.Context(), service.LocalPrincipal(alice), f.scope(), "clone-env", f.env, nil)
+			_, _, err := envs.CloneConfirming(t.Context(), service.LocalPrincipal(alice), f.scope(), "clone-env", f.env, nil, nil)
 			return err
 		}},
 		{"environment rename", func() error {
-			_, err := envs.Rename(t.Context(), service.LocalPrincipal(alice), f.envScope(), "renamed-env", nil)
+			_, err := envs.RenameConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), "renamed-env", nil, nil)
 			return err
 		}},
 		{"environment reorder", func() error {
 			_, err := envs.Reorder(t.Context(), service.LocalPrincipal(alice), f.scope(), []string{f.env})
 			return err
 		}},
-		{"environment delete", func() error { return envs.Delete(t.Context(), service.LocalPrincipal(alice), f.envScope()) }},
+		{"environment delete", func() error {
+			return envs.DeleteConfirming(t.Context(), service.LocalPrincipal(alice), f.envScope(), nil)
+		}},
 		{"folder create", func() error {
 			_, err := folders.Create(t.Context(), service.LocalPrincipal(alice), f.scope(), "new/path", nil)
 			return err
@@ -824,7 +826,7 @@ func TestDefinitionsProjectDeletion(t *testing.T) {
 						t.Fatalf("nonempty project deletion = %v, want conflict", err)
 					}
 					envID := queryString(t, db, "SELECT id FROM environments WHERE project_id = '"+string(f.project)+"'")
-					if err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Delete(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, f.project, domain.EnvID(envID))); err != nil {
+					if err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).DeleteConfirming(t.Context(), service.LocalPrincipal(alice), scopeEnv(orgA, f.project, domain.EnvID(envID)), nil); err != nil {
 						t.Fatal(err)
 					}
 				}

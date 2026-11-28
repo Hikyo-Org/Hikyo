@@ -64,13 +64,29 @@ func assertBeforeAllProjectsReads(t *testing.T, r *authn.Resolver) {
 	ctx := t.Context()
 	rules, err := r.Rules(ctx, "usr_hist")
 	wantRule(t, "rules", "rul_hist", rules, err)
-	rules, err = r.RulesForProject(ctx, "org_hist", "prj_hist")
+	rules, err = peopleInCensus(r.RulesForProject(ctx, "org_hist", "prj_hist"))
 	wantRule(t, "project census", "rul_hist", rules, err)
 	rules, err = r.MachineRules(ctx, "mch_hist")
 	wantRule(t, "machine rules", "rul_mhist", rules, err)
 	if machine, err := r.MachineRules(ctx, "usr_hist"); err != nil || len(machine) != 0 {
 		t.Fatalf("historical machine rules for a person: %+v, %v", machine, err)
 	}
+}
+
+// peopleInCensus is a project census without its machine rules.
+func peopleInCensus(census []authn.CensusRule, err error) ([]domain.Rule, error) {
+	return people(census), err
+}
+
+// people is the census's person rules.
+func people(census []authn.CensusRule) []domain.Rule {
+	var rules []domain.Rule
+	for _, c := range census {
+		if !c.Machine {
+			rules = append(rules, c.Rule)
+		}
+	}
+	return rules
 }
 
 func wantRule(t *testing.T, what, id string, rules []domain.Rule, err error) {
@@ -84,10 +100,12 @@ func wantRule(t *testing.T, what, id string, rules []domain.Rule, err error) {
 	}
 }
 
-// The other side of the 98/99 boundary: bound to source schema 99 (the schema
-// that adds rules.project_mode), the historical recovery resolver reads exactly
-// what the ordinary resolver reads, including an all-projects rule, which must
-// stay all-projects rather than be mapped to 'only'.
+// The other side of the recovery boundaries: bound to the current source
+// schema (102, which names rule environments, #1447; 99 added
+// rules.project_mode), the historical recovery resolver reads exactly what the
+// ordinary resolver reads, including an all-projects rule, which must stay
+// all-projects rather than be mapped to 'only'. A schema-99 archive is read in
+// TestRuleEnvNamesMigration*, whose fixture still holds environment ids.
 func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
@@ -98,41 +116,59 @@ func TestHistoricalRecoveryAtAllProjectsSchemaReadsAsCurrent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create all-projects rule: %v", err)
 		}
-		if _, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), service.RuleSpec{Target: apHolder, Capability: domain.CapEdit, Org: orgAP,
-			Where: domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}}); err != nil {
+		// A named selector: both readers dropping stored names would still agree.
+		named, err := f.rules.Create(ctx, service.LocalPrincipal(apAdmin), service.RuleSpec{Target: apHolder, Capability: domain.CapEdit, Org: orgAP,
+			Where: domain.Where{Projects: []domain.ProjectID{p1}, EnvMode: domain.AxisOnly, EnvNames: []string{"qa"}, KeyMode: domain.AxisAll}})
+		if err != nil {
 			t.Fatalf("create project-bound rule: %v", err)
 		}
 		execRaw(t, db, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at) VALUES ('rul_hist_mch', 'mch_ap', 'read', 'org_ap', 'only', 'all', 'all', 'usr_apadmin', "+ts+")")
 		execRaw(t, db, "INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('rit_hist_mch', 'rul_hist_mch', 'org_ap', 'project', '"+string(p1)+"')")
 
-		current, historical := authn.NewSQLite(db.SQLiteRead()), authn.NewHistoricalRecoverySQLite(db.SQLiteRead(), 99)
+		current, historical := authn.NewSQLite(db.SQLiteRead()), authn.NewHistoricalRecoverySQLite(db.SQLiteRead(), 102)
 		if db.Engine() == store.EnginePostgres {
-			current, historical = authn.NewPG(db.PG()), authn.NewHistoricalRecoveryPG(db.PG(), 99)
+			current, historical = authn.NewPG(db.PG()), authn.NewHistoricalRecoveryPG(db.PG(), 102)
 		}
 		same := func(what string, read func(*authn.Resolver) ([]domain.Rule, error), wantLen int) []domain.Rule {
 			t.Helper()
 			got, err := read(historical)
 			if err != nil {
-				t.Fatalf("historical %s at schema 99: %v", what, err)
+				t.Fatalf("historical %s at schema 102: %v", what, err)
 			}
 			want, err := read(current)
 			if err != nil {
 				t.Fatalf("current %s: %v", what, err)
 			}
 			if len(want) != wantLen || !reflectx.Equal(got, want) {
-				t.Fatalf("%s at schema 99 = %+v, want the current resolver's %d rules %+v", what, got, wantLen, want)
+				t.Fatalf("%s at schema 102 = %+v, want the current resolver's %d rules %+v", what, got, wantLen, want)
 			}
 			return got
 		}
 		human := same("rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.Rules(ctx, apHolder) }, 2)
-		census := same("project census", func(r *authn.Resolver) ([]domain.Rule, error) {
-			return r.RulesForProject(ctx, string(orgAP), string(p1))
-		}, 2)
+		// The whole census, machines included: a projection could hide a
+		// machine rule only one of the two resolvers returns.
+		gotCensus, err := historical.RulesForProject(ctx, string(orgAP), string(p1))
+		if err != nil {
+			t.Fatalf("historical project census at schema 102: %v", err)
+		}
+		wantCensus, err := current.RulesForProject(ctx, string(orgAP), string(p1))
+		if err != nil {
+			t.Fatalf("current project census: %v", err)
+		}
+		if len(wantCensus) != 3 || !reflectx.Equal(gotCensus, wantCensus) ||
+			!slices.ContainsFunc(gotCensus, func(c authn.CensusRule) bool { return c.Machine && c.Rule.ID == "rul_hist_mch" }) {
+			t.Fatalf("project census at schema 102 = %+v, want the current resolver's 3 rules with machine rul_hist_mch %+v", gotCensus, wantCensus)
+		}
+		census := people(gotCensus)
 		same("machine rules", func(r *authn.Resolver) ([]domain.Rule, error) { return r.MachineRules(ctx, "mch_ap") }, 1)
 		for what, rules := range map[string][]domain.Rule{"rules": human, "project census": census} {
 			i := slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == all.ID })
 			if i < 0 || !rules[i].Where.AllProjects || len(rules[i].Where.Keys[domain.AnyProject]) != 1 {
-				t.Fatalf("%s at schema 99: all-projects rule %s read as %+v, want all projects with its folder", what, all.ID, rules)
+				t.Fatalf("%s at schema 102: all-projects rule %s read as %+v, want all projects with its folder", what, all.ID, rules)
+			}
+			i = slices.IndexFunc(rules, func(r domain.Rule) bool { return r.ID == named.ID })
+			if i < 0 || rules[i].Where.EnvMode != domain.AxisOnly || !slices.Equal(rules[i].Where.EnvNames, []string{"qa"}) {
+				t.Fatalf("%s at schema 102: named rule %s read as %+v, want only qa", what, named.ID, rules)
 			}
 		}
 	})

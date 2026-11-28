@@ -615,24 +615,31 @@ capability for one person; every verb is human-session only and needs
   `GET /orgs/{org}/projects/{project}/rules` (`rule.list-project`,
   `manage-members@project`): the project listing reads and returns only that
   project's part of each rule and marks one that names other projects with
-  `other_projects`. Environments and keys are ids, folders paths.
+  `other_projects`. Environments are selected by name (#1447, revision 22):
+  `environments.names`, with `items` the environment ids those names match
+  now in each listed project. Keys are ids, folders paths. A rule the
+  upgrade to names disabled carries `fault`, why.
 - `POST /orgs/{org}/rules` (`rule.create`) with
-  `{principal, capability, where: {projects[], environments: {mode, items[{project, environment}]}, keys: {mode, items[{project, folder} | {project, key}]}}}`;
+  `{principal, capability, where: {projects[], environments: {mode, names[]?, items[{project, environment}]}, keys: {mode, items[{project, folder} | {project, key}]}}}`;
   `mode` is `all` (items are exceptions) or `only` (items are the list).
+  `names` (revision 22) may come with `items` empty; a create without it
+  names environments by `items`, whose names become the rule's.
 - `DELETE /orgs/{org}/rules/{rule}` (`rule.revoke`). There is no PATCH: an
   edit is a revoke plus a create.
-- A key folder move that gives people access through their rules answers
+- A key folder move, or an environment create, clone, rename or delete
+  (#1447), that gives principals access through their rules answers
   `409 conflict` with `error.widening = {count, gainers?}`; `gainers`
   (principal, capability, environments) is present only for a caller holding
   `manage-members` on the project. `confirm_widening: [principal ids]` on the
-  key metadata update and on definitions apply confirms it and must name
-  exactly that set.
+  key metadata update, the environment create, clone and rename, and
+  definitions apply confirms it and must name exactly that set; the
+  environment DELETE takes it as the `confirm_widening` query parameter.
 
 ### Verbs and flags
 
 - `access rule list [--org O] [--project P]`: the org's rules, or the rules
   naming the resolved project.
-- `access rule add --principal ID --capability C [--in-project P... | --all-projects] [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
+- `access rule add --principal ID --capability C [--in-project P... | --all-projects] [--only-env E | --except-env E | --only-env-name N | --except-env-name N]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
   `--org/--project/--env` stay the shared scope flags, so the rule's axes take
   distinct names. `--in-project` is repeatable and defaults to the resolved
   project. An environment or key id is qualified `PROJECT:ID` when the rule
@@ -641,7 +648,14 @@ capability for one person; every verb is human-session only and needs
   `--all-projects` (#1446) covers every project of the org, including later
   ones: the CLI lists the org's projects and sends exactly them with
   `where.project_mode: all`; a stale list is refused with a conflict. It takes
-  unqualified folders only, never `--in-project`, environments or keys.
+  unqualified folders only, never `--in-project`, environment ids or keys.
+- `--only-env-name` and `--except-env-name` (#1447, revision 22) select
+  environments by name in every project the rule covers, including later
+  ones, sent as `where.environments.names`. They do not mix with
+  `--only-env`/`--except-env`, whose ids the server turns into their names.
+  Against a server before revision 22 the CLI refuses them without sending.
+  `access rule list` shows names as `name:N`, and a rule the upgrade disabled
+  as `disabled: <reason>`.
 - `access rule remove <rule>`.
 - An all-projects rule (#1446) reads back with `where.project_mode: all` and
   `projects` listing the org's current projects (a project listing: that
@@ -649,9 +663,18 @@ capability for one person; every verb is human-session only and needs
   under each; `access rule list` shows it once as `all projects (now ...)`.
   A create sends the same shape: the org's current projects, folders repeated
   under each (owner decision R2).
-- `key update <key> --folder P --confirm-widening <principal>...` and
-  `definitions apply --plan ID --confirm-widening <principal>...` confirm a
-  widening move.
+- `key update <key> --folder P --confirm-widening <principal>...` confirms a
+  widening move. `definitions apply --plan ID --confirm-widening <principal>...`
+  confirms the plan's widening moves and its widening environment renames,
+  creates and deletes (#1447).
+- `env create --name N [--clone-from E] --confirm-widening <principal>...` and
+  `env rename <env> --name N --confirm-widening <principal>...` (#1447)
+  confirm an environment name that gives principals access through their
+  rules, sent as `confirm_widening`.
+- `env delete <env> --confirm-widening <principal>...` (#1447, owner decision
+  2026-11-27) confirms a delete that gives principals access through rules
+  that excepted the environment's name. Wire: it is sent as the
+  `confirm_widening` query parameter of the DELETE.
 
 ## Local repository and CI secret scanning ([secret-scanning.md](../adr/secret-scanning.md) and [api-cli-surface.md](../adr/api-cli-surface.md) amendments 2026-09-26, [#153](https://github.com/Hikyo-Org/Hikyo/issues/153))
 

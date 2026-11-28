@@ -89,7 +89,7 @@ func BenchmarkPublishSingleDraftLargeProject(b *testing.B) {
 		for i := 1; i < 5; i++ {
 			scope := f.scope
 			scope.Env = ""
-			env, err := (&Environments{DB: f.values.DB, Keyring: f.values.Keyring}).Create(b.Context(), f.actor, scope, fmt.Sprintf("environment-%d", i), nil)
+			env, err := (&Environments{DB: f.values.DB, Keyring: f.values.Keyring}).CreateConfirming(b.Context(), f.actor, scope, fmt.Sprintf("environment-%d", i), nil, nil)
 			if err != nil {
 				b.Fatal(err)
 			}

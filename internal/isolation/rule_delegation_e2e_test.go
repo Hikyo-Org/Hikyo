@@ -2,6 +2,8 @@ package isolation
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -107,6 +109,85 @@ func TestRuleDelegationRootFolderException(t *testing.T) {
 		}
 		if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(hank), service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: exceptRoot}); !errors.Is(err, service.ErrGrantorLacksCapability) {
 			t.Fatalf("root-only exception cannot widen held capability into db subtree: %v", err)
+		}
+	})
+}
+
+// An old client's create is refused while the target's rules except a name no
+// environment carries (#1447), but only rules the caller may manage count: a
+// folder-limited manager must not learn the exceptions of a rule outside its
+// folders from the refusal.
+func TestRuleHiddenExceptionsOnlyFromManageableRules(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		inDB := whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapManageMembers, Org: orgA, Where: inDB})
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapEdit, Org: orgA, Where: inDB})
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapPublish, Org: orgA, Where: inDB})
+		excepting := func(name, folder string) string {
+			t.Helper()
+			w := whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem(folder))
+			w.EnvNames = []string{name}
+			return f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: w})
+		}
+		excepting("ghost", "stripe")
+		// An all-projects rule is bound per project and counts the same way.
+		everywhere := allProjectsWhere(domain.AxisOnly, "stripe")
+		everywhere.EnvNames = []string{"phantom"}
+		f.create(t, orgAdmin, claimAll(t, db, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA, Where: everywhere}))
+		legacy := service.RuleSpec{Target: gina, Capability: domain.CapPublish, Org: orgA, Where: inDB}
+		// The stripe rule is outside frank's folders: it must not refuse, nor name.
+		if _, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), legacy); err != nil {
+			t.Fatalf("legacy create beside an unmanageable rule: %v", err)
+		}
+		// A rule frank manages still keeps its hidden exception, named.
+		spectre := excepting("spectre", "db")
+		legacy.Capability = domain.CapEdit
+		namesOnly := func(t *testing.T, err error) {
+			t.Helper()
+			if !errors.Is(err, service.ErrRuleUnmatchedNamesDropped) {
+				t.Fatalf("legacy create beside a manageable rule: %v, want the hidden exception kept", err)
+			}
+			var detailed interface{ SafeDetail() string }
+			if !errors.As(err, &detailed) || !strings.Contains(detailed.SafeDetail(), "spectre") ||
+				strings.Contains(detailed.SafeDetail(), "ghost") || strings.Contains(detailed.SafeDetail(), "phantom") {
+				t.Fatalf("refusal detail %v names the wrong exceptions", err)
+			}
+		}
+		_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), legacy)
+		namesOnly(t, err)
+		// Replacing the manageable rule by a legacy one is refused the same way.
+		_, err = f.rules.Replace(t.Context(), service.LocalPrincipal(frank), service.ReplaceRulesSpec{Org: orgA, Target: gina, Revoke: []string{spectre}, Create: []service.RuleSpec{legacy}})
+		namesOnly(t, err)
+	})
+}
+
+// An environment grant follows its id, so it never stands in for the name of
+// a future environment (#1447): a manager excepting prod by rule while holding
+// a grant on today's prod may delegate prod itself, but not every environment.
+func TestRuleDelegationAllEnvironmentsIgnoresEnvironmentGrants(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		exceptProd := whereIn(domain.AxisAll, nil, domain.AxisAll)
+		exceptProd.EnvNames = []string{"prod"}
+		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapManageMembers, Org: orgA, Where: exceptProd})
+		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_frank_mm_prod', '%s', 'manage-members', 'org_a', '%s', '%s', %s)", frank, prjA1, envProd, ts))
+		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_frank_read', '%s', 'read', 'org_a', '%s', NULL, %s)", frank, prjA1, ts))
+		seedOrigins(t, db)
+		delegate := func(w domain.Where) error {
+			_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), service.RuleSpec{Target: gina, Capability: domain.CapRead, Org: orgA, Where: w})
+			return err
+		}
+		onlyProd := whereIn(domain.AxisOnly, nil, domain.AxisAll)
+		onlyProd.EnvNames = []string{"prod"}
+		if err := delegate(onlyProd); err != nil {
+			t.Fatalf("delegating today's prod under the grant: %v", err)
+		}
+		if err := delegate(exceptProd); err != nil {
+			t.Fatalf("delegating the rule's own reach: %v", err)
+		}
+		if err := delegate(whereIn(domain.AxisAll, nil, domain.AxisAll)); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("delegating every environment = %v, want the uniform not found", err)
 		}
 	})
 }

@@ -104,7 +104,7 @@ func (a *TxAuthorizer) ResolveAccess(ctx context.Context, p Proof, pop AccessPop
 	if shape == domain.ShapeProject {
 		at = domain.LevelProject
 	}
-	q := accessQuestion{a: a, chain: chain, capability: capability, at: at, key: bound, visible: pop.Rules}
+	q := accessQuestion{a: a, chain: chain, capability: capability, at: at, key: bound, visible: pop.Rules, envs: &questionEnvs{}}
 	principals := slices.Clone(pop.Principals)
 	slices.Sort(principals)
 	principals = slices.Compact(principals)
@@ -129,6 +129,26 @@ type accessQuestion struct {
 	key        *domain.RuleKey
 	// visible is the rule ids the answer may name.
 	visible map[string]bool
+	// envs memoizes the chain project's environments for every probe of
+	// this one question, in its one transaction (#1447).
+	envs *questionEnvs
+}
+
+type questionEnvs struct {
+	refs []domain.EnvRef
+	read bool
+}
+
+func (q accessQuestion) envRefs(ctx context.Context) ([]domain.EnvRef, error) {
+	if q.envs.read {
+		return q.envs.refs, nil
+	}
+	refs, err := q.a.r.RuleEnvRefs(ctx, string(q.chain.Org), string(q.chain.Project))
+	if err != nil {
+		return nil, err
+	}
+	q.envs.refs, q.envs.read = refs, true
+	return refs, nil
 }
 
 // holds is the chokepoint's evaluation of the question's permission over
@@ -143,9 +163,18 @@ func (q accessQuestion) holds(ctx context.Context, capability domain.Capability,
 		}
 		return evaluateWithRules(Formula{{Cap: capability, At: at}}, q.chain, grants, rules, q.key), nil
 	}
+	// The selector names the question's environment by its name (#1447).
+	refs, err := q.envRefs(ctx)
+	if err != nil {
+		return false, err
+	}
+	name, ok := domain.EnvRefName(refs, q.chain.Project, q.chain.Env)
+	if !ok {
+		return false, nil
+	}
 	target := domain.Where{
 		Projects: []domain.ProjectID{q.chain.Project},
-		EnvMode:  domain.AxisOnly, Envs: map[domain.ProjectID][]domain.EnvID{q.chain.Project: {q.chain.Env}},
+		EnvMode:  domain.AxisOnly, EnvNames: []string{name},
 		KeyMode: domain.AxisAll,
 	}
 	if q.key != nil {
@@ -153,7 +182,11 @@ func (q accessQuestion) holds(ctx context.Context, capability domain.Capability,
 		target.Keys = map[domain.ProjectID][]domain.RuleKeyItem{q.chain.Project: {{KeyID: q.key.ID}}}
 	}
 	project := domain.Scope{Org: q.chain.Org, Project: q.chain.Project}
-	return q.a.ruleSelectorHeld(ctx, project, grants, rules, domain.CapManageMembers, target)
+	resolve := func(id string) (domain.RuleKey, error) {
+		return q.a.r.ResolveRuleKey(ctx, string(project.Org), string(project.Project), id, "")
+	}
+	return q.a.ruleSelectorHeldResolving(ctx, project, grants, rules, domain.CapManageMembers, target, resolve,
+		func() ([]domain.EnvRef, error) { return q.envRefs(ctx) })
 }
 
 // answer evaluates one principal. A principal that no longer exists, or has
@@ -177,7 +210,7 @@ func (q accessQuestion) answer(ctx context.Context, principal domain.PrincipalID
 	var rules []domain.Rule
 	if rulesApply(caller) {
 		// The chokepoint's own read: machines are answered from their class-checked machine rules.
-		if rules, err = q.a.callerRules(ctx, caller); err != nil {
+		if rules, err = q.a.callerRules(ctx, caller, "", ""); err != nil {
 			return out, false, err
 		}
 	}
@@ -277,13 +310,14 @@ func (q accessQuestion) excepted(ctx context.Context, r domain.Rule) (AccessExce
 		keyOwner = domain.AnyProject
 	}
 	relaxed := r
-	relaxed.Where.Envs = maps.Clone(r.Where.Envs)
 	relaxed.Where.Keys = maps.Clone(r.Where.Keys)
 	var envs []domain.EnvID
 	var keys []domain.RuleKeyItem
-	if r.Where.EnvMode == domain.AxisAll {
+	// Excepts are names (#1447): relax them all, then probe each name the
+	// question's project matches.
+	if r.Where.EnvMode == domain.AxisAll && len(r.Where.Envs[project]) > 0 {
 		envs = r.Where.Envs[project]
-		delete(relaxed.Where.Envs, project)
+		relaxed.Where = relaxed.Where.WithEnvNames(nil)
 	}
 	// See ignores the key axis (D5), so a key item never holds it back.
 	if q.capability != domain.CapRead && r.Where.KeyNarrowedIn(project) {
@@ -304,9 +338,12 @@ func (q accessQuestion) excepted(ctx context.Context, r domain.Rule) (AccessExce
 		return out, false, err
 	}
 	for _, env := range envs {
+		name, ok := r.Where.EnvName(q.chain.Project, env)
+		if !ok {
+			return out, false, fmt.Errorf("authz: rule %s excepts environment %s without its name", r.ID, env)
+		}
 		probe := relaxed
-		probe.Where.Envs = maps.Clone(relaxed.Where.Envs)
-		probe.Where.Envs[project] = []domain.EnvID{env}
+		probe.Where = relaxed.Where.WithEnvNames([]string{name})
 		if held, err := q.holds(ctx, q.capability, nil, []domain.Rule{probe}); err != nil {
 			return out, false, err
 		} else if !held {

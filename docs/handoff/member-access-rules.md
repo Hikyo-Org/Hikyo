@@ -242,3 +242,223 @@ Branch `feat/1446-all-projects-rules`. The decision is recorded in the ADR's
   "All projects" choice list the projects first.
 - **Tests.** `internal/isolation/member_access_rules_all_projects_test.go`
   (both engines; the concurrent-deletion test is PostgreSQL only).
+
+## Environments by name (#1447, owner decision of 2026-11-26)
+
+Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
+[Owner decisions, 2026-11-26](../adr/member-access-rules.md#owner-decisions-2026-11-26).
+
+- **Storage (migration 00102, both engines).** `rule_items.env_name` replaces
+  `env_id`; name items carry no project. `rules.env_fault` holds the
+  manager-facing reason of a rule the upgrade disabled. The id columns and
+  every id-matching query are gone.
+- **Migration, option (c).** Consistent rules, whose projects select the same
+  names, convert in place. Others split
+  into one rule per project that reached something, audited as `rule.split`
+  with the old and new ids. Undecidable rules (an item naming a missing
+  environment, a project outside the rule, a repeated name, an all-projects
+  rule holding environment items, or a whole-project capability such as
+  `project-settings` holding environment items, which never validated and
+  which a split would have made live, and any other rule that did not pass
+  `Rule.Validate` or `CheckMachineRule` before the upgrade and that a split
+  could lift: more than `MaxRuleItems` items, a repeated project, an item
+  naming an empty project, environment or key id, a key or folder repeated
+  in a project, a key or folder item outside the rule's projects,
+  `key_mode` only with no key, key narrowing on `pin` or a whole-project
+  capability, a machine rule over several projects) keep their row, reach
+  no environment and carry `env_fault`, audited as `rule.disabled` with the
+  removed `env_mode`, `env_ids` and `env_names` (each the first 1,000 in
+  byte order) and `env_items` (the full count). Every rejection is
+  tabulated under "00102 and pre-upgrade validity" below. Tests:
+  `TestRuleEnvNamesMigrationSQLite` and `TestRuleEnvNamesMigrationPostgres`,
+  including the 99/102 recovery boundary;
+  `TestRuleEnvNamesMigrationShapeProjectList` pins the migration's
+  whole-project and pin capability lists to `domain`, and its item cap to
+  `domain.MaxRuleItems`. A faulted rule is never evaluated,
+  whatever items it holds: the rule resolver skips it and `GetRule` returns
+  it as not valid, so only a manager over its whole scope revokes it
+  (`TestDisabledRuleListsAndRevokes`).
+- **Domain.** `Where.EnvNames` is authoritative; `BindEnvs(refs)` derives the
+  environment ids inside `authorize()` on every check, with no cache. A rule
+  create binds its names before the caller is proved, reading one project's
+  environments for a rule over one named project and the org's otherwise
+  (`TestRuleCreateReadsOneProjectsEnvironmentsBeforeAuthorization`).
+  All-projects rules take names (restriction A lifted); single keys stay
+  refused there. Names are stored once per rule, but the item bound counts
+  them per project, as `RuleWhere` lists them: projects × (1 + names) + key
+  items, or projects × (1 + folders + names) for an all-projects rule. Sent names take
+  the environment name grammar. Rule lifecycle audit events record
+  environments as `name:<name>`.
+- **Widening (like D9).** `internal/service/rule_env_widening.go`. Environment
+  rename, create, clone and definitions apply compute who gains through their
+  rules and refuse a 409 unless `confirm_widening` names exactly them; the
+  confirmation is audited as `rule.env_widening_confirmed`. Self-config
+  provisioning carries no confirmation, so it refuses a widening. A created
+  environment that an `all` rule does not except needs no confirmation. The
+  census covers every environment- and key-shaped capability (derived from
+  the rule shapes, so Pin is included).
+- **Old clients.** A pre-revision-22 create naming ids is refused when the ids
+  are not every environment their names match (`ErrRuleEnvItemsStale`). An
+  `all` create or replacement without names is refused when the principal's
+  `all` rules except a name no environment of one of its projects carries
+  (`ErrRuleUnmatchedNamesDropped`), since that client cannot show the name.
+  The web and CLI therefore always send names to a revision-22 server (`[]`
+  for every environment). Two explicit steps (revoke, then create) still drop
+  such an exception; each is a proved manager's own action.
+- **Machines.** A gaining machine passes the #1473/#1480 gate. A create or
+  clone whose name gives a machine secret plaintext in the new environment
+  through an *only* rule fails closed: refused for want of `manage-identities`
+  or disclosure authority, or else with reauthentication required, because
+  no window can name the new id; the workaround is to create it under a name
+  no *only* list names and rename it. An `all` rule that does not except the
+  name reaches the new environment by default, which needs no confirmation and
+  no workaround, so the workaround's create succeeds for such a machine too
+  (the `uat` control in `TestEnvironmentNameWideningGatesMachines`).
+  The gate's reauthentication covers secret plaintext only (`read` with
+  `reveal` or `reveal-history`); a machine gaining `edit`, or `read` alone,
+  needs the confirmation and no window. That config-plaintext gap is the
+  follow-up [#1630](https://github.com/Hikyo-Org/Hikyo/issues/1630). A machine
+  rule create racing a rename into its name takes no project lock: on
+  PostgreSQL the SERIALIZABLE write transactions abort one side (each reads
+  what the other writes), and the retry meets its gate; a row lock taken after
+  the first statement would not change that.
+  `TestMachineRuleCreateRacingEnvironmentRenameFailsClosed` holds the create
+  after its name binding, and the rename after its census, with two serial
+  controls. With `writePostgresOnce` at REPEATABLE READ or READ COMMITTED,
+  both held subtests fail with the create and the rename committed.
+- **Deletion (owner decision 2026-11-27).** Deleting the last environment
+  carrying a name an `all` rule excepts lets that rule reach the project as a
+  whole; it already reached the remaining environments. Deleting one of
+  several excepted environments gains nothing. A delete that gains fails
+  closed: the service delete and a definitions apply delete are refused like a
+  widening rename until `confirm_widening` names exactly the gainers, audited
+  as `rule.env_widening_confirmed` with an empty `to_name`. The rule keeps the
+  name, so a later environment of it is excepted again and widens nothing
+  through that rule; another rule naming it, such as an *only* rule, still
+  needs its gainers confirmed.
+  Project and organization deletions never cascade into environments.
+- **Wire.** API revision 22, additive: `where.environments.names` and
+  `fault`, `confirm_widening` on environment create, rename and clone, and as a
+  query parameter on environment delete, and `widening.gainers[].keys`. CLI:
+  `--only-env-name`/`--except-env-name`, refused before revision 22;
+  `env delete --confirm-widening`.
+- **Web.** The rule editor selects environments by name in every project,
+  including all-projects rules; Project settings confirm a widening rename,
+  create, clone or delete and run the reauthentication ceremony for a
+  widening rename only: a delete reveals no plaintext that was hidden before,
+  so it asks for none.
+  `KeyMoveConfirmDialog` is now `WideningConfirmDialog`, shared by key moves
+  and environment changes.
+- **Gainers name their key selector.** A widening refusal's gainer carries
+  `keys` (a `RuleKeyAxis`) when the gain reaches only the keys a narrowed
+  rule selects, so a rule narrowed to folder F that gains environment E reads
+  as E over F, not the whole environment ("Edit (staging, only db/)"); See
+  is never key-narrowed, so a See gain carries none.
+  Gainers merge per principal, capability, project-or-environment and
+  selector (`gainsOf`, `mergeGains`); a gain over every key absorbs a
+  narrowed one for the same environment, and different selectors stay
+  separate. A key folder move's gain leaves `keys` absent: it concerns the
+  moved key, which the refusal names. Display precision only: who must
+  confirm (`gainedPrincipals`) and the machine widening gate are unchanged.
+- **Tests.** `internal/isolation/rule_env_widening_test.go` (both engines):
+  `TestEnvironmentNamesWidenRules`, `TestEnvironmentNameWideningGatesMachines`,
+  `TestAllProjectsRulesFutureProjectsHoldNames`,
+  `TestAllProjectsRulesBoundCountsNames`,
+  `TestDefinitionsApplyEnvironmentNameWidening`,
+  `TestEnvironmentDeleteWideningExceptRules`,
+  `TestDefinitionsApplyEnvironmentDeleteWidening`,
+  `TestEnvironmentDeleteWideningShapes`,
+  `TestDefinitionsApplyEnvironmentDeleteAndRenameNarrows`, and the machine
+  delete case in `TestEnvironmentNameWideningGatesMachines`; web
+  `ProjectSettings.test.tsx` "confirms a delete that widens access", web `model.test.ts`
+  "environments by name (#1447)" and the AccessRules stories.
+- **Open.** An owner may later exempt machine create and clone from the
+  fail-closed reauthentication (ADR option). #1474 remains. Found in review, older than #1447:
+  a delegation check resolves each key item of a held manage rule in an
+  existing project, which the missing-project decoy does not, so a caller
+  holding such a rule can tell the two apart by query work.
+- **Known limits, fail-closed by design.** Each of these asks for a
+  confirmation, or refuses, where an exact check would not. Loosening any of
+  them would admit something refused today, so they stay.
+  - A definitions plan that moves a key and deletes the environment the move
+    gave access in still asks to confirm that gain, though it never becomes
+    reachable.
+  - A pre-revision-22 `all` create without names is refused while any of the
+    principal's manageable `all` rules over the project excepts a name no
+    environment carries, even when the new rule would not replace it.
+  - A plan's environment census reads the rules before the plan runs, so a
+    rule the plan revokes or prunes (for example by deleting its last key)
+    still counts, and its principal must be confirmed.
+- **Accepted limits.** These cost capacity or query work, not access; none
+  admits anything an exact check would refuse. The ADR sanctions both
+  (owner, 2026-11-28; ADR "Names are stored and matched" and "Migration, option
+  (c)").
+  - The upgrade's per-project split (00102) does not check the 1,000-rule
+    `MaxRulesPerOrg` cap, so an org can exceed it after the upgrade; new
+    creates are refused until rules are removed.
+  - A rule-authorized check binds names within the chain's project
+    (`RulesWithin`), so it reads that project's environments: one extra
+    environment read per check, however many orgs the caller's rules span
+    (`TestProjectCheckBindsRulesFromOneEnvironmentRead`).
+- **Refusal uniformity.** Checks before the caller is proved read only the
+  request (one stand-in name per sent environment id); a refused caller gets
+  the same not-found whatever ids exist
+  (`TestRuleCreateRefusalDoesNotProbeEnvironmentIDs`). The missing-scope decoy
+  runs the same per-project environment read a refusal does.
+
+### 00102 and pre-upgrade validity
+
+A row that failed base validation reached nothing, so 00102 must not let a
+split part or a converted row validate. Sources are at the merge base
+`2dd3f0c19`: `internal/domain/rule.go` (R) and `internal/store/authn/rules.go`
+(L). Fault clauses are in the `env_fault` statements of both engines'
+00102. "Holds" means the defect survives in every split part and in the
+converted row. Two facts carry most proofs:
+
+- Split parts copy `org_id`, `principal_id` and `capability`.
+- A rule over one project is never split. Environment names are unique per
+  project (00003), so every environment carrying one of its names is one of
+  its items. Neither split predicate matches, and its row is converted with
+  only its environment items rewritten.
+
+Seeds are in `testRuleEnvNamesMigration`. Every mutant failed on both
+engines with rc=1 and was restored.
+
+| Source | Rejection | 00102 disposition | Seed | Mutant |
+|---|---|---|---|---|
+| R:194 | org empty | Holds: copied to every part | none | n/a |
+| R:198 | capability not held on rules | Holds: copied; `ruleShapes` unchanged | none | n/a |
+| R:205 | no project | Holds: both split predicates join a project item, so the row is converted and still names none | none | n/a |
+| R:210 | empty project id | Fault `z.project_id = ''` | `rul_pemp` | `pemp` |
+| R:210 | project named twice | Fault (duplicate project) | `rul_dupp` | `dupp` |
+| R:215, R:218, R:286 | unknown env or key mode | Impossible: `CHECK` (00070) | none | n/a |
+| R:221 | key item with no project | Key: cannot be stored with a NULL project (`rule_items_project_bound`, 00099); a key under an empty project id is storable and faults as R:210 (`z.project_id = ''`). Folder: fault (outside the rule's projects) | `rul_knull` | `kout` |
+| R:226 | env item outside the rule's projects | Fault (outside the rule) | `rul_out` | `out` |
+| R:230 | empty env id | Fault `z.env_id = ''` | `rul_eemp` | `eemp` |
+| R:230 | env named twice in a project | Fault (name twice) | `rul_twice` | `twice` |
+| FK (00070) | env item naming a missing env | Fault (missing environment) | `rul_gone` | `gone` |
+| R:236 | env `only` with no item | Holds: no name, so no split; converted `only` with no name fails current `validateEnvNames` | none | n/a |
+| R:241 | key or folder outside the rule's projects | Fault | `rul_kout` | `kout` |
+| R:245 | key item with empty key id | Fault `z.key_id = ''` | `rul_kemp` | `kemp` |
+| R:245 | folder item carrying a key id | Impossible: `CHECK` (folder ⇒ `key_id IS NULL`), and L:101 builds folders without one | none | n/a |
+| R:245 | key, or folder, named twice in a project (struct equality, so a key never equals a folder) | Fault (duplicate key or folder) | `rul_dupk`, `rul_dupf` | `dupk`, `dupf` |
+| R:251 | key `only` with no key item | Fault | `rul_konly` | `konly` |
+| R:254 | more than 500 items (projects + env items by id + keys) | Fault `COUNT(*) > 500`; the 500 is pinned to `domain.MaxRuleItems` | `rul_big`, `rul_b501`; `rul_b500` stays live | `big`, `cap501`, `cap499` |
+| R:264 | Pin narrowed by keys | Fault | `rul_pin` | `pin` |
+| R:268 | whole-project capability narrowed by keys | Fault | `rul_psk` | `psk` |
+| R:268 | whole-project capability with env items | Fault (M2) | `rul_ps`, `rul_psc` | `ps` |
+| R:268 | whole-project capability, env `only` with no item | Holds: as R:236 | none | n/a |
+| R:280–309 | all-projects shape: project items, keys, folders bound to a project, malformed or duplicate folders, key `only` with no folder, env `only` with no item, more than 500 folders | Holds: no split predicate matches `project_mode = 'all'`, the row is unchanged, and current `validateAllProjects` keeps each check | none | n/a |
+| R:283 | all-projects rule with env items | Fault (all projects) | `rul_allp` | `allp` |
+| R:420 | machine class or capability not allowed | Holds: principal and capability copied | none | n/a |
+| R:424 | machine rule narrowed by keys | Over one project: holds (converted, keys kept). Over several: fault (below) | `rul_mch` | `mch` |
+| R:428 | machine rule not over exactly one project | More than one: fault. None: holds as R:205. All projects: holds as R:280 | `rul_mch` | `mch` |
+| R:437, R:441 | machine depth not met | Holds: over one project only (above); mode and names are kept | none | n/a |
+| L:103 | unknown axis | Impossible: `CHECK` (00070) | none | n/a |
+
+The `rule.split` audit lists at most one rule per project. A split rule
+passed the cap, so it has at most 500 projects, under `rule_ids`'s
+`MaxLen` of 1,000. `rul_wide` holds 1,001 env items; its `rule.disabled`
+payload passes the registry with the first 1,000 ids and names in byte
+order and `env_items` 1001 (mutants `nolimit`, `desc`, `noitems`, `noorder`
+on SQLite, `nocollate` on Postgres).

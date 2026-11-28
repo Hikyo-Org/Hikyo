@@ -68,7 +68,7 @@ func ruleRequest(org string, req apigen.CreateRuleRequest) (service.RuleSpec, er
 
 // allProjectsFolders collapses an all-projects request's key items, repeated
 // under every listed project, into the one folder list the rule stores.
-// Environment items are left in place for the domain's refusal (#1447).
+// Environment items are a claim the service compares with the names (#1447).
 func allProjectsFolders(w domain.Where) ([]domain.RuleKeyItem, error) {
 	var first []domain.RuleKeyItem
 	for i, p := range w.Projects {
@@ -107,6 +107,9 @@ func ruleWhere(w apigen.RuleWhere) (domain.Where, error) {
 	for _, p := range w.Projects {
 		out.Projects = append(out.Projects, domain.ProjectID(p))
 	}
+	if w.Environments.Names != nil {
+		out.EnvNames = append([]string{}, *w.Environments.Names...)
+	}
 	for _, it := range w.Environments.Items {
 		p := domain.ProjectID(it.Project)
 		out.Envs[p] = append(out.Envs[p], domain.EnvID(it.Environment))
@@ -127,7 +130,9 @@ func ruleWhere(w apigen.RuleWhere) (domain.Where, error) {
 
 // wireRuleWhere renders a rule's `where`. An all-projects rule is expanded at
 // read time over covers, the projects it reaches now, with its folder items
-// repeated under each, so `projects` keeps its v1 meaning (#1446).
+// repeated under each, so `projects` keeps its v1 meaning (#1446). The
+// environment axis carries its names and, as items, the environments they
+// match now (w is bound) in each listed project (#1447).
 func wireRuleWhere(w domain.Where, covers []domain.ProjectID) apigen.RuleWhere {
 	mode := apigen.RuleProjectModeOnly
 	if w.AllProjects {
@@ -138,10 +143,11 @@ func wireRuleWhere(w domain.Where, covers []domain.ProjectID) apigen.RuleWhere {
 			w.Keys[p] = keys
 		}
 	}
+	names := append([]apigen.EntityName{}, w.EnvNames...)
 	out := apigen.RuleWhere{
 		ProjectMode:  &mode,
 		Projects:     []apigen.ID{},
-		Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisMode(w.EnvMode), Items: []apigen.RuleEnvironmentItem{}},
+		Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisMode(w.EnvMode), Items: []apigen.RuleEnvironmentItem{}, Names: &names},
 		Keys:         apigen.RuleKeyAxis{Mode: apigen.RuleAxisMode(w.KeyMode), Items: []apigen.RuleKeyItem{}},
 	}
 	for _, p := range w.Projects {
@@ -173,6 +179,7 @@ func wireAccessRule(v service.RuleView) apigen.Rule {
 		Id: v.ID, PrincipalId: string(v.Principal), PrincipalName: optStr(v.PrincipalName),
 		Capability: apigen.RuleCapability(v.Capability), Where: wireRuleWhere(v.Where, v.Covers),
 		OtherProjects: v.OtherProjects, CreatedBy: string(v.CreatedBy), CreatedAt: v.CreatedAt,
+		Fault: optStr(v.Fault),
 	}
 }
 
@@ -312,10 +319,18 @@ func wireWidening(count int, gains []service.WideningGain) *apigen.WideningRefus
 		for _, e := range g.Envs {
 			envs = append(envs, string(e))
 		}
-		gainers = append(gainers, apigen.WideningGainer{
+		gainer := apigen.WideningGainer{
 			PrincipalId: string(g.Principal), PrincipalName: optStr(g.Name),
 			Capability: apigen.RuleCapability(g.Capability), Environments: envs,
-		})
+		}
+		if g.Keys != nil {
+			keys := apigen.RuleKeyAxis{Mode: apigen.RuleAxisMode(g.Keys.Mode), Items: make([]apigen.RuleKeyItem, 0, len(g.Keys.Items))}
+			for _, k := range g.Keys.Items {
+				keys.Items = append(keys.Items, wireRuleKeyItem(g.Keys.Project, k))
+			}
+			gainer.Keys = &keys
+		}
+		gainers = append(gainers, gainer)
 	}
 	out.Gainers = &gainers
 	return out

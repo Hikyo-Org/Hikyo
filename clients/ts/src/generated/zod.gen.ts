@@ -2193,24 +2193,8 @@ export const zCreateOrgRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
-export const zRenameRequest = z.object({
-    name: zEntityName,
-    acknowledgements: zAcknowledgements.optional()
-});
-
 export const zCreateProjectRequest = z.object({
     name: zEntityName,
-    acknowledgements: zAcknowledgements.optional()
-});
-
-export const zCreateEnvironmentRequest = z.object({
-    name: zEntityName,
-    acknowledgements: zAcknowledgements.optional()
-});
-
-export const zCloneEnvironmentRequest = z.object({
-    name: zEntityName,
-    source_environment_id: zId,
     acknowledgements: zAcknowledgements.optional()
 });
 
@@ -3081,8 +3065,8 @@ export const zRuleAxisMode = z.enum(['all', 'only']);
 
 /**
  * `only` reaches the listed `projects`. `all` reaches every project of
- * the organisation, including projects created later; such a rule covers
- * every environment and narrows keys by folder only. Omitted, a rule's
+ * the organisation, including projects created later; such a rule
+ * narrows environments by name and keys by folder only. Omitted, a rule's
  * project mode is `only`. The default is stated here rather than as a
  * schema `default`, so generated clients never add the property to a
  * request: a server before revision 21 refuses it.
@@ -3095,56 +3079,58 @@ export const zRuleEnvironmentItem = z.object({
     environment: zId
 });
 
+/**
+ * Environments are selected by name (member-access-rules ADR D3,
+ * revision 22): `names` match in every project the rule covers,
+ * including environments created or renamed to a name later. A
+ * response carries `names` and, in `items`, the environments they match
+ * now in each listed project.
+ *
+ * A create may send `names` with `items` empty, or with `items` exactly
+ * the environments those names match now in the rule's projects
+ * (otherwise 409 `conflict` naming the difference). A create without
+ * `names` (a client before revision 22) names environments by `items`
+ * alone: their names become the rule's, and it is refused with 409
+ * `conflict` unless those names match exactly `items` in the rule's
+ * projects. An `all` create without `names`, for a principal whose
+ * `all` rules except a name no environment of one of the create's
+ * projects carries yet, is refused with 409 `conflict` naming them, so
+ * a client before revision 22 cannot drop an exception silently.
+ *
+ */
 export const zRuleEnvironmentAxis = z.object({
     mode: zRuleAxisMode,
+    names: z.array(zEntityName).max(500).optional(),
     items: z.array(zRuleEnvironmentItem).max(500)
 });
 
-export const zWideningGainer = z.object({
-    principal_id: zId,
-    principal_name: z.string().optional(),
-    capability: zRuleCapability,
-    environments: z.array(zId)
-});
-
 /**
- * A key folder move that gives people access through their member access
- * rules (member-access-rules ADR D9). `count` is always present; the
- * people and what they gain are named only to a caller holding
- * `manage-members` on the project, who confirms by resending the request
- * with `confirm_widening` listing exactly those principal ids.
- *
- */
-export const zWideningRefusal = z.object({
-    count: z.int().gte(1),
-    gainers: z.array(zWideningGainer).optional()
-});
-
-export const zError = z.object({
-    error: z.object({
-        code: zErrorCode,
-        message: z.string(),
-        detail: z.string().nullish(),
-        widening: zWideningRefusal.optional(),
-        findings: z.array(zScanFinding).optional()
-    })
-});
-
-/**
- * RFC 8628 protocol errors or the shared malformed-request refusal.
- */
-export const zCliDeviceErrorResponse = z.union([
-    zCliDeviceError,
-    zError
-]);
-
-/**
- * The principal ids a key folder move gives access through their member
- * access rules, confirming it (member-access-rules ADR D9). It must name
- * exactly the people the refusal's `widening` names.
+ * The principal ids a key folder move, or an environment rename,
+ * creation or deletion, gives access through their member access rules, confirming
+ * it (member-access-rules ADR D9). It must name exactly the principals
+ * the refusal's `widening` names.
  *
  */
 export const zConfirmWidening = z.array(zId).max(1000);
+
+export const zRenameRequest = z.object({
+    name: zEntityName,
+    acknowledgements: zAcknowledgements.optional(),
+    confirm_widening: zConfirmWidening.optional()
+});
+
+export const zCreateEnvironmentRequest = z.object({
+    name: zEntityName,
+    acknowledgements: zAcknowledgements.optional(),
+    confirm_widening: zConfirmWidening.optional()
+});
+
+export const zCloneEnvironmentRequest = z.object({
+    name: zEntityName,
+    source_environment_id: zId,
+    acknowledgements: zAcknowledgements.optional(),
+    confirm_widening: zConfirmWidening.optional()
+});
 
 export const zApplyDefinitionsPlanRequest = z.object({
     allow_delete: z.boolean(),
@@ -3760,19 +3746,24 @@ export const zRuleKeyAxis = z.object({
  * one of `projects`. A rule names at most 500 projects, environments and
  * keys together.
  *
+ * Environments are selected by name (revision 22): see
+ * `RuleEnvironmentAxis`.
+ *
  * With `project_mode` `all` the rule reaches every project of the
  * organisation, including projects created later. A response lists the
  * organisation's current projects (a project listing: only that
  * project), with the rule's folder items repeated under each, so
  * `projects` is never empty; an organisation listing's or a create's
  * `where` is a valid create request. A create lists exactly the organisation's current
- * projects (otherwise 409), keeps the environment axis `all` without
- * items, and repeats the same folder items, never single keys, under
- * every project.
+ * projects (otherwise 409), and repeats the same folder items, never
+ * single keys, under every project. Its environment axis selects by
+ * name like any rule's.
  *
- * The 500 bound counts the rule as it is listed: every current project
- * plus its folder items repeated under each. A create that would list
- * more is refused with 409 `limit_exceeded`. A project creation that
+ * The 500 bound counts the rule as it can be listed. A rule over named
+ * projects counts `projects × (1 + names) + key items`; a rule with
+ * `project_mode` `all` counts `projects × (1 + folders + names)` over
+ * every current project. A create that would list more is refused with
+ * 409 `limit_exceeded`. A project creation that
  * would list an existing rule over all projects past it is refused with
  * 409 `conflict`, whose detail names the blocking rules to a member
  * manager. A listing is never truncated.
@@ -3838,13 +3829,55 @@ export const zRule = z.object({
     where: zRuleWhere,
     other_projects: z.boolean(),
     created_by: zId,
-    created_at: zTimestamp
+    created_at: zTimestamp,
+    fault: z.string().optional()
 });
 
 export const zRuleList = z.object({
     items: z.array(zRule),
     count: z.int().gte(0)
 });
+
+export const zWideningGainer = z.object({
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    capability: zRuleCapability,
+    environments: z.array(zId),
+    keys: zRuleKeyAxis.optional()
+});
+
+/**
+ * A key folder move (member-access-rules ADR D9), or an environment
+ * rename, creation or deletion (revision 22), alone or in a definitions
+ * plan, that gives principals access through their member access
+ * rules. `count` is always present; the people and
+ * machines and what they gain are named only to a caller holding
+ * `manage-members` on the project, who confirms by resending the request
+ * with `confirm_widening` listing exactly those principal ids.
+ *
+ */
+export const zWideningRefusal = z.object({
+    count: z.int().gte(1),
+    gainers: z.array(zWideningGainer).optional()
+});
+
+export const zError = z.object({
+    error: z.object({
+        code: zErrorCode,
+        message: z.string(),
+        detail: z.string().nullish(),
+        widening: zWideningRefusal.optional(),
+        findings: z.array(zScanFinding).optional()
+    })
+});
+
+/**
+ * RFC 8628 protocol errors or the shared malformed-request refusal.
+ */
+export const zCliDeviceErrorResponse = z.union([
+    zCliDeviceError,
+    zError
+]);
 
 /**
  * One primitive type declaration with its constraints. Each constraint
@@ -5427,9 +5460,10 @@ export const zAccessQueueWritable = z.object({
 });
 
 /**
- * The principal ids a key folder move gives access through their member
- * access rules, confirming it (member-access-rules ADR D9). It must name
- * exactly the people the refusal's `widening` names.
+ * The principal ids a key folder move, or an environment rename,
+ * creation or deletion, gives access through their member access rules, confirming
+ * it (member-access-rules ADR D9). It must name exactly the principals
+ * the refusal's `widening` names.
  *
  */
 export const zConfirmWideningWritable = z.array(zId).max(1000);
@@ -6318,6 +6352,10 @@ export const zDeleteEnvironmentPath = z.object({
     org: zId,
     project: zId,
     environment: zId
+});
+
+export const zDeleteEnvironmentQuery = z.object({
+    confirm_widening: z.array(zId).max(1000).optional()
 });
 
 /**

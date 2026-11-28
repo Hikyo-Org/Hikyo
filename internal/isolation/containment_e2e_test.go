@@ -509,6 +509,28 @@ func writerWaiters(t *testing.T, db *store.DB) int64 {
 	return db.SQLiteWrite().Stats().WaitCount
 }
 
+// awaitBlocked waits until result delivers or writerWaiters rises above base
+// (on PostgreSQL, one more session waiting on a lock), and reports whether
+// result delivered. On timeout it runs cleanup, if any, so held locks are
+// freed before the test fails.
+func awaitBlocked(t *testing.T, db *store.DB, base int64, result <-chan error, cleanup func()) (bool, error) {
+	t.Helper()
+	deadline := time.After(30 * time.Second)
+	for writerWaiters(t, db) <= base {
+		select {
+		case err := <-result:
+			return true, err
+		case <-deadline:
+			if cleanup != nil {
+				cleanup()
+			}
+			t.Fatal("neither finished nor blocked on a lock within 30s")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	return false, nil
+}
+
 // runBehindHolder runs fn on its own goroutine while a write transaction applying
 // hold owns the writer lock, waits until fn is observably blocked behind that
 // holder (so its read and match phases have finished and its write phase is
@@ -530,17 +552,9 @@ func runBehindHolderThen(t *testing.T, db *store.DB, hold func(context.Context, 
 	base := writerWaiters(t, db)
 	result := make(chan error, 1)
 	go func() { result <- fn() }()
-	deadline := time.After(30 * time.Second)
-	for writerWaiters(t, db) <= base {
-		select {
-		case err := <-result:
-			_ = release()
-			t.Fatalf("fn finished without ever blocking behind the holder (err=%v): the interleaving did not occur", err)
-		case <-deadline:
-			_ = release()
-			t.Fatal("fn never blocked behind the holder within 30s")
-		case <-time.After(5 * time.Millisecond):
-		}
+	if done, err := awaitBlocked(t, db, base, result, func() { _ = release() }); done {
+		_ = release()
+		t.Fatalf("fn finished without ever blocking behind the holder (err=%v): the interleaving did not occur", err)
 	}
 	if between != nil {
 		between()

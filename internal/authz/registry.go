@@ -2557,7 +2557,10 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentsNextOrder: true, StoreEnvironmentsCreate: true,
 			StoreCatalogueRevisionBump: true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventEnvCreated, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
+		// A name an access rule selects widens it once confirmed (#1447),
+		// and a gaining machine passes the widening gate.
+		events: []audit.EventType{audit.EventEnvCreated, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden,
+			audit.EventRuleEnvWideningConfirmed, audit.EventMachineGrantWidened},
 	},
 	OpEnvRead: {
 		class:    ClassTenant,
@@ -2599,7 +2602,8 @@ var operationTable = map[Operation]opSpec{
 			StoreEnvironmentsGet: true, StoreEnvironmentsRename: true,
 			StoreCatalogueRevisionBump: true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventEnvRenamed, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
+		events: []audit.EventType{audit.EventEnvRenamed, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden,
+			audit.EventRuleEnvWideningConfirmed, audit.EventMachineGrantWidened},
 	},
 	// Reorder addresses the PROJECT: it rewrites the whole ordered set in one
 	// transaction, so no caller can observe a duplicate or a gap, and there is
@@ -2655,7 +2659,10 @@ var operationTable = map[Operation]opSpec{
 			StorePKICertificatesPurgeEnvironment: true, StoreAdaptersGuardEnvironmentDelete: true,
 			StoreEnvironmentsDelete: true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted},
+		// Deleting the last environment an `all` rule excepts widens it once
+		// confirmed (#1447), and a gaining machine passes the widening gate.
+		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked, audit.EventPersonalValueDeleted,
+			audit.EventRuleEnvWideningConfirmed, audit.EventMachineGrantWidened},
 	},
 	OpEnvUpdateNote: {
 		class:    ClassTenant,
@@ -3012,6 +3019,7 @@ var operationTable = map[Operation]opSpec{
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventPersonalValueDeleted, audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
+			audit.EventRuleEnvWideningConfirmed, audit.EventMachineGrantWidened,
 			audit.EventDefinitionsApplied, audit.EventGrantRevoked,
 			audit.EventDefinitionsApplyRejectedStale,
 			audit.EventDefinitionsDeletionRefused,
@@ -6029,7 +6037,9 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 var systemSiteEvents = map[SystemSite][]audit.EventType{
 	// Managed-data migration emits below the runtime store surface, under the
 	// exact SchemaApplied session fence. SiteMigration retains no runtime doors.
-	SiteMigration:          {audit.EventSelfConfigMigrated},
+	// Migration 00102 (#1447) splits or disables rules it cannot keep by
+	// name, recording each in the tenant trail.
+	SiteMigration:          {audit.EventSelfConfigMigrated, audit.EventRuleSplit, audit.EventRuleDisabled},
 	SiteSelfConfigRecovery: {audit.EventSelfConfigRecovered},
 	SiteSelfConfigRuntime:  {audit.EventSelfConfigApplied, audit.EventSelfConfigRecoveryFenced, audit.EventSelfConfigTestCompleted},
 	SiteEscrow:             {audit.EventRootEscrowVerified},

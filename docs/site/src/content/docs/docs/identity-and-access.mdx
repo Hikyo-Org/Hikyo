@@ -52,10 +52,41 @@ reachable environment; the CLI prompts for it and retries.
 ```bash
 hikyo access rule add --project <project-id> \
   --principal <principal-id> --capability reveal \
-  --except-env <prod-env-id> --only-folder db
+  --except-env-name prod --only-folder db
 hikyo access rule list --project <project-id>
 hikyo access rule remove <rule-id>
 ```
+
+A rule selects environments by **name**: `--only-env-name` and
+`--except-env-name` (repeatable) match that name in every project the rule
+covers, including environments created or renamed to it later. `--only-env`
+and `--except-env` still take environment ids, whose names become the rule's.
+A rule that the upgrade to names could not keep exactly is listed as
+disabled, with the reason; it reaches no environment until it is removed and
+created again. Only a member manager over the whole project, or over the
+organization for a rule covering all projects, can remove it: its selection
+can no longer be checked against a manager's own rules.
+
+Renaming, creating or cloning an environment can therefore give people or
+machines access through their rules: renamed out of an *except*, or renamed or
+created into an *only*. Such a change is refused until it is confirmed with
+`--confirm-widening` naming exactly those principals, as a key move is below;
+a machine that gains secret plaintext (`read` with `reveal` or
+`reveal-history`) also needs your recent reauthentication over the
+environment. A machine that gains `read` without `reveal` or
+`reveal-history`, or another permission, needs the confirmation alone. A new
+environment that a rule reaches because it does not except it needs no
+confirmation, and nor does a change
+that only narrows access. Creating or cloning an environment whose name
+gives a machine secret plaintext through an *only* rule is always refused:
+create it under a name no *only* rule names, then rename it. A machine whose `all` rule
+reaches the new environment because it does not except it gains nothing by
+name, so that create needs no confirmation and no workaround. Deleting the last environment carrying a name
+that an *all* rule excepts lets that rule reach the project as a whole, so it
+is refused the same way until confirmed (`hikyo env delete --confirm-widening`).
+Deleting one of several excepted environments leaves the others excepted and
+needs no confirmation. The rule keeps the name: an
+environment created later with it is excepted again.
 
 `read` and `pin` cannot be narrowed by keys. `edit`, `publish`, `reveal`,
 `reveal-history`, `definitions-edit` and `manage-members` may be narrowed by
@@ -66,9 +97,9 @@ current rule commands add, list and remove rules; removing and then adding is
 two operations.
 
 A rule may also cover **all projects** of the organization, including
-projects created later. Such a rule covers every environment and may narrow
-keys by folder only (*only* or *except* folders); it cannot name environments
-or single keys, and machine identities cannot hold one. Creating or removing it
+projects created later. Such a rule selects environments by name like any
+rule and may narrow keys by folder only (*only* or *except* folders); it
+cannot name single keys, and machine identities cannot hold one. Creating or removing it
 needs member management over the whole organization. Listings show it with the
 organization's current projects. An organization without projects cannot get
 one, and its last project cannot be deleted while one exists: the refusal names
@@ -77,8 +108,10 @@ Members rule editor or run `hikyo access rule add --all-projects`; both list
 the organization's projects first, and the rule is refused if a project was
 added or removed in the meantime.
 
-Because a listing repeats the rule's folders under every project, a rule
-counts as its projects times one plus its folders, at most 500. A rule that
+Because a listing repeats the rule's folders and environment names under
+every project, an all-projects rule counts as its projects times one plus its
+folders plus its names, at most 500. A rule naming its projects counts as its
+projects times one plus its names, plus its key items, at most 500 too. A rule that
 would count more is refused, and so is a new project that would take an
 existing rule past 500; that refusal also names the rules to narrow or
 remove.

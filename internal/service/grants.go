@@ -78,6 +78,9 @@ var (
 	// WideningReauthDetail is the wire detail of a widening refusal; the CLI's
 	// inline ceremony parses the environment out of it (tied by a CLI test).
 	WideningReauthDetail = "reauthenticate over the environments this operation makes reachable, then retry (%s)"
+	// NewEnvironmentReauthDetail extends it for a create or clone, whose new
+	// environment no reauthentication can cover yet (#1447).
+	NewEnvironmentReauthDetail = WideningReauthDetail + "; the environment does not exist yet, so create it under a name no only list names, reauthenticate over it, then rename it"
 	// ErrMachineProject refuses a machine grant in a project other than the
 	// one the principal's existing grants already sit in. The ADR bounds
 	// automation to "one project's scope"; the first grant fixes which.
@@ -497,15 +500,32 @@ func machineAuthority(ctx context.Context, az *authz.TxAuthorizer, p domain.Prin
 func gateMachineWidening(ctx context.Context, az *authz.TxAuthorizer, auth *Auth, caller authz.Identity,
 	actorGrants []authz.GrantRow, project domain.Scope, envs []domain.EnvID, pre, post []domain.Grant,
 	now time.Time) (current, historical []domain.EnvID, err error) {
+	current, historical = machineWideningDelta(project, envs, pre, post)
+	if err := requireMachineWidening(ctx, az, auth, caller, actorGrants, project, current, historical, now); err != nil {
+		return nil, nil, err
+	}
+	return current, historical, nil
+}
+
+// machineWideningDelta is what post reaches over the project that pre did
+// not, per authority class.
+func machineWideningDelta(project domain.Scope, envs []domain.EnvID, pre, post []domain.Grant) (current, historical []domain.EnvID) {
 	before := authz.ReachableFrom(project, envs, pre)
 	after := authz.ReachableFrom(project, envs, post)
-	current = newlyReachable(before.Current, after.Current)
-	historical = newlyReachable(before.Historical, after.Historical)
+	return newlyReachable(before.Current, after.Current), newlyReachable(before.Historical, after.Historical)
+}
+
+// requireMachineWidening asks the widening row's conjuncts over a delta,
+// once: a change that widens several machines over one environment spends
+// one reauthentication decision there, as the human makes one decision. An
+// empty delta passes with no conjunct asked.
+func requireMachineWidening(ctx context.Context, az *authz.TxAuthorizer, auth *Auth, caller authz.Identity,
+	actorGrants []authz.GrantRow, project domain.Scope, current, historical []domain.EnvID, now time.Time) error {
 	if len(current) == 0 && len(historical) == 0 {
-		return nil, nil, nil
+		return nil
 	}
 	if auth == nil {
-		return nil, nil, errors.New("service: the machine widening gate has no reauthentication seam wired")
+		return errors.New("service: the machine widening gate has no reauthentication seam wired")
 	}
 	// The full formula, not two thirds of it: the ADR's widening row is
 	// `manage-identities(project)` ∧ disclosure ∧ reauthentication, and the
@@ -514,13 +534,10 @@ func gateMachineWidening(ctx context.Context, az *authz.TxAuthorizer, auth *Auth
 	// who does not administer this project's identities cannot re-scope its
 	// credentials by granting.
 	if !holds(actorGrants, domain.CapManageIdentities, project) {
-		return nil, nil, fmt.Errorf("%w: %s over %s", ErrDisclosureAuthority,
+		return fmt.Errorf("%w: %s over %s", ErrDisclosureAuthority,
 			domain.CapManageIdentities, renderScope(project))
 	}
-	if err := auth.RequireDisclosureAuthority(ctx, az, caller, actorGrants, project, current, historical, now); err != nil {
-		return nil, nil, err
-	}
-	return current, historical, nil
+	return auth.RequireDisclosureAuthority(ctx, az, caller, actorGrants, project, current, historical, now)
 }
 
 // RequireDisclosureAuthority is the shared conjunct of the MINT row and the
@@ -582,16 +599,27 @@ func (s *Auth) RequireDisclosureAuthority(
 			// Carried as wire detail: the environment is one the caller named,
 			// and the remedy - a reauthentication over it - is what the CLI's
 			// inline ceremony and the browser's modal both key on.
-			return &detailErr{
+			return &envReauthErr{env: env, err: &detailErr{
 				detail: fmt.Sprintf(WideningReauthDetail, env),
 				err:    fmt.Errorf("%w (%s)", ErrReauthRequired, env),
-			}
+			}}
 		default:
 			return err
 		}
 	}
 	return nil
 }
+
+// envReauthErr is a widening refusal for want of reauthentication over env,
+// so a caller that knows env does not persist can say so.
+type envReauthErr struct {
+	env domain.EnvID
+	err *detailErr
+}
+
+func (e *envReauthErr) Error() string      { return e.err.Error() }
+func (e *envReauthErr) Unwrap() error      { return e.err }
+func (e *envReauthErr) SafeDetail() string { return e.err.SafeDetail() }
 
 // newlyReachable is the per-class delta: what the post-state reaches that the
 // pre-state did not. Sorted, so the audit payload and the refusal message are

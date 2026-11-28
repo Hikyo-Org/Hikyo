@@ -168,7 +168,7 @@ func TestPersonalValueExcludedFromSharedSurfaces(t *testing.T) {
 
 		// Clone, copy and the environment diff.
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-		clone, cloned, err := envs.Clone(ctx, admin, project, "pv-excl-clone", string(envA1), nil)
+		clone, cloned, err := envs.CloneConfirming(ctx, admin, project, "pv-excl-clone", string(envA1), nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

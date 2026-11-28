@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -68,10 +69,12 @@ func TestRuleRequestBindsItemsToProjects(t *testing.T) {
 func TestAccessRuleVerbs(t *testing.T) {
 	var requests []string
 	var posted apigen.CreateRuleRequest
+	listed := []apigen.Rule{}
+	revision := api.Revision
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
-			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: revision})
 			return
 		}
 		requests = append(requests, r.Method+" "+r.URL.Path)
@@ -87,7 +90,7 @@ func TestAccessRuleVerbs(t *testing.T) {
 				_ = jsonwire.Encode(w, apigen.ProjectList{Items: []apigen.Project{{Id: "prj_one"}, {Id: "prj_two"}}, Count: 2})
 				return
 			}
-			_ = jsonwire.Encode(w, apigen.RuleList{Items: []apigen.Rule{}})
+			_ = jsonwire.Encode(w, apigen.RuleList{Items: listed})
 		default:
 			w.WriteHeader(http.StatusNoContent)
 		}
@@ -124,6 +127,20 @@ func TestAccessRuleVerbs(t *testing.T) {
 	if strings.Join(requests, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(requests, "\n"), strings.Join(want, "\n"))
 	}
+	// A rule the upgrade disabled shows its reason in place of environments,
+	// and a name shows as name:N.
+	fault := "Disabled by the upgrade to environment names: test reason."
+	named := []apigen.EntityName{"prod"}
+	listed = []apigen.Rule{
+		{Id: "rul_dis", PrincipalId: "usr_carol", Capability: "read", Fault: &fault, Where: apigen.RuleWhere{Projects: []string{"prj_one"},
+			Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleEnvironmentItem{}}, Keys: apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleKeyItem{}}}},
+		{Id: "rul_name", PrincipalId: "usr_carol", Capability: "read", Where: apigen.RuleWhere{Projects: []string{"prj_one"},
+			Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeAll, Names: &named, Items: []apigen.RuleEnvironmentItem{}}, Keys: apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleKeyItem{}}}},
+	}
+	if code, out := run("access", "rule", "list", "--project", "prj_one"); code != ExitOK || !strings.Contains(out, "disabled: "+fault) || !strings.Contains(out, "name:prod") {
+		t.Fatalf("list with a disabled and a named rule = %d %s", code, out)
+	}
+	listed = []apigen.Rule{}
 
 	// --all-projects lists the org's projects first and sends exactly them
 	// with project_mode all, each folder repeated under every project (R2).
@@ -138,10 +155,47 @@ func TestAccessRuleVerbs(t *testing.T) {
 		len(pw.Keys.Items) != 2 || pw.Keys.Items[0].Project != "prj_one" || pw.Keys.Items[1].Project != "prj_two" || *pw.Keys.Items[1].Folder != "secret" {
 		t.Fatalf("posted %+v", pw)
 	}
+	// Every environment goes as no names, so the server does not take this
+	// CLI for an old client hiding exceptions (#1447).
+	if pw.Environments.Names == nil || len(*pw.Environments.Names) != 0 {
+		t.Fatalf("every environment sent as names %v, want an empty list", pw.Environments.Names)
+	}
 	want = []string{"GET " + api.PathPrefix + "/orgs/org_one/projects", "POST " + api.PathPrefix + "/orgs/org_one/rules"}
 	if strings.Join(requests, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("all-projects requests %v, want %v", requests, want)
 	}
+
+	// Environment names are rule-wide, so an all-projects rule takes them
+	// (#1447); they are sent as names with no id items.
+	requests = nil
+	if code, out := run("access", "rule", "add", "--principal", "usr_carol", "--capability", "edit",
+		"--all-projects", "--except-env-name", "prod"); code != ExitOK {
+		t.Fatalf("add --all-projects --except-env-name = %d %s", code, out)
+	}
+	pw = posted.Where
+	if pw.Environments.Mode != apigen.RuleAxisModeAll || len(pw.Environments.Items) != 0 || pw.Environments.Names == nil ||
+		len(*pw.Environments.Names) != 1 || (*pw.Environments.Names)[0] != "prod" {
+		t.Fatalf("posted environments %+v", pw.Environments)
+	}
+	// A server before revision 22 cannot select by name: refused, not sent.
+	revision, requests = envNamesRevision-1, nil
+	if code, out := run("access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit",
+		"--only-env-name", "prod"); code != ExitRefused || !strings.Contains(out, "revision 22") {
+		t.Fatalf("names against revision %d = %d %s, want refused naming revision 22", revision, code, out)
+	}
+	if slices.Contains(requests, "POST "+api.PathPrefix+"/orgs/org_one/rules") {
+		t.Fatalf("names were sent to an old server: %v", requests)
+	}
+	if code, out := run("access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit",
+		"--only-env-name", "prod"); code != ExitRefused || !strings.Contains(out, "--only-env/--except-env") {
+		t.Fatalf("names over listed projects against an old server = %d %s, want the id flags offered", code, out)
+	}
+	// An all-projects rule takes no id flags, so they are not offered.
+	if code, out := run("access", "rule", "add", "--principal", "usr_carol", "--capability", "edit",
+		"--all-projects", "--except-env-name", "prod"); code != ExitRefused || strings.Contains(out, "or use --only-env") || !strings.Contains(out, "one rule per project") {
+		t.Fatalf("all-projects names against revision %d = %d %s, want refused offering per-project rules, not id flags", revision, code, out)
+	}
+	revision = api.Revision
 
 	// Syntax is refused before any request.
 	requests = nil
@@ -152,6 +206,8 @@ func TestAccessRuleVerbs(t *testing.T) {
 		{"access", "rule", "remove"},
 		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--in-project", "prj_one"},
 		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--except-env", "env_prod"},
+		{"access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit", "--only-env", "env_a", "--only-env-name", "prod"},
+		{"access", "rule", "add", "--project", "prj_one", "--principal", "usr_carol", "--capability", "edit", "--only-env-name", "a", "--except-env-name", "b"},
 		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--only-key", "key_1"},
 		{"access", "rule", "add", "--principal", "usr_carol", "--capability", "edit", "--all-projects", "--except-folder", "prj_one:db"},
 	} {
@@ -332,5 +388,129 @@ func TestRuleTableShowsAllProjectsOnce(t *testing.T) {
 	row := got.Rows[0]
 	if row[3] != "all projects (now prj_a, prj_b)" || strings.Count(row[5], "folder:secret") != 1 || strings.Contains(row[5], "prj_") {
 		t.Fatalf("row %q, want all projects once with one unqualified folder", row)
+	}
+}
+
+// env create and rename send --confirm-widening as confirm_widening (#1447).
+func TestEnvConfirmWidening(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == api.PathPrefix+"/meta" {
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			return
+		}
+		body := map[string]any{}
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+		}
+		_ = jsonwire.Encode(w, apigen.Environment{Id: "env_uat", Name: "uat"})
+	}))
+	defer srv.Close()
+	st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
+	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: srv.URL, Token: "fixture-human", SessionID: "ses_fixture", Principal: "usr_fixture", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"env", "create", "--name", "uat", "--confirm-widening", "usr_b", "--confirm-widening", "usr_a"},
+		{"env", "rename", "env_uat", "--name", "uat", "--confirm-widening", "usr_b", "--confirm-widening", "usr_a"},
+	} {
+		bodies = nil
+		ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "", nil)
+		if code := Run(t.Context(), ios, append(args, "--instance", "local", "--org", "org_one", "--project", "prj_one")); code != ExitOK {
+			t.Fatalf("%v = %d %s%s", args, code, stdout, stderr)
+		}
+		if len(bodies) != 1 || fmt.Sprint(bodies[0]["confirm_widening"]) != "[usr_b usr_a]" {
+			t.Fatalf("%v sent %v, want confirm_widening [usr_b usr_a]", args, bodies)
+		}
+	}
+}
+
+// env delete sends --confirm-widening as the confirm_widening query (#1447).
+func TestEnvDeleteConfirmWidening(t *testing.T) {
+	var deletes []string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == api.PathPrefix+"/meta":
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+		case r.Method == http.MethodDelete:
+			deletes = append(deletes, r.URL.Query().Get("confirm_widening"))
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			_ = jsonwire.Encode(w, apigen.EnvironmentList{Items: []apigen.Environment{{Id: "env_uat", Name: "uat"}}, Count: 1})
+		}
+	}))
+	defer srv.Close()
+	st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
+	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: srv.URL, Token: "fixture-human", SessionID: "ses_fixture", Principal: "usr_fixture", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		flags []string
+		want  string
+	}{{nil, ""}, {[]string{"--confirm-widening", "usr_b", "--confirm-widening", "usr_a"}, "usr_b,usr_a"}} {
+		deletes = nil
+		args := append([]string{"env", "delete", "env_uat"}, c.flags...)
+		ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "", nil)
+		if code := Run(t.Context(), ios, append(args, "--instance", "local", "--org", "org_one", "--project", "prj_one")); code != ExitOK {
+			t.Fatalf("%v = %d %s%s", args, code, stdout, stderr)
+		}
+		if len(deletes) != 1 || deletes[0] != c.want {
+			t.Fatalf("%v sent confirm_widening %q, want %q", args, deletes, c.want)
+		}
+	}
+}
+
+// An environment rename that gives a machine's rule the environment is refused
+// until the caller reauthenticates over it; the verb opens the window and
+// sends the rename again (#1447).
+func TestEnvRenameReauthenticatesMachineWidening(t *testing.T) {
+	patches, reauths := 0, 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == api.PathPrefix+"/meta":
+			_ = jsonwire.Encode(w, apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+		case r.URL.Path == api.PathPrefix+"/orgs/org_one/projects/prj_one/environments/env_uat/reveal-window":
+			_ = jsonwire.Encode(w, apigen.RevealWindow{EffectiveWindowSeconds: 300, TotpOffered: true, CanReveal: true})
+		case r.URL.Path == api.PathPrefix+"/auth/totp":
+			_ = jsonwire.Encode(w, apigen.TotpStatus{Confirmed: true})
+		case r.URL.Path == api.PathPrefix+"/auth/reauth/totp":
+			reauths++
+			token := "hik_1_cli_rotated-rename"
+			_ = jsonwire.Encode(w, apigen.ReauthResult{
+				EnvironmentId: "env_uat", SessionId: "ses_rotated", SessionToken: &token,
+				WindowExpires: apigen.Timestamp(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)),
+			})
+		case r.Method == http.MethodPatch:
+			if patches++; patches == 1 {
+				detail := fmt.Sprintf(service.WideningReauthDetail, "env_uat")
+				var body apigen.Error
+				body.Error.Code, body.Error.Message, body.Error.Detail = apigen.ErrorCodeConflict, "conflict", &detail
+				w.WriteHeader(http.StatusConflict)
+				_ = jsonwire.Encode(w, body)
+				return
+			}
+			_ = jsonwire.Encode(w, apigen.Environment{Id: "env_uat", Name: "uat"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
+	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: srv.URL, Token: "fixture-human", SessionID: "ses_fixture", Principal: "usr_fixture", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "", nil)
+	ios.ReadPassword = func(string) (string, error) { return "123456", nil }
+	code := Run(t.Context(), ios, []string{"env", "rename", "env_uat", "--name", "uat", "--confirm-widening", "mch_one",
+		"--instance", "local", "--org", "org_one", "--project", "prj_one"})
+	if code != ExitOK || patches != 2 || reauths != 1 {
+		t.Fatalf("exit=%d patches=%d reauths=%d, want 0, 2, 1; out=%s%s", code, patches, reauths, stdout, stderr)
 	}
 }

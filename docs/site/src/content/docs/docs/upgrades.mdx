@@ -16,6 +16,45 @@ rotations in each environment (`hikyo rotation list --env <env>`) and pause any
 you do not want to start, then resume them deliberately. See
 [Scheduled credential rotation](/docs/rotation/).
 
+## Access rules by environment name
+
+Access rules now select environments by name in every project a rule covers
+([#1447](https://github.com/Hikyo-Org/Hikyo/issues/1447)). The upgrade keeps
+what every rule reaches exactly:
+
+- A rule whose projects all select the same environment names, and whose names
+  match only its own environments, is converted in place.
+- Any other rule is split into one rule per project, recorded in the audit log
+  as `rule.split` with the old and new rule ids.
+- Splitting adds rules. An organization that ends above the 1000 rules it may
+  hold keeps every rule working, but refuses new rules, and replacements that
+  leave it above, until some are revoked.
+- A rule that cannot be kept exactly is disabled, listed with its reason, and
+  recorded as `rule.disabled`. So is a rule that was not valid before the
+  upgrade, such as one stored with more than the 500 items a rule carries: it
+  reached nothing, and stays that way. Only a damaged database, or a rule
+  stored bypassing validation, holds one. It reaches no environment; remove it
+  and create it again.
+
+A client from before this upgrade still lists and creates rules by environment
+id. The server takes the names of the environments sent, so such a create is
+refused when a same-named environment in another of the rule's projects would
+be left out. A create or replacement covering every environment is refused
+too while that principal's rules except a name no environment of the project
+carries yet, because the old client cannot show it. Update the client to
+change those rules.
+
+After the upgrade, renaming, creating or cloning an environment can widen a
+rule and then needs confirmation. So can deleting an environment: it widens a
+rule only when it removes the project's last environment matching that rule's
+exception names, which before the upgrade widened the rule silently. Deleting
+one of several excepted environments widens nothing. Confirmation is needed
+only when principals gain access. Automation that deletes environments,
+including definitions applies, must pass `confirm_widening` when the refusal
+names who gains. See
+[Identity and access](/docs/identity-and-access/#access-rules). Restoring an
+archive from before this upgrade into an older binary is the only way back.
+
 ## Bootstrap whitespace and mail password upgrade notes
 
 Every bootstrap value and the contents of every imported file, including the

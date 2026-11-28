@@ -75,6 +75,19 @@ func runRuleResolve(t *testing.T, db *store.DB) {
 		t.Fatalf("carol without a key = %+v, want key-limited", v)
 	}
 
+	// An environment except is by name (#1447): erin's "all, except dev"
+	// excepts env_a1, named in the answer by its id.
+	byName := func(capability domain.Capability) service.RuleSpec {
+		return service.RuleSpec{Target: erin, Capability: capability, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1}, EnvMode: domain.AxisAll, EnvNames: []string{"dev"}, KeyMode: domain.AxisAll}}
+	}
+	f.create(t, orgAdmin, byName(domain.CapRead))
+	erinReveal := f.create(t, orgAdmin, byName(domain.CapReveal))
+	if v := state(resolve(f.dbKeyID), erin); v.State != authz.AccessExcepted || len(v.Excepts) != 1 || v.Excepts[0].RuleID != erinReveal ||
+		!slices.Equal(v.Excepts[0].Envs, []domain.EnvID{envA1}) {
+		t.Fatalf("erin on dev = %+v, want excepted by name through %s", v, erinReveal)
+	}
+
 	// A machine is answered from its own class-checked rules, exactly as the
 	// chokepoint admits it, not from the human rule read.
 	execRaw(t, db, `INSERT INTO service_accounts (id, principal_id, org_id, project_id, name, kind, created_at, created_by) `+
@@ -310,6 +323,46 @@ func runRuleResolveIsolation(t *testing.T, db *store.DB) {
 	t.Run("a_rule_delegated_manager_is_refused", func(t *testing.T) {
 		if _, err := f.rules.Resolve(ctx, service.LocalPrincipal(hank), dev, domain.CapRead, ""); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("hank (manage-members through a rule only) = %v, want not found", err)
+		}
+	})
+}
+
+// "Who can...?" matches environments by name across a rule's projects
+// (#1447): an "all except prod" rule over two projects is excepted in both
+// prods, including a prod created after the rule, and reaches their dev.
+func TestRuleResolveMatchesNamesAcrossProjects(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		rule := f.create(t, orgAdmin, service.RuleSpec{Target: ivan, Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisAll, EnvNames: []string{"prod"}, KeyMode: domain.AxisAll}})
+		ivanAt := func(s domain.Scope) service.AccessView {
+			t.Helper()
+			views, err := f.rules.Resolve(t.Context(), service.LocalPrincipal(orgAdmin), s, domain.CapRead, "")
+			if err != nil {
+				t.Fatalf("resolve %+v: %v", s, err)
+			}
+			i := slices.IndexFunc(views, func(v service.AccessView) bool { return v.Principal == ivan })
+			if i < 0 {
+				t.Fatalf("ivan missing from the answer at %+v", s)
+			}
+			return views[i]
+		}
+		// Resolved once before the second prod exists, on the same service,
+		// so a binding kept from this answer would miss it below.
+		if v := ivanAt(scopeEnv(orgA, prjA2, envA2)); v.State != authz.AccessCan || !slices.Equal(v.Rules, []string{rule}) {
+			t.Fatalf("ivan at %s before the second prod = %+v, want can through %s", envA2, v, rule)
+		}
+		const laterProd = domain.EnvID("env_a2_laterprod")
+		execRaw(t, db, "INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('"+string(laterProd)+"', 'org_a', 'prj_a2', 'prod', '', "+ts+", 1)")
+		for _, s := range []domain.Scope{scopeEnv(orgA, prjA1, envProd), scopeEnv(orgA, prjA2, laterProd)} {
+			if v := ivanAt(s); v.State != authz.AccessExcepted || len(v.Excepts) != 1 || v.Excepts[0].RuleID != rule || !slices.Equal(v.Excepts[0].Envs, []domain.EnvID{s.Env}) {
+				t.Fatalf("ivan at %s = %+v, want excepted by name through %s", s.Env, v, rule)
+			}
+		}
+		for _, s := range []domain.Scope{scopeEnv(orgA, prjA1, envA1), scopeEnv(orgA, prjA2, envA2)} {
+			if v := ivanAt(s); v.State != authz.AccessCan || !slices.Equal(v.Rules, []string{rule}) {
+				t.Fatalf("ivan at %s = %+v, want can through %s", s.Env, v, rule)
+			}
 		}
 	})
 }

@@ -62,10 +62,11 @@ func (q *Queries) DeleteRuleRow(ctx context.Context, arg DeleteRuleRowParams) (i
 
 const getRule = `-- name: GetRule :many
 SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.id, '') AS TEXT) AS item_id,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
@@ -82,16 +83,18 @@ type GetRuleRow struct {
 	ProjectMode string
 	EnvMode     string
 	KeyMode     string
+	EnvFault    string
 	ItemID      string
 	Axis        string
 	ProjectID   string
-	EnvID       string
+	EnvName     string
 	KeyID       string
 	FolderPath  string
 }
 
 // One rule with its items, ungated: revocation and pruning act on the stored
-// row whatever state its principal is in.
+// row whatever state its principal is in. A rule the upgrade to environment
+// names disabled carries env_fault and is handed back as not evaluable.
 // hikyo:authn-resolution
 func (q *Queries) GetRule(ctx context.Context, id string) ([]GetRuleRow, error) {
 	rows, err := q.db.Query(ctx, getRule, id)
@@ -110,10 +113,11 @@ func (q *Queries) GetRule(ctx context.Context, id string) ([]GetRuleRow, error) 
 			&i.ProjectMode,
 			&i.EnvMode,
 			&i.KeyMode,
+			&i.EnvFault,
 			&i.ItemID,
 			&i.Axis,
 			&i.ProjectID,
-			&i.EnvID,
+			&i.EnvName,
 			&i.KeyID,
 			&i.FolderPath,
 		); err != nil {
@@ -162,7 +166,7 @@ func (q *Queries) InsertRule(ctx context.Context, arg InsertRuleParams) error {
 }
 
 const insertRuleItem = `-- name: InsertRuleItem :exec
-INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path)
+INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_name, key_id, folder_path)
 VALUES ($1, $2, $3, $4, $5,
   $6, $7, $8)
 `
@@ -173,7 +177,7 @@ type InsertRuleItemParams struct {
 	OrgID      string
 	Axis       string
 	ProjectID  pgtype.Text
-	EnvID      pgtype.Text
+	EnvName    pgtype.Text
 	KeyID      pgtype.Text
 	FolderPath pgtype.Text
 }
@@ -186,7 +190,7 @@ func (q *Queries) InsertRuleItem(ctx context.Context, arg InsertRuleItemParams) 
 		arg.OrgID,
 		arg.Axis,
 		arg.ProjectID,
-		arg.EnvID,
+		arg.EnvName,
 		arg.KeyID,
 		arg.FolderPath,
 	)
@@ -194,16 +198,20 @@ func (q *Queries) InsertRuleItem(ctx context.Context, arg InsertRuleItemParams) 
 }
 
 const listAllProjectsRuleItemCountsInOrg = `-- name: ListAllProjectsRuleItemCountsInOrg :many
-SELECT r.id, (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id) AS items
+SELECT r.id,
+  (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'folder') AS folders,
+  (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'env') AS names
 FROM rules AS r WHERE r.org_id = $1 AND r.project_mode = 'all' ORDER BY r.id
 `
 
 type ListAllProjectsRuleItemCountsInOrgRow struct {
-	ID    string
-	Items int64
+	ID      string
+	Folders int64
+	Names   int64
 }
 
-// The all-projects rules of one org with their stored item counts: the
+// The all-projects rules of one org with their stored folder and
+// environment-name item counts: the
 // last-project deletion refusal names them, because a v1 rule response never
 // carries an empty project list, and a project creation that would list one
 // past the v1 bounds names them too.
@@ -218,7 +226,7 @@ func (q *Queries) ListAllProjectsRuleItemCountsInOrg(ctx context.Context, orgID 
 	var items []ListAllProjectsRuleItemCountsInOrgRow
 	for rows.Next() {
 		var i ListAllProjectsRuleItemCountsInOrgRow
-		if err := rows.Scan(&i.ID, &i.Items); err != nil {
+		if err := rows.Scan(&i.ID, &i.Folders, &i.Names); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -233,13 +241,14 @@ const listMachineRulesForPrincipal = `-- name: ListMachineRulesForPrincipal :man
 SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
 JOIN principals AS p ON p.id = r.principal_id
 LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.principal_id = $1
+  AND r.env_fault IS NULL
   AND p.kind = 'machine'
   AND p.privacy_state = 'active'
   AND p.containment_state = 'none'
@@ -256,7 +265,7 @@ type ListMachineRulesForPrincipalRow struct {
 	KeyMode     string
 	Axis        string
 	ProjectID   string
-	EnvID       string
+	EnvName     string
 	KeyID       string
 	FolderPath  string
 }
@@ -284,7 +293,7 @@ func (q *Queries) ListMachineRulesForPrincipal(ctx context.Context, principalID 
 			&i.KeyMode,
 			&i.Axis,
 			&i.ProjectID,
-			&i.EnvID,
+			&i.EnvName,
 			&i.KeyID,
 			&i.FolderPath,
 		); err != nil {
@@ -298,33 +307,72 @@ func (q *Queries) ListMachineRulesForPrincipal(ctx context.Context, principalID 
 	return items, nil
 }
 
-const listRuleIDsForEnvironment = `-- name: ListRuleIDsForEnvironment :many
-SELECT DISTINCT rule_id FROM rule_items
-WHERE org_id = $1 AND project_id = $2 AND env_id = $3
-ORDER BY rule_id
+const listRuleEnvRefsInOrg = `-- name: ListRuleEnvRefsInOrg :many
+SELECT project_id, id, name FROM environments WHERE org_id = $1 ORDER BY project_id, id
 `
 
-type ListRuleIDsForEnvironmentParams struct {
-	OrgID     string
-	ProjectID pgtype.Text
-	EnvID     pgtype.Text
+type ListRuleEnvRefsInOrgRow struct {
+	ProjectID string
+	ID        string
+	Name      string
 }
 
-// The deletion paths' censuses: which rules name an object about to go.
+// The environments of an org, or of one project, by id and name: a rule's
+// environment items are names (#1447), bound to the environments carrying
+// them in each project the rule covers at every read, so an environment
+// created or renamed later is matched with no rule rewrite.
+// hikyo:reason authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof, and a rule create binds the names it was sent before it authorizes the caller, returning nothing of them until the caller is proved; ids and names only, scoped to the org.
 // hikyo:authn-resolution
-func (q *Queries) ListRuleIDsForEnvironment(ctx context.Context, arg ListRuleIDsForEnvironmentParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, listRuleIDsForEnvironment, arg.OrgID, arg.ProjectID, arg.EnvID)
+func (q *Queries) ListRuleEnvRefsInOrg(ctx context.Context, orgID string) ([]ListRuleEnvRefsInOrgRow, error) {
+	rows, err := q.db.Query(ctx, listRuleEnvRefsInOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []ListRuleEnvRefsInOrgRow
 	for rows.Next() {
-		var rule_id string
-		if err := rows.Scan(&rule_id); err != nil {
+		var i ListRuleEnvRefsInOrgRow
+		if err := rows.Scan(&i.ProjectID, &i.ID, &i.Name); err != nil {
 			return nil, err
 		}
-		items = append(items, rule_id)
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuleEnvRefsInProject = `-- name: ListRuleEnvRefsInProject :many
+SELECT project_id, id, name FROM environments WHERE org_id = $1 AND project_id = $2 ORDER BY id
+`
+
+type ListRuleEnvRefsInProjectParams struct {
+	OrgID     string
+	ProjectID string
+}
+
+type ListRuleEnvRefsInProjectRow struct {
+	ProjectID string
+	ID        string
+	Name      string
+}
+
+// hikyo:reason authorize() binds the caller's own environment-name rule items, and a rule target's selector, to the chain project's environments before it decides whether to mint a proof, so it runs even when authorization is then refused and returns nothing beyond that decision; the rule listing and the widening censuses bind rule items to one project's environments after the caller was authorized in that project. Ids and names only, scoped to the org and project.
+// hikyo:authn-resolution
+func (q *Queries) ListRuleEnvRefsInProject(ctx context.Context, arg ListRuleEnvRefsInProjectParams) ([]ListRuleEnvRefsInProjectRow, error) {
+	rows, err := q.db.Query(ctx, listRuleEnvRefsInProject, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRuleEnvRefsInProjectRow
+	for rows.Next() {
+		var i ListRuleEnvRefsInProjectRow
+		if err := rows.Scan(&i.ProjectID, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -333,6 +381,7 @@ func (q *Queries) ListRuleIDsForEnvironment(ctx context.Context, arg ListRuleIDs
 }
 
 const listRuleIDsForKey = `-- name: ListRuleIDsForKey :many
+
 SELECT DISTINCT rule_id FROM rule_items
 WHERE org_id = $1 AND project_id = $2 AND key_id = $3
 ORDER BY rule_id
@@ -344,6 +393,9 @@ type ListRuleIDsForKeyParams struct {
 	KeyID     pgtype.Text
 }
 
+// The deletion paths' censuses: which rules name an object about to go. An
+// environment is named by name, which outlives the environment, so its
+// deletion has none (#1447).
 // hikyo:authn-resolution
 func (q *Queries) ListRuleIDsForKey(ctx context.Context, arg ListRuleIDsForKeyParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, listRuleIDsForKey, arg.OrgID, arg.ProjectID, arg.KeyID)
@@ -424,9 +476,10 @@ func (q *Queries) ListRuleIDsForProject(ctx context.Context, arg ListRuleIDsForP
 
 const listRuleLinesInOrg = `-- name: ListRuleLinesInOrg :many
 SELECT r.id, r.principal_id, r.capability, r.project_mode, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
@@ -444,9 +497,10 @@ type ListRuleLinesInOrgRow struct {
 	KeyMode     string
 	CreatedBy   string
 	CreatedAt   pgtype.Timestamptz
+	EnvFault    string
 	Axis        string
 	ProjectID   string
-	EnvID       string
+	EnvName     string
 	KeyID       string
 	FolderPath  string
 }
@@ -472,9 +526,10 @@ func (q *Queries) ListRuleLinesInOrg(ctx context.Context, orgID string) ([]ListR
 			&i.KeyMode,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.EnvFault,
 			&i.Axis,
 			&i.ProjectID,
-			&i.EnvID,
+			&i.EnvName,
 			&i.KeyID,
 			&i.FolderPath,
 		); err != nil {
@@ -490,9 +545,10 @@ func (q *Queries) ListRuleLinesInOrg(ctx context.Context, orgID string) ([]ListR
 
 const listRuleLinesInProject = `-- name: ListRuleLinesInProject :many
 SELECT r.id, r.principal_id, r.capability, r.project_mode, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path,
   (SELECT COUNT(*) FROM rule_items AS o WHERE o.rule_id = r.id AND o.project_id <> $1) AS other_items
@@ -519,9 +575,10 @@ type ListRuleLinesInProjectRow struct {
 	KeyMode     string
 	CreatedBy   string
 	CreatedAt   pgtype.Timestamptz
+	EnvFault    string
 	Axis        string
 	ProjectID   string
-	EnvID       string
+	EnvName     string
 	KeyID       string
 	FolderPath  string
 	OtherItems  int64
@@ -533,7 +590,10 @@ type ListRuleLinesInProjectRow struct {
 // items a rule holds elsewhere so the listing can say the rule spans more.
 // An all-projects rule names the project without an item: it is listed with
 // its project-less folder items, and the service decides other_projects from
-// the org's projects.
+// the org's projects. Project-less items are rule-wide: a rule's environment
+// names (#1447) select in every project it covers, this one included, so
+// they are listed too; the service binds them to this project's
+// environments only.
 // hikyo:authn-resolution
 func (q *Queries) ListRuleLinesInProject(ctx context.Context, arg ListRuleLinesInProjectParams) ([]ListRuleLinesInProjectRow, error) {
 	rows, err := q.db.Query(ctx, listRuleLinesInProject, arg.ProjectID, arg.OrgID)
@@ -553,9 +613,10 @@ func (q *Queries) ListRuleLinesInProject(ctx context.Context, arg ListRuleLinesI
 			&i.KeyMode,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.EnvFault,
 			&i.Axis,
 			&i.ProjectID,
-			&i.EnvID,
+			&i.EnvName,
 			&i.KeyID,
 			&i.FolderPath,
 			&i.OtherItems,
@@ -604,13 +665,14 @@ const listRulesForPrincipal = `-- name: ListRulesForPrincipal :many
 SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
 JOIN principals AS p ON p.id = r.principal_id
 LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.principal_id = $1
+  AND r.env_fault IS NULL
   AND p.kind = 'human'
   AND p.privacy_state = 'active'
   AND p.containment_state = 'none'
@@ -627,7 +689,7 @@ type ListRulesForPrincipalRow struct {
 	KeyMode     string
 	Axis        string
 	ProjectID   string
-	EnvID       string
+	EnvName     string
 	KeyID       string
 	FolderPath  string
 }
@@ -664,7 +726,7 @@ func (q *Queries) ListRulesForPrincipal(ctx context.Context, principalID string)
 			&i.KeyMode,
 			&i.Axis,
 			&i.ProjectID,
-			&i.EnvID,
+			&i.EnvName,
 			&i.KeyID,
 			&i.FolderPath,
 		); err != nil {
@@ -679,10 +741,10 @@ func (q *Queries) ListRulesForPrincipal(ctx context.Context, principalID string)
 }
 
 const listRulesForProject = `-- name: ListRulesForProject :many
-SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+SELECT r.id, r.principal_id, p.kind AS principal_kind, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
@@ -691,7 +753,7 @@ LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.org_id = $1
   AND (r.project_mode = 'all'
     OR r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = $1 AND pi.project_id = $2))
-  AND p.kind = 'human'
+  AND r.env_fault IS NULL
 ORDER BY r.id, i.id
 `
 
@@ -701,23 +763,27 @@ type ListRulesForProjectParams struct {
 }
 
 type ListRulesForProjectRow struct {
-	ID          string
-	PrincipalID string
-	Capability  string
-	OrgID       string
-	ProjectMode string
-	EnvMode     string
-	KeyMode     string
-	Axis        string
-	ProjectID   string
-	EnvID       string
-	KeyID       string
-	FolderPath  string
+	ID            string
+	PrincipalID   string
+	PrincipalKind string
+	Capability    string
+	OrgID         string
+	ProjectMode   string
+	EnvMode       string
+	KeyMode       string
+	Axis          string
+	ProjectID     string
+	EnvName       string
+	KeyID         string
+	FolderPath    string
 }
 
-// Every rule of a human principal that names one project, or covers every
-// project of the org (an all-projects rule names every project), for the
-// folder-move widening census (ADR D9). The census must be a SUPERSET of what
+// Every rule that names one project, or covers every project of the org (an
+// all-projects rule names every project), with its principal's kind, for the
+// widening censuses: the folder-move census (ADR D9) reads the human rules,
+// the environment rename, create and delete census (#1447) reads every rule,
+// a machine's unchecked by its class's live rule check (the machine widening
+// gate re-reads them through it). The census must be a SUPERSET of what
 // authorize() could ever honour, so it deliberately omits the chokepoint's
 // privacy and restore-epoch gates: a principal restricted today whose rule
 // gains on this move would otherwise regain that access later with nobody
@@ -735,6 +801,7 @@ func (q *Queries) ListRulesForProject(ctx context.Context, arg ListRulesForProje
 		if err := rows.Scan(
 			&i.ID,
 			&i.PrincipalID,
+			&i.PrincipalKind,
 			&i.Capability,
 			&i.OrgID,
 			&i.ProjectMode,
@@ -742,7 +809,7 @@ func (q *Queries) ListRulesForProject(ctx context.Context, arg ListRulesForProje
 			&i.KeyMode,
 			&i.Axis,
 			&i.ProjectID,
-			&i.EnvID,
+			&i.EnvName,
 			&i.KeyID,
 			&i.FolderPath,
 		); err != nil {
@@ -904,6 +971,72 @@ func (q *Queries) RecoveryListMachineRulesBeforeAllProjects(ctx context.Context,
 	return items, nil
 }
 
+const recoveryListMachineRulesBeforeEnvNames = `-- name: RecoveryListMachineRulesBeforeEnvNames :many
+SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
+  CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+LEFT JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = $1
+  AND p.kind = 'machine'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id
+`
+
+type RecoveryListMachineRulesBeforeEnvNamesRow struct {
+	ID          string
+	Capability  string
+	OrgID       string
+	ProjectMode string
+	EnvMode     string
+	KeyMode     string
+	Axis        string
+	ProjectID   string
+	EnvID       string
+	KeyID       string
+	FolderPath  string
+}
+
+// hikyo:reason Historical recovery of source schema 99 reads a machine principal's member access rules with environment items by id, which that schema stores; the machine kind, privacy, containment and restore-epoch gates stay, an environment item drops its rule and the caller applies the machine class's live rule check to every row.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListMachineRulesBeforeEnvNames(ctx context.Context, principalID string) ([]RecoveryListMachineRulesBeforeEnvNamesRow, error) {
+	rows, err := q.db.Query(ctx, recoveryListMachineRulesBeforeEnvNames, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListMachineRulesBeforeEnvNamesRow
+	for rows.Next() {
+		var i RecoveryListMachineRulesBeforeEnvNamesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectMode,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recoveryListRulesBeforeAllProjects = `-- name: RecoveryListRulesBeforeAllProjects :many
 SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
   i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
@@ -972,6 +1105,76 @@ func (q *Queries) RecoveryListRulesBeforeAllProjects(ctx context.Context, princi
 	return items, nil
 }
 
+const recoveryListRulesBeforeEnvNames = `-- name: RecoveryListRulesBeforeEnvNames :many
+SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
+  CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+LEFT JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = $1
+  AND p.kind = 'human'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id
+`
+
+type RecoveryListRulesBeforeEnvNamesRow struct {
+	ID          string
+	Capability  string
+	OrgID       string
+	ProjectMode string
+	EnvMode     string
+	KeyMode     string
+	Axis        string
+	ProjectID   string
+	EnvID       string
+	KeyID       string
+	FolderPath  string
+}
+
+// Historical recovery of source schema 99 (#1447): rules.project_mode exists
+// but environment items name one environment id in one project and there is
+// no rules.env_fault. The caller reads every such item as an unknown axis, so
+// a rule holding one is dropped (fails closed) rather than guessed by name.
+// hikyo:reason Historical recovery of source schema 99 reads the principal's member access rules with environment items by id, which that schema stores; the human kind, privacy, containment and restore-epoch gates stay and an environment item drops its rule.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListRulesBeforeEnvNames(ctx context.Context, principalID string) ([]RecoveryListRulesBeforeEnvNamesRow, error) {
+	rows, err := q.db.Query(ctx, recoveryListRulesBeforeEnvNames, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListRulesBeforeEnvNamesRow
+	for rows.Next() {
+		var i RecoveryListRulesBeforeEnvNamesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectMode,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recoveryListRulesForProjectBeforeAllProjects = `-- name: RecoveryListRulesForProjectBeforeAllProjects :many
 SELECT r.id, r.principal_id, r.capability, r.org_id, r.env_mode, r.key_mode,
   i.axis, CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
@@ -1022,6 +1225,78 @@ func (q *Queries) RecoveryListRulesForProjectBeforeAllProjects(ctx context.Conte
 			&i.PrincipalID,
 			&i.Capability,
 			&i.OrgID,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recoveryListRulesForProjectBeforeEnvNames = `-- name: RecoveryListRulesForProjectBeforeEnvNames :many
+SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
+  CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+LEFT JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = $1
+  AND (r.project_mode = 'all'
+    OR r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = $1 AND pi.project_id = $2))
+  AND p.kind = 'human'
+ORDER BY r.id, i.id
+`
+
+type RecoveryListRulesForProjectBeforeEnvNamesParams struct {
+	OrgID     string
+	ProjectID pgtype.Text
+}
+
+type RecoveryListRulesForProjectBeforeEnvNamesRow struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	ProjectMode string
+	EnvMode     string
+	KeyMode     string
+	Axis        string
+	ProjectID   string
+	EnvID       string
+	KeyID       string
+	FolderPath  string
+}
+
+// hikyo:reason Historical recovery of source schema 99 reads the folder-move census with environment items by id, which that schema stores; like ListRulesForProject it is deliberately ungated beyond human kind so the census stays a superset.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListRulesForProjectBeforeEnvNames(ctx context.Context, arg RecoveryListRulesForProjectBeforeEnvNamesParams) ([]RecoveryListRulesForProjectBeforeEnvNamesRow, error) {
+	rows, err := q.db.Query(ctx, recoveryListRulesForProjectBeforeEnvNames, arg.OrgID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListRulesForProjectBeforeEnvNamesRow
+	for rows.Next() {
+		var i RecoveryListRulesForProjectBeforeEnvNamesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectMode,
 			&i.EnvMode,
 			&i.KeyMode,
 			&i.Axis,

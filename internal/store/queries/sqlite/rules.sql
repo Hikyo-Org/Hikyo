@@ -17,13 +17,14 @@
 SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
 JOIN principals AS p ON p.id = r.principal_id
 LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.principal_id = sqlc.arg(principal_id)
+  AND r.env_fault IS NULL
   AND p.kind = 'human'
   AND p.privacy_state = 'active'
   AND p.containment_state = 'none'
@@ -39,32 +40,36 @@ ORDER BY r.id, i.id;
 SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
 JOIN principals AS p ON p.id = r.principal_id
 LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.principal_id = sqlc.arg(principal_id)
+  AND r.env_fault IS NULL
   AND p.kind = 'machine'
   AND p.privacy_state = 'active'
   AND p.containment_state = 'none'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 ORDER BY r.id, i.id;
 
--- Every rule of a human principal that names one project, or covers every
--- project of the org (an all-projects rule names every project), for the
--- folder-move widening census (ADR D9). The census must be a SUPERSET of what
+-- Every rule that names one project, or covers every project of the org (an
+-- all-projects rule names every project), with its principal's kind, for the
+-- widening censuses: the folder-move census (ADR D9) reads the human rules,
+-- the environment rename, create and delete census (#1447) reads every rule,
+-- a machine's unchecked by its class's live rule check (the machine widening
+-- gate re-reads them through it). The census must be a SUPERSET of what
 -- authorize() could ever honour, so it deliberately omits the chokepoint's
 -- privacy and restore-epoch gates: a principal restricted today whose rule
 -- gains on this move would otherwise regain that access later with nobody
 -- having confirmed it.
 -- hikyo:authn-resolution
 -- name: ListRulesForProject :many
-SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+SELECT r.id, r.principal_id, p.kind AS principal_kind, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
@@ -73,18 +78,20 @@ LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.org_id = sqlc.arg(org_id)
   AND (r.project_mode = 'all'
     OR r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = sqlc.arg(org_id) AND pi.project_id = sqlc.arg(project_id)))
-  AND p.kind = 'human'
+  AND r.env_fault IS NULL
 ORDER BY r.id, i.id;
 
 -- One rule with its items, ungated: revocation and pruning act on the stored
--- row whatever state its principal is in.
+-- row whatever state its principal is in. A rule the upgrade to environment
+-- names disabled carries env_fault and is handed back as not evaluable.
 -- hikyo:authn-resolution
 -- name: GetRule :many
 SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.id, '') AS TEXT) AS item_id,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
@@ -92,12 +99,9 @@ LEFT JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.id = sqlc.arg(id)
 ORDER BY i.id;
 
--- The deletion paths' censuses: which rules name an object about to go.
--- hikyo:authn-resolution
--- name: ListRuleIDsForEnvironment :many
-SELECT DISTINCT rule_id FROM rule_items
-WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) AND env_id = sqlc.arg(env_id)
-ORDER BY rule_id;
+-- The deletion paths' censuses: which rules name an object about to go. An
+-- environment is named by name, which outlives the environment, so its
+-- deletion has none (#1447).
 
 -- hikyo:authn-resolution
 -- name: ListRuleIDsForKey :many
@@ -123,9 +127,9 @@ VALUES (sqlc.arg(id), sqlc.arg(principal_id), sqlc.arg(capability), sqlc.arg(org
 
 -- hikyo:authn-resolution
 -- name: InsertRuleItem :exec
-INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_id, key_id, folder_path)
+INSERT INTO rule_items (id, rule_id, org_id, axis, project_id, env_name, key_id, folder_path)
 VALUES (sqlc.arg(id), sqlc.arg(rule_id), sqlc.arg(org_id), sqlc.arg(axis), sqlc.arg(project_id),
-  sqlc.arg(env_id), sqlc.arg(key_id), sqlc.arg(folder_path));
+  sqlc.arg(env_name), sqlc.arg(key_id), sqlc.arg(folder_path));
 
 -- hikyo:authn-resolution
 -- name: DeleteRuleItem :execrows
@@ -166,9 +170,10 @@ WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) AND name =
 -- hikyo:authn-resolution
 -- name: ListRuleLinesInOrg :many
 SELECT r.id, r.principal_id, r.capability, r.project_mode, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
 FROM rules AS r
@@ -182,13 +187,17 @@ ORDER BY r.id, i.id;
 -- items a rule holds elsewhere so the listing can say the rule spans more.
 -- An all-projects rule names the project without an item: it is listed with
 -- its project-less folder items, and the service decides other_projects from
--- the org's projects.
+-- the org's projects. Project-less items are rule-wide: a rule's environment
+-- names (#1447) select in every project it covers, this one included, so
+-- they are listed too; the service binds them to this project's
+-- environments only.
 -- hikyo:authn-resolution
 -- name: ListRuleLinesInProject :many
 SELECT r.id, r.principal_id, r.capability, r.project_mode, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
-  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.env_name, '') AS TEXT) AS env_name,
   CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
   CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path,
   (SELECT COUNT(*) FROM rule_items AS o WHERE o.rule_id = r.id AND o.project_id <> sqlc.arg(project_id)) AS other_items
@@ -200,14 +209,17 @@ WHERE r.org_id = sqlc.arg(org_id)
     OR EXISTS (SELECT 1 FROM rule_items AS pi WHERE pi.rule_id = r.id AND pi.org_id = sqlc.arg(org_id) AND pi.project_id = sqlc.arg(project_id)))
 ORDER BY r.id, i.id;
 
--- The all-projects rules of one org with their stored item counts: the
+-- The all-projects rules of one org with their stored folder and
+-- environment-name item counts: the
 -- last-project deletion refusal names them, because a v1 rule response never
 -- carries an empty project list, and a project creation that would list one
 -- past the v1 bounds names them too.
 -- hikyo:reason Project deletion and creation read the org's all-projects rules only after OpProjectDelete or OpProjectCreate authorized the caller in that org; ids and counts only, scoped to the org.
 -- hikyo:authn-resolution
 -- name: ListAllProjectsRuleItemCountsInOrg :many
-SELECT r.id, (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id) AS items
+SELECT r.id,
+  (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'folder') AS folders,
+  (SELECT COUNT(*) FROM rule_items AS i WHERE i.rule_id = r.id AND i.axis = 'env') AS names
 FROM rules AS r WHERE r.org_id = sqlc.arg(org_id) AND r.project_mode = 'all' ORDER BY r.id;
 
 -- Resolve only the addressed draft's key metadata for key-scoped Publish.
@@ -267,6 +279,80 @@ SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
 -- hikyo:authn-resolution
 -- name: LockOrgProjectIDsForDelete :many
 SELECT id FROM projects WHERE org_id = sqlc.arg(org_id) ORDER BY id;
+
+-- The environments of an org, or of one project, by id and name: a rule's
+-- environment items are names (#1447), bound to the environments carrying
+-- them in each project the rule covers at every read, so an environment
+-- created or renamed later is matched with no rule rewrite.
+-- hikyo:reason authorize() binds the principal's own environment-name rule items to the environments of the rule's org while minting a proof, and a rule create binds the names it was sent before it authorizes the caller, returning nothing of them until the caller is proved; ids and names only, scoped to the org.
+-- hikyo:authn-resolution
+-- name: ListRuleEnvRefsInOrg :many
+SELECT project_id, id, name FROM environments WHERE org_id = sqlc.arg(org_id) ORDER BY project_id, id;
+
+-- hikyo:reason authorize() binds the caller's own environment-name rule items, and a rule target's selector, to the chain project's environments before it decides whether to mint a proof, so it runs even when authorization is then refused and returns nothing beyond that decision; the rule listing and the widening censuses bind rule items to one project's environments after the caller was authorized in that project. Ids and names only, scoped to the org and project.
+-- hikyo:authn-resolution
+-- name: ListRuleEnvRefsInProject :many
+SELECT project_id, id, name FROM environments WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) ORDER BY id;
+
+-- Historical recovery of source schema 99 (#1447): rules.project_mode exists
+-- but environment items name one environment id in one project and there is
+-- no rules.env_fault. The caller reads every such item as an unknown axis, so
+-- a rule holding one is dropped (fails closed) rather than guessed by name.
+-- hikyo:reason Historical recovery of source schema 99 reads the principal's member access rules with environment items by id, which that schema stores; the human kind, privacy, containment and restore-epoch gates stay and an environment item drops its rule.
+-- hikyo:authn-resolution
+-- name: RecoveryListRulesBeforeEnvNames :many
+SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
+  CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+LEFT JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = sqlc.arg(principal_id)
+  AND p.kind = 'human'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id;
+
+-- hikyo:reason Historical recovery of source schema 99 reads a machine principal's member access rules with environment items by id, which that schema stores; the machine kind, privacy, containment and restore-epoch gates stay, an environment item drops its rule and the caller applies the machine class's live rule check to every row.
+-- hikyo:authn-resolution
+-- name: RecoveryListMachineRulesBeforeEnvNames :many
+SELECT r.id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
+  CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+LEFT JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.principal_id = sqlc.arg(principal_id)
+  AND p.kind = 'machine'
+  AND p.privacy_state = 'active'
+  AND p.containment_state = 'none'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+ORDER BY r.id, i.id;
+
+-- hikyo:reason Historical recovery of source schema 99 reads the folder-move census with environment items by id, which that schema stores; like ListRulesForProject it is deliberately ungated beyond human kind so the census stays a superset.
+-- hikyo:authn-resolution
+-- name: RecoveryListRulesForProjectBeforeEnvNames :many
+SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
+  CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN principals AS p ON p.id = r.principal_id
+LEFT JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = sqlc.arg(org_id)
+  AND (r.project_mode = 'all'
+    OR r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = sqlc.arg(org_id) AND pi.project_id = sqlc.arg(project_id)))
+  AND p.kind = 'human'
+ORDER BY r.id, i.id;
 
 -- Historical recovery of source schemas 89 through 98 (#1446): they hold the
 -- containment columns but no rules.project_mode, and every rule_items row

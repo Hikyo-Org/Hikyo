@@ -79,7 +79,7 @@ func TestConfiguredCatalogueLimits(t *testing.T) {
 				t.Fatalf("key write bypassed cell budget: %v", err)
 			}
 			envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
-			if _, err := envs.Create(t.Context(), actor, f.scope(), "overflow", nil); !errors.Is(err, domain.ErrLimitExceeded) || !strings.Contains(safeError(err), "resolved cells") {
+			if _, err := envs.CreateConfirming(t.Context(), actor, f.scope(), "overflow", nil, nil); !errors.Is(err, domain.ErrLimitExceeded) || !strings.Contains(safeError(err), "resolved cells") {
 				t.Fatalf("environment write bypassed cell budget: %v", err)
 			}
 		})

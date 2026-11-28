@@ -191,6 +191,8 @@ var driverFiles = map[string]bool{
 	"internal/isolation/rotation_executor_real_pg_test.go":               true, // pgx admin connections and read queries drive the executor against a real Postgres role lifecycle
 	"internal/isolation/rotation_summary_review_test.go":                 true, // binds generated rotation list/summary queries to the raw pools to prove owed-drop counts stay inside their chain
 	"internal/isolation/rotation_summary_test.go":                        true, // binds generated rotation summary queries to the raw pools to prove last-run bounds and owed-drop counts
+	"internal/isolation/rule_env_names_migration_test.go":                true, // raw SQLite/pgx handles build schema-101 archives and read migrated rows and audit events to prove migration 00102 keeps every rule's reach
+	"internal/isolation/rule_env_widening_test.go":                       true, // read-only PG()/SQLiteRead resolvers read each principal's rules as the chokepoint does to prove name-bound reach after renames
 	"internal/isolation/rule_refusal_querywork_test.go":                  true, // read-only transactions through PG()/SQLiteRead measure the query work of rule-management refusals
 	"internal/isolation/rules_historical_test.go":                        true, // raw SQLite/pgx handles build a schema-98 archive to prove recovery reads rules before rules.project_mode
 	"internal/isolation/scim_page_bound_test.go":                         true, // pins Postgres pool connections and a nil-checked PG() to measure SCIM page materialization bounds

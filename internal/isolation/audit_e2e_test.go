@@ -450,7 +450,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		if err := envs.UpdateNote(tctx(t), service.LocalPrincipal(alice), domain.Scope{Org: orgA, Project: prjA1, Env: envA1}, "noted", nil); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := envs.Create(tctx(t), service.LocalPrincipal(alice), domain.Scope{Org: orgA, Project: prjA1}, "audited-env", nil); err != nil {
+		if _, err := envs.CreateConfirming(tctx(t), service.LocalPrincipal(alice), domain.Scope{Org: orgA, Project: prjA1}, "audited-env", nil, nil); err != nil {
 			t.Fatal(err)
 		}
 		parameterScope := domain.Scope{Org: orgA, Project: prjA1, Env: envA1}
@@ -650,6 +650,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
 		personal := runPersonalAuditLifecycle(t, db.Engine())
 		rotated := runRotationExecutorAuditLifecycle(t, db.Engine())
+		// Migration 00102 (#1447) is the only emitter of rule.split and
+		// rule.disabled.
+		envNames := envNamesMigrationDB(t, db.Engine())
+		testRuleEnvNamesMigration(t, envNames)
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -660,6 +664,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, personal, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, rotated, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += int64(envNames.count("SELECT COUNT(*) FROM audit_tenant_events WHERE type = '" + string(typ) + "'"))
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
@@ -1090,19 +1095,19 @@ func runHierarchyLifecycle(t *testing.T, db *store.DB, org domain.OrgID) {
 		t.Fatal(err)
 	}
 	scope := domain.Scope{Org: org, Project: domain.ProjectID(proj.ID)}
-	env, err := envs.Create(ctx, actor, scope, "audited-environment", nil)
+	env, err := envs.CreateConfirming(ctx, actor, scope, "audited-environment", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	envScope := scope
 	envScope.Env = domain.EnvID(env.ID)
-	if _, err := envs.Rename(ctx, actor, envScope, "audited-environment-renamed", nil); err != nil {
+	if _, err := envs.RenameConfirming(ctx, actor, envScope, "audited-environment-renamed", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := envs.Reorder(ctx, actor, scope, []string{env.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := envs.Delete(ctx, actor, envScope); err != nil {
+	if err := envs.DeleteConfirming(ctx, actor, envScope, nil); err != nil {
 		t.Fatal(err)
 	}
 	folder, err := folders.Create(ctx, actor, scope, "audited-folder", nil)
@@ -1159,11 +1164,11 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 	envs := &service.Environments{DB: db, Keyring: kr}
 	values := &service.Values{DB: db, Keyring: kr}
 
-	source, err := envs.Create(ctx, actor, scope, "audited-values-source", nil)
+	source, err := envs.CreateConfirming(ctx, actor, scope, "audited-values-source", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dest, err := envs.Create(ctx, actor, scope, "audited-values-dest", nil)
+	dest, err := envs.CreateConfirming(ctx, actor, scope, "audited-values-dest", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1361,7 +1366,7 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 		t.Fatal(err)
 	}
 	for _, env := range []domain.Scope{sourceScope, destScope} {
-		if err := envs.Delete(ctx, actor, env); err != nil {
+		if err := envs.DeleteConfirming(ctx, actor, env, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1481,7 +1486,7 @@ func runDeveloperAuditLifecycle(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	scope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(project.ID)}
-	env, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Create(ctx, actor, scope, "developer-audit-environment", nil)
+	env, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).CreateConfirming(ctx, actor, scope, "developer-audit-environment", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

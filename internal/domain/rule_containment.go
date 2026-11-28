@@ -15,14 +15,16 @@ const FutureProjectWitness ProjectID = "~future-project"
 // WhereUnionContainsInProject checks the additive union, including selectors
 // whose exceptions complement one another. The finite witnesses partition
 // the symbolic selector space, rather than enumerating the current catalogue:
-// an unnamed environment and unnamed keys in every folder region represent
-// future objects too.
+// an unnamed environment name and unnamed keys in every folder region
+// represent future objects too. Environments compare by name (ADR D3), so a
+// selector naming an environment that does not exist yet is compared as the
+// environment it will match once created or renamed to that name.
 func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID, keyFolders map[string]string) bool {
-	envs := slices.Clone(inner.Envs[project])
+	envs := slices.Clone(inner.EnvNames)
 	folders := []string{""}
 	ids := []string{}
 	for _, where := range append(slices.Clone(outers), inner) {
-		for _, env := range where.Envs[project] {
+		for _, env := range where.EnvNames {
 			if !slices.Contains(envs, env) {
 				envs = append(envs, env)
 			}
@@ -38,7 +40,7 @@ func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID,
 		}
 	}
 	for i := 0; ; i++ {
-		env := EnvID(fmt.Sprintf("selector-witness-%d", i))
+		env := fmt.Sprintf("selector-witness-%d", i)
 		if !slices.Contains(envs, env) {
 			envs = append(envs, env)
 			break
@@ -71,7 +73,7 @@ func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID,
 		keys = append(keys, RuleKey{ID: id, Folder: folder})
 	}
 	for _, env := range envs {
-		if !selectorEnvMatches(inner, project, env) {
+		if !selectorEnvMatches(inner, env) {
 			continue
 		}
 		for _, key := range keys {
@@ -79,7 +81,7 @@ func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID,
 				continue
 			}
 			if !slices.ContainsFunc(outers, func(outer Where) bool {
-				return outer.Names(project) && selectorEnvMatches(outer, project, env) && selectorKeyMatches(outer, project, key)
+				return outer.Names(project) && selectorEnvMatches(outer, env) && selectorKeyMatches(outer, project, key)
 			}) {
 				return false
 			}
@@ -88,8 +90,8 @@ func WhereUnionContainsInProject(outers []Where, inner Where, project ProjectID,
 	return true
 }
 
-func selectorEnvMatches(where Where, project ProjectID, env EnvID) bool {
-	matched := slices.Contains(where.Envs[project], env)
+func selectorEnvMatches(where Where, name string) bool {
+	matched := slices.Contains(where.EnvNames, name)
 	return where.EnvMode == AxisOnly && matched || where.EnvMode == AxisAll && !matched
 }
 
@@ -107,13 +109,13 @@ func selectorKeyMatches(where Where, project ProjectID, key RuleKey) bool {
 }
 
 // ContainsWhereInProject compares selectors symbolically, including future
-// environments and keys. keyFolders must come from the current transaction;
+// environments (by name) and keys. keyFolders must come from the current transaction;
 // missing key metadata refuses containment instead of assuming a folder.
 func (outer Where) ContainsWhereInProject(inner Where, project ProjectID, keyFolders map[string]string) bool {
 	if !outer.Names(project) || !inner.Names(project) {
 		return false
 	}
-	if !axisContains(outer.EnvMode, outer.Envs[project], inner.EnvMode, inner.Envs[project]) {
+	if !axisContains(outer.EnvMode, outer.EnvNames, inner.EnvMode, inner.EnvNames) {
 		return false
 	}
 	o, i := outer.KeysIn(project), inner.KeysIn(project)

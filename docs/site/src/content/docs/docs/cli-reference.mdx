@@ -348,6 +348,15 @@ not spell out.
 - **Temporary access.** `access request emergency` defaults `--duration` to 1h,
   capped by the policy's `--max-duration`. See
   [Identity and access](/docs/identity-and-access/#temporary-access).
+- **Access rules.** `access rule add` selects environments by name with the
+  repeatable `--only-env-name` or `--except-env-name`, matched in every project
+  the rule covers, including with `--all-projects`. `--only-env` and
+  `--except-env` take environment ids, whose names become the rule's; the two
+  spellings do not mix. `access rule list` shows a name as `name:N` and a rule
+  the upgrade disabled as `disabled: <reason>`. `env create`, `env rename`
+  and `env delete` take `--confirm-widening <principal>`, repeated, to confirm
+  a change that gives those principals access through their rules. See
+  [Identity and access](/docs/identity-and-access/#access-rules).
 - **Restores.** `instance-config apply` takes
   `--confirm-restored-credentials` (adopt refuses it) to confirm you reviewed the restored
   credentials and reconciled access grants after a restore.

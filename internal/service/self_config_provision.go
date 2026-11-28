@@ -308,7 +308,18 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	if err != nil {
 		return store.SelfConfigBinding{}, err
 	}
+	// Rules select environments by name (#1447). The org is created in this
+	// transaction, so no rule can gain the new environment yet; the census
+	// keeps every environment create on one path, and with no confirmation
+	// here any widening would refuse provisioning.
+	change, err := readEnvChange(ctx, az, domain.Scope{Org: scope.Org, Project: scope.Project}, domain.EnvID(envID), "", "Production")
+	if err != nil {
+		return store.SelfConfigBinding{}, err
+	}
 	if err := r.Environments().Create(ctx, envProof, store.NewEnvironment{ID: envID, Name: "Production", CreatedAt: store.CanonTime(now)}); err != nil {
+		return store.SelfConfigBinding{}, err
+	}
+	if err := change.confirm(ctx, r, az, envProof, nil, caller, nil, now); err != nil {
 		return store.SelfConfigBinding{}, err
 	}
 	if err := selfConfigSeedEvent(ctx, r, envProof, caller.Principal, audit.EventEnvCreated, "environment", envID, audit.Payload{"name": "Production"}, false); err != nil {

@@ -46,7 +46,7 @@ func runApprovalLifecycle(t *testing.T, db *store.DB) {
 	projectScope := domain.Scope{Org: orgA, Project: prjA1}
 	// A dedicated, non-protected environment, so the lifecycle neither depends on
 	// nor disturbs the shared fixture's env_a1 (which other suites protect).
-	env, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "approvals-env", nil)
+	env, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "approvals-env", nil, nil)
 	if err != nil {
 		t.Fatalf("create approvals env: %v", err)
 	}
@@ -223,7 +223,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	}
 
 	newCoveredEnv := func(name string) (string, domain.Scope) {
-		env, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, name, nil)
+		env, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, name, nil, nil)
 		if err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
@@ -293,7 +293,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	// (c) Deleting the environment cascades its requests away.
 	envC, scopeC := newCoveredEnv("edges-c")
 	reqC := stage(scopeC, "EDGE_C").CreatedApprovalRequest.ID
-	if err := environments.Delete(ctx, service.LocalPrincipal(alice), scopeC); err != nil {
+	if err := environments.DeleteConfirming(ctx, service.LocalPrincipal(alice), scopeC, nil); err != nil {
 		t.Fatalf("delete env: %v", err)
 	}
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM approval_requests WHERE id = '"+reqC+"'"); n != 0 {
@@ -305,7 +305,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	// be merged under a project-wide fallback merely because both are version 1.
 	envD, scopeD := newCoveredEnv("edges-d")
 	policyD := policyIDForEnv(t, db, approvals, envD)
-	other, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-other", nil)
+	other, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "edges-other", nil, nil)
 	if err != nil {
 		t.Fatalf("create other environment: %v", err)
 	}
@@ -345,11 +345,11 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 
 	// (e) A covered copy destination refuses before source secret material is
 	// opened, so the durable disclosure count cannot be erased by rollback.
-	source, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-copy-source", nil)
+	source, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "edges-copy-source", nil, nil)
 	if err != nil {
 		t.Fatalf("create copy source: %v", err)
 	}
-	destination, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-copy-destination", nil)
+	destination, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "edges-copy-destination", nil, nil)
 	if err != nil {
 		t.Fatalf("create copy destination: %v", err)
 	}
@@ -396,7 +396,7 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 
 	// (f) An approved restore request already pins the preview digest. Its merge
 	// must not demand the one-shot preview token a second time.
-	restoreEnv, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-restore", nil)
+	restoreEnv, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "edges-restore", nil, nil)
 	if err != nil {
 		t.Fatalf("create restore environment: %v", err)
 	}
@@ -497,11 +497,11 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	// draft flow, so a covered destination refuses it and nothing is written in
 	// any destination of the same call, while uncovered environments still work.
 	_, declareCovered := newCoveredEnv("edges-declare-covered")
-	open1, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-declare-open1", nil)
+	open1, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "edges-declare-open1", nil, nil)
 	if err != nil {
 		t.Fatalf("create declare open env: %v", err)
 	}
-	open2, err := environments.Create(ctx, service.LocalPrincipal(alice), projectScope, "edges-declare-open2", nil)
+	open2, err := environments.CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "edges-declare-open2", nil, nil)
 	if err != nil {
 		t.Fatalf("create second declare open env: %v", err)
 	}
@@ -683,7 +683,7 @@ func runConcurrentApprovalVotes(t *testing.T, db *store.DB) {
 	}); err != nil {
 		t.Fatalf("grant second approver publish: %v", err)
 	}
-	env, err := (&service.Environments{DB: db, Keyring: kr}).Create(ctx, service.LocalPrincipal(alice), projectScope, "approval-concurrency", nil)
+	env, err := (&service.Environments{DB: db, Keyring: kr}).CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "approval-concurrency", nil, nil)
 	if err != nil {
 		t.Fatalf("create concurrency environment: %v", err)
 	}
@@ -760,7 +760,7 @@ func runApprovalExpiryBatches(t *testing.T, db *store.DB) {
 	base := time.Now().UTC().Add(-time.Minute)
 	approvals := &service.Approvals{DB: db, Auth: auth, Keyring: kr, Now: func() time.Time { return base }}
 	projectScope := domain.Scope{Org: orgA, Project: prjA1}
-	env, err := (&service.Environments{DB: db, Keyring: kr}).Create(ctx, service.LocalPrincipal(alice), projectScope, "approval-expiry-batch", nil)
+	env, err := (&service.Environments{DB: db, Keyring: kr}).CreateConfirming(ctx, service.LocalPrincipal(alice), projectScope, "approval-expiry-batch", nil, nil)
 	if err != nil {
 		t.Fatalf("create expiry environment: %v", err)
 	}

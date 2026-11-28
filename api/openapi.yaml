@@ -1874,6 +1874,22 @@ paths:
         A project holds at most 50 environments; the 51st is refused by name
         with `limit_exceeded`, decided against a count read inside the creating
         transaction.
+
+        Member access rules select environments by name, so a new environment
+        is reached by every rule whose `only` list names its name. Such a
+        creation is refused with 409 `conflict` carrying `widening` until it
+        is resent with `confirm_widening` naming exactly those principals. A
+        creation that gives a machine secret plaintext (`read` with `reveal`
+        or `reveal-history`) through an `only` name is always refused with
+        409 `conflict`: for want of the caller's `manage-identities` or
+        matching disclosure capability, or else asking for reauthentication,
+        since the gate asks for a window over the new environment's id, which
+        no session can hold before the environment exists. Create it under a
+        name no `only` list names, reauthenticate over it, then rename it. A
+        machine gaining other permissions, `read` without `reveal` or
+        `reveal-history` included, needs the confirmation alone. A rule
+        reaching every environment, or every one except other names, reaches
+        the new one without confirmation.
       x-hikyo-class: tenant
       x-hikyo-operation: environment.create
       x-hikyo-formula: [definitions-edit@project]
@@ -1930,6 +1946,14 @@ paths:
         under a `mode: all` rule ABORTS the creation, naming the keys, because
         an environment born invalid is exactly what the atomicity rule
         forbids.
+
+        Access rules gain the clone as they gain any new environment, with
+        the same `confirm_widening` refusal: a clone that gives a machine
+        secret plaintext through an `only` name is always refused with
+        409 `conflict`, as a creation is. Clone under a name no `only` list
+        names, reauthenticate over it, then rename it. A machine gaining other
+        permissions, `read` without `reveal` or `reveal-history` included,
+        needs the confirmation alone.
 
         It is a separate route rather than a flag on `createEnvironment`
         because its RESPONSE is different: a clone has to report what it could
@@ -2054,6 +2078,18 @@ paths:
       description: |
         Environment topology, so it carries `definitions-edit` rather than
         `edit`: renaming is a change to the project's shape, not to a value.
+
+        Member access rules select environments by name, so a rename can give
+        people or machines access through their rules: renamed out of an
+        `all` list's exceptions, or into an `only` list. Such a rename is
+        refused with 409 `conflict` carrying `widening` until it is resent
+        with `confirm_widening` naming exactly those principals. A machine
+        that newly reaches secret plaintext (`read` with `reveal` or
+        `reveal-history`) also needs the caller's `manage-identities`, the
+        matching disclosure capability and a fresh reauthentication over the
+        environment; a machine gaining only other permissions needs the
+        confirmation alone. A rename that only narrows access needs no
+        confirmation.
       x-hikyo-class: tenant
       x-hikyo-operation: environment.rename
       x-hikyo-formula: [definitions-edit@project]
@@ -2097,16 +2133,46 @@ paths:
         Automation requires project-scoped definitions-edit and cannot delete
         a protected environment. Deletion removes values, drafts, pins and
         revision payloads; audit events remain subject to audit retention.
+
+        Member access rules select environments by name, so deleting the
+        last environment carrying a name an `all` list excepts lets those
+        rules reach the project as a whole. Deleting one of several excepted
+        environments leaves the others excepted and gains nothing. A delete
+        that gives any principal a permission is refused with 409 `conflict`
+        carrying `widening` until it is resent with `confirm_widening` naming
+        exactly those principals, machines included. The rules already reached
+        the remaining environments, so a delete reveals no plaintext that was
+        hidden before and asks for no reauthentication. The rules keep the
+        name, so a later environment of that name is excepted again.
       x-hikyo-class: tenant
       x-hikyo-operation: environment.delete
       x-hikyo-formula: [definitions-edit@project]
       x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
+      parameters:
+        - name: confirm_widening
+          in: query
+          required: false
+          style: form
+          explode: false
+          description: |
+            Revision 22: the principal ids the delete gives access through
+            member access rules, comma-separated, confirming it
+            (member-access-rules ADR D9). It must name exactly the principals
+            the refusal's `widening` names. Omitted, no widening is confirmed.
+          schema:
+            type: array
+            maxItems: 1000
+            uniqueItems: true
+            items:
+              $ref: "#/components/schemas/ID"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "204":
           description: Deleted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
@@ -2914,11 +2980,11 @@ paths:
         held there, unless org or instance authority permits unheld grants.
         A workload or automation principal may hold a rule under its class's
         allowlist and depth, in its owning project only, and never narrowed by
-        keys. A machine rule that makes plaintext newly reachable also needs
-        `manage-identities` on the project, the matching disclosure capability
-        and a live reauthentication window over each newly reachable
-        environment; a 409 names the environment to reauthenticate over. Use
-        replaceRules to edit a grouped rule card atomically.
+        keys. A machine rule that makes secret plaintext newly reachable also
+        needs `manage-identities` on the project, the matching disclosure
+        capability and a live reauthentication window over each newly
+        reachable environment; a 409 names the environment to reauthenticate
+        over. Use replaceRules to edit a grouped rule card atomically.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -19116,8 +19182,9 @@ components:
               description: |
                 Present on `bad_request` and `unprocessable`, where it names
                 the offending request member, and on a `conflict` whose refusal
-                names the caller's own state or, for a key folder move that
-                widens access, what `widening` carries. On
+                names the caller's own state or, for a key folder move or an
+                environment rename or creation that widens access, what
+                `widening` carries. On
                 `cli_login_factor_required`, it carries sign-in guidance.
                 `null` and absent are
                 equivalent; every other error code omits the member entirely.
@@ -20390,6 +20457,13 @@ components:
           $ref: "#/components/schemas/EntityName"
         acknowledgements:
           $ref: "#/components/schemas/Acknowledgements"
+        confirm_widening:
+          $ref: "#/components/schemas/ConfirmWidening"
+          description: |
+            Read only by an environment rename (revision 22): confirms the
+            principals the rename gives access through member access rules,
+            an `only` list naming the new name or an `all` list excepting the
+            old one. Omitted, no widening is confirmed. Other renames ignore it.
 
     CreateProjectRequest:
       type: object
@@ -20444,6 +20518,12 @@ components:
           $ref: "#/components/schemas/EntityName"
         acknowledgements:
           $ref: "#/components/schemas/Acknowledgements"
+        confirm_widening:
+          $ref: "#/components/schemas/ConfirmWidening"
+          description: |
+            Confirms the principals the new environment gives access through
+            member access rules whose `only` list names its name (revision
+            22). Omitted, no widening is confirmed.
 
     CloneEnvironmentRequest:
       type: object
@@ -20456,6 +20536,12 @@ components:
           $ref: "#/components/schemas/ID"
         acknowledgements:
           $ref: "#/components/schemas/Acknowledgements"
+        confirm_widening:
+          $ref: "#/components/schemas/ConfirmWidening"
+          description: |
+            Confirms the principals the new environment gives access through
+            member access rules whose `only` list names its name (revision
+            22). Omitted, no widening is confirmed.
 
     ClonedEnvironment:
       type: object
@@ -23592,8 +23678,8 @@ components:
       type: string
       description: |
         `only` reaches the listed `projects`. `all` reaches every project of
-        the organisation, including projects created later; such a rule covers
-        every environment and narrows keys by folder only. Omitted, a rule's
+        the organisation, including projects created later; such a rule
+        narrows environments by name and keys by folder only. Omitted, a rule's
         project mode is `only`. The default is stated here rather than as a
         schema `default`, so generated clients never add the property to a
         request: a server before revision 21 refuses it.
@@ -23609,19 +23695,24 @@ components:
         one of `projects`. A rule names at most 500 projects, environments and
         keys together.
 
+        Environments are selected by name (revision 22): see
+        `RuleEnvironmentAxis`.
+
         With `project_mode` `all` the rule reaches every project of the
         organisation, including projects created later. A response lists the
         organisation's current projects (a project listing: only that
         project), with the rule's folder items repeated under each, so
         `projects` is never empty; an organisation listing's or a create's
         `where` is a valid create request. A create lists exactly the organisation's current
-        projects (otherwise 409), keeps the environment axis `all` without
-        items, and repeats the same folder items, never single keys, under
-        every project.
+        projects (otherwise 409), and repeats the same folder items, never
+        single keys, under every project. Its environment axis selects by
+        name like any rule's.
 
-        The 500 bound counts the rule as it is listed: every current project
-        plus its folder items repeated under each. A create that would list
-        more is refused with 409 `limit_exceeded`. A project creation that
+        The 500 bound counts the rule as it can be listed. A rule over named
+        projects counts `projects × (1 + names) + key items`; a rule with
+        `project_mode` `all` counts `projects × (1 + folders + names)` over
+        every current project. A create that would list more is refused with
+        409 `limit_exceeded`. A project creation that
         would list an existing rule over all projects past it is refused with
         409 `conflict`, whose detail names the blocking rules to a member
         manager. A listing is never truncated.
@@ -23645,9 +23736,36 @@ components:
       type: object
       additionalProperties: false
       required: [mode, items]
+      description: |
+        Environments are selected by name (member-access-rules ADR D3,
+        revision 22): `names` match in every project the rule covers,
+        including environments created or renamed to a name later. A
+        response carries `names` and, in `items`, the environments they match
+        now in each listed project.
+
+        A create may send `names` with `items` empty, or with `items` exactly
+        the environments those names match now in the rule's projects
+        (otherwise 409 `conflict` naming the difference). A create without
+        `names` (a client before revision 22) names environments by `items`
+        alone: their names become the rule's, and it is refused with 409
+        `conflict` unless those names match exactly `items` in the rule's
+        projects. An `all` create without `names`, for a principal whose
+        `all` rules except a name no environment of one of the create's
+        projects carries yet, is refused with 409 `conflict` naming them, so
+        a client before revision 22 cannot drop an exception silently.
       properties:
         mode:
           $ref: "#/components/schemas/RuleAxisMode"
+        names:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          description: |
+            The environment names the axis lists (revision 22). Omitted on a
+            create, the names of `items` (see above); a server before
+            revision 22 refuses the property.
+          items:
+            $ref: "#/components/schemas/EntityName"
         items:
           type: array
           maxItems: 500
@@ -23799,6 +23917,12 @@ components:
           $ref: "#/components/schemas/ID"
         created_at:
           $ref: "#/components/schemas/Timestamp"
+        fault:
+          type: string
+          description: |
+            Present only on a rule the upgrade to environment names
+            (revision 22) could not keep exactly: why it was disabled. Such a
+            rule reaches no environment; revoke it and create it again.
 
     RuleList:
       type: object
@@ -23819,9 +23943,11 @@ components:
       additionalProperties: false
       required: [count]
       description: |
-        A key folder move that gives people access through their member access
-        rules (member-access-rules ADR D9). `count` is always present; the
-        people and what they gain are named only to a caller holding
+        A key folder move (member-access-rules ADR D9), or an environment
+        rename, creation or deletion (revision 22), alone or in a definitions
+        plan, that gives principals access through their member access
+        rules. `count` is always present; the people and
+        machines and what they gain are named only to a caller holding
         `manage-members` on the project, who confirms by resending the request
         with `confirm_widening` listing exactly those principal ids.
       properties:
@@ -23846,18 +23972,30 @@ components:
           $ref: "#/components/schemas/RuleCapability"
         environments:
           type: array
-          description: The environment ids newly reached; empty for a project-wide capability only.
+          description: |
+            The environment ids newly reached; empty when only the project
+            is, as for a project-wide capability or a deletion that leaves no
+            environment the rule excepts.
           items:
             $ref: "#/components/schemas/ID"
+        keys:
+          $ref: "#/components/schemas/RuleKeyAxis"
+          description: |
+            Present when the gain reaches only the keys this selector names in
+            the project, as for a rule narrowed to folders or keys; absent,
+            every key (for a key folder move, the moved key). A principal
+            gaining one environment over several selectors has one gainer per
+            selector.
 
     ConfirmWidening:
       type: array
       maxItems: 1000
       uniqueItems: true
       description: |
-        The principal ids a key folder move gives access through their member
-        access rules, confirming it (member-access-rules ADR D9). It must name
-        exactly the people the refusal's `widening` names.
+        The principal ids a key folder move, or an environment rename,
+        creation or deletion, gives access through their member access rules, confirming
+        it (member-access-rules ADR D9). It must name exactly the principals
+        the refusal's `widening` names.
       items:
         $ref: "#/components/schemas/ID"
 

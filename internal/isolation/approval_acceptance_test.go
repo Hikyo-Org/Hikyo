@@ -72,7 +72,7 @@ func approvalAcceptanceFixture(t *testing.T, db *store.DB, quorum int) (approval
 	ctx := t.Context()
 	a, b := newApprovalNode(t, db), newApprovalNode(t, approvalPeer(t, db))
 	project := domain.Scope{Org: orgA, Project: prjA1}
-	env, err := (&service.Environments{DB: db, Keyring: a.approvals.Keyring}).Create(ctx, service.LocalPrincipal(alice), project, "approval-acceptance", nil)
+	env, err := (&service.Environments{DB: db, Keyring: a.approvals.Keyring}).CreateConfirming(ctx, service.LocalPrincipal(alice), project, "approval-acceptance", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

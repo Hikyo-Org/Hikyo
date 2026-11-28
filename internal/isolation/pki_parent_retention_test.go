@@ -62,7 +62,7 @@ func TestPKIParentDeletionRetainsCertificateHistory(t *testing.T) {
 			}
 			before := rowCounts(t, db)
 			for name, remove := range map[string]func() error{
-				"environment": func() error { return envs.Delete(ctx, human, env) },
+				"environment": func() error { return envs.DeleteConfirming(ctx, human, env, nil) },
 				"shared store used by definitions apply": func() error {
 					return tx.Write(ctx, db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 						proof, err := az.Authorize(ctx, authz.Identity{Principal: alice}, authz.OpEnvDelete, env)

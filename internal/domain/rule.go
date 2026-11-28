@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -33,23 +34,105 @@ type RuleKeyItem struct {
 	IsFolder bool
 }
 
-// Where is a rule's reach. Items are bound per project: an environment or key
-// item belongs to exactly one of the rule's projects, and a project with no
+// Where is a rule's reach. Key items are bound per project: a key item
+// belongs to exactly one of the rule's projects, and a project with no key
 // items on an `all` axis is unnarrowed on it.
 //
+// Environment items are NAMES, rule-wide (ADR D3, #1447): "all, except
+// `prod`" over `payments, web` excepts every environment called `prod` in
+// either project, including one created or renamed to `prod` later. EnvNames
+// is the stored truth. Envs is derived from it and never stored: BindEnvs
+// fills it with the environments carrying those names in each covered
+// project, read in the evaluating transaction. A Where that was never bound
+// reaches nothing (Reaches), so a read path that forgets to bind fails closed.
+//
 // AllProjects is the all-projects project axis (#1446): every project of the
-// rule's org, including projects created later. Projects is then empty, the
-// environment axis is `all` with no items (owner decision 2026-11-25: until
-// #1447 binds environments by name, an id-bound except would not follow later
-// projects), and key items are folders only, held under AnyProject because a
-// folder path means the same in every project.
+// rule's org, including projects created later. Projects is then empty, and
+// key items are folders only, held under AnyProject because a folder path
+// means the same in every project. Environment names apply in every project.
 type Where struct {
 	AllProjects bool
 	Projects    []ProjectID
 	EnvMode     AxisMode
+	EnvNames    []string
 	Envs        map[ProjectID][]EnvID
 	KeyMode     AxisMode
 	Keys        map[ProjectID][]RuleKeyItem
+
+	// bound is set by BindEnvs and BoundEnvs; refs are what BindEnvs bound against.
+	bound bool
+	refs  []EnvRef
+	// within, set by BindEnvsWithin, is the one project refs cover.
+	within ProjectID
+}
+
+// EnvRef is one environment as name binding sees it.
+type EnvRef struct {
+	Project ProjectID
+	ID      EnvID
+	Name    string
+}
+
+// BindEnvs resolves the environment names against refs, the current
+// environments of (at least) every project the Where covers. It is the one
+// binding function: the chokepoint's rule reads, the rename and create census
+// (over the environments before and after the change) and the web model's
+// mirror of it all bind through it.
+func (w Where) BindEnvs(refs []EnvRef) Where {
+	w.Envs = map[ProjectID][]EnvID{}
+	w.refs = refs
+	w.bound = true
+	for _, e := range refs {
+		if w.Names(e.Project) && slices.Contains(w.EnvNames, e.Name) && !slices.Contains(w.Envs[e.Project], e.ID) {
+			w.Envs[e.Project] = append(w.Envs[e.Project], e.ID)
+		}
+	}
+	return w
+}
+
+// BindEnvsWithin binds the names against refs, the environments of project
+// alone, and confines the Where to project: it reaches nothing elsewhere
+// (Reaches), since its Envs and refs know no other project. The chokepoint
+// binds a single-project check this way, reading one project's environments
+// rather than the org's.
+func (w Where) BindEnvsWithin(project ProjectID, refs []EnvRef) Where {
+	w = w.BindEnvs(refs)
+	w.within = project
+	return w
+}
+
+// BoundEnvs marks an in-memory selector built directly over environment ids
+// (a probe, or a grant's environment) as bound: its Envs are already the
+// environments it reaches.
+func (w Where) BoundEnvs() Where {
+	w.bound = true
+	return w
+}
+
+// WithEnvNames is w with other environment names, bound against the same
+// environments as w.
+func (w Where) WithEnvNames(names []string) Where {
+	w.EnvNames = names
+	if w.refs == nil {
+		return w
+	}
+	return w.BindEnvs(w.refs)
+}
+
+// EnvName is the name of environment id of project among the environments w
+// was bound against.
+func (w Where) EnvName(project ProjectID, id EnvID) (string, bool) {
+	return EnvRefName(w.refs, project, id)
+}
+
+// EnvRefName is the name of environment id of project among refs.
+func EnvRefName(refs []EnvRef, project ProjectID, id EnvID) (string, bool) {
+	for _, e := range refs {
+		if e.Project == project && e.ID == id {
+			return e.Name, true
+		}
+	}
+	return "", false
 }
 
 // AnyProject keys the folder items of an all-projects Where.
@@ -72,9 +155,6 @@ func (w Where) KeysIn(p ProjectID) []RuleKeyItem {
 }
 
 var (
-	// ErrRuleAllProjectsEnvironments refuses environment items on an
-	// all-projects rule until environments bind by name (#1447).
-	ErrRuleAllProjectsEnvironments = fmt.Errorf("%w: a rule over all projects covers every environment; naming environments needs environment-name binding (#1447)", ErrInvalid)
 	// ErrRuleAllProjectsKeys refuses single-key items on an all-projects rule:
 	// a key id belongs to one project (owner decision 2026-11-20).
 	ErrRuleAllProjectsKeys = fmt.Errorf("%w: a rule over all projects narrows keys by folder only; a single key belongs to one project", ErrInvalid)
@@ -102,19 +182,38 @@ type RuleKey struct {
 // rule is refused by name rather than failing at its audit write.
 const MaxRuleItems = 500
 
-// AllProjectsExpansion is the selector size of an all-projects rule as a
-// response lists it: every one of projects, each with the rule's folder
-// items repeated under it. It stays within MaxRuleItems so the listing fits
-// the v1 bounds and remains a valid create (#1446): a rule create or a project
-// create that would pass the bound is refused, never truncated.
-func AllProjectsExpansion(projects, folders int) int {
-	return projects * (1 + folders)
+// AllProjectsExpansion bounds the selector size of an all-projects rule as a
+// v1 response lists it: every one of projects, each with the rule's folder
+// items repeated under it and at most one environment item per name (names are
+// unique within a project). The names themselves are a revision-22 field with
+// their own bound. It stays within
+// MaxRuleItems so the listing fits the v1 bounds and remains a valid create
+// (#1446, #1447): a rule create or a project create that would pass the bound
+// is refused, never truncated. It counts every name in every project, so no
+// environment create or rename can push a listing past it.
+func AllProjectsExpansion(projects, folders, names int) int {
+	return projects * (1 + folders + names)
 }
 
-// RuleItemCount is a rule id with the number of its stored selector items.
+// ListedItems bounds the selector size of a named-projects rule as a v1
+// response lists it, the same way: its projects, at most one environment item
+// per name in each project, and its key items. Migration 00102 splits any
+// converted rule above it, so every listed rule can be saved again. An
+// all-projects rule is bounded by AllProjectsExpansion instead.
+func (w Where) ListedItems() int {
+	keys := 0
+	for _, items := range w.Keys {
+		keys += len(items)
+	}
+	return len(w.Projects)*(1+len(w.EnvNames)) + keys
+}
+
+// RuleItemCount is an all-projects rule id with its stored folder and
+// environment-name item counts.
 type RuleItemCount struct {
-	ID    string
-	Items int
+	ID      string
+	Folders int
+	Names   int
 }
 
 // RuleShape is the narrowest Where a capability may sit on (ADR D2, D5).
@@ -149,6 +248,11 @@ var ruleShapes = map[Capability]RuleShape{
 	CapProjectSettings:  ShapeProject,
 }
 
+// RuleCapabilities is every capability a rule may carry, in a stable order.
+func RuleCapabilities() []Capability {
+	return slices.Sorted(maps.Keys(ruleShapes))
+}
+
 // RuleShapeOf reports the shape a capability may take on a rule, and whether
 // a rule may carry it at all.
 func RuleShapeOf(c Capability) (RuleShape, bool) {
@@ -158,15 +262,24 @@ func RuleShapeOf(c Capability) (RuleShape, bool) {
 
 // EnvNarrowed reports whether the Where narrows environments anywhere.
 func (w Where) EnvNarrowed() bool {
-	if w.EnvMode != AxisAll {
-		return true
+	return w.EnvMode != AxisAll || len(w.EnvNames) > 0
+}
+
+// validateEnvNames checks the environment axis: a known mode, names that are
+// non-empty and distinct, and at least one name under `only`.
+func (w Where) validateEnvNames() error {
+	if w.EnvMode != AxisAll && w.EnvMode != AxisOnly {
+		return fmt.Errorf("%w: environment mode %q", ErrInvalid, w.EnvMode)
 	}
-	for _, items := range w.Envs {
-		if len(items) > 0 {
-			return true
+	for i, name := range w.EnvNames {
+		if name == "" || slices.Contains(w.EnvNames[:i], name) {
+			return fmt.Errorf("%w: environment %q is empty or named twice", ErrInvalid, name)
 		}
 	}
-	return false
+	if w.EnvMode == AxisOnly && len(w.EnvNames) == 0 {
+		return fmt.Errorf("%w: an only-environments rule names at least one environment", ErrInvalid)
+	}
+	return nil
 }
 
 // KeyNarrowed reports whether the Where narrows keys anywhere.
@@ -211,29 +324,14 @@ func (r Rule) Validate() error {
 		}
 		seen[p] = true
 	}
-	if w.EnvMode != AxisAll && w.EnvMode != AxisOnly {
-		return fmt.Errorf("%w: environment mode %q", ErrInvalid, w.EnvMode)
+	if err := w.validateEnvNames(); err != nil {
+		return err
 	}
 	if w.KeyMode != AxisAll && w.KeyMode != AxisOnly {
 		return fmt.Errorf("%w: key mode %q", ErrInvalid, w.KeyMode)
 	}
 	if _, ok := w.Keys[AnyProject]; ok {
 		return fmt.Errorf("%w: key items name no project", ErrInvalid)
-	}
-	envTotal := 0
-	for p, items := range w.Envs {
-		if !seen[p] {
-			return fmt.Errorf("%w: environment items name project %q outside the rule", ErrInvalid, p)
-		}
-		for i, e := range items {
-			if e == "" || slices.Contains(items[:i], e) {
-				return fmt.Errorf("%w: environment %q is empty or named twice", ErrInvalid, e)
-			}
-		}
-		envTotal += len(items)
-	}
-	if w.EnvMode == AxisOnly && envTotal == 0 {
-		return fmt.Errorf("%w: an only-environments rule names at least one environment", ErrInvalid)
 	}
 	keyTotal := 0
 	for p, items := range w.Keys {
@@ -250,7 +348,7 @@ func (r Rule) Validate() error {
 	if w.KeyMode == AxisOnly && keyTotal == 0 {
 		return fmt.Errorf("%w: an only-keys rule names at least one folder or key", ErrInvalid)
 	}
-	if len(w.Projects)+envTotal+keyTotal > MaxRuleItems {
+	if len(w.Projects)+len(w.EnvNames)+keyTotal > MaxRuleItems {
 		return fmt.Errorf("%w: a rule names at most %d projects, environments and keys", ErrLimitExceeded, MaxRuleItems)
 	}
 	return r.validateShape(shape)
@@ -272,15 +370,15 @@ func (r Rule) validateShape(shape RuleShape) error {
 }
 
 // validateAllProjects is Validate for the all-projects project axis: no
-// project list, every environment, and folder items only, all held under
-// AnyProject.
+// project list, environment names (which apply in every project), and folder
+// items only, all held under AnyProject.
 func (r Rule) validateAllProjects(shape RuleShape) error {
 	w := r.Where
 	if len(w.Projects) > 0 {
 		return fmt.Errorf("%w: a rule over all projects names no project", ErrInvalid)
 	}
-	if w.EnvMode != AxisAll || w.EnvNarrowed() {
-		return ErrRuleAllProjectsEnvironments
+	if err := w.validateEnvNames(); err != nil {
+		return err
 	}
 	if w.KeyMode != AxisAll && w.KeyMode != AxisOnly {
 		return fmt.Errorf("%w: key mode %q", ErrInvalid, w.KeyMode)
@@ -305,7 +403,7 @@ func (r Rule) validateAllProjects(shape RuleShape) error {
 	if w.KeyMode == AxisOnly && keyTotal == 0 {
 		return fmt.Errorf("%w: an only-keys rule names at least one folder or key", ErrInvalid)
 	}
-	if keyTotal > MaxRuleItems {
+	if keyTotal+len(w.EnvNames) > MaxRuleItems {
 		return fmt.Errorf("%w: a rule names at most %d projects, environments and keys", ErrLimitExceeded, MaxRuleItems)
 	}
 	return r.validateShape(shape)
@@ -317,9 +415,12 @@ func (r Rule) validateAllProjects(shape RuleShape) error {
 //
 //   - Org and instance atoms are never satisfied: rules cover listed projects
 //     only.
+//   - A Where narrowed by environment names must have been bound
+//     (Where.BindEnvs); unbound, it reaches nothing. A Where bound within
+//     one project (Where.BindEnvsWithin) reaches nothing in another.
 //   - A project atom needs every environment of the project (all, with no
-//     exception in that project).
-//   - An environment atom needs the environment on the axis.
+//     environment of the project carrying an excepted name).
+//   - An environment atom needs the environment on the axis, by its name.
 //   - A key-narrowed rule satisfies an atom ONLY when the operation passed a
 //     key and that key matches; every operation that passes no key (bulk
 //     reveal, export, delivery, ...) is out of its reach. Publish proves its
@@ -332,7 +433,7 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 		return false
 	}
 	w := r.Where
-	if !w.Names(s.Project) {
+	if !w.Names(s.Project) || w.EnvNarrowed() && !w.bound || w.within != "" && s.Project != w.within {
 		return false
 	}
 	envs := w.Envs[s.Project]
@@ -433,7 +534,7 @@ func CheckMachineRule(c PrincipalClass, r Rule) MachineRuleFault {
 	case LevelEnv:
 		// Explicit (project, environment) only: "all, except" includes
 		// environments created later, which is the opposite of explicit.
-		if w.EnvMode != AxisOnly || len(w.Envs[w.Projects[0]]) == 0 {
+		if w.EnvMode != AxisOnly || len(w.EnvNames) == 0 {
 			return MachineRuleDepth
 		}
 		return MachineRuleOK

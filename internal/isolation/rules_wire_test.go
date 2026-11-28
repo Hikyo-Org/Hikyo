@@ -5,6 +5,8 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -77,6 +79,63 @@ func runRuleWire(t *testing.T, db *store.DB) {
 		t.Fatalf("ambiguous key item = %d %s, want 400", code, raw)
 	}
 
+	// An old client's environment item naming a project the rule does not
+	// list (#1447) is refused from the request alone, on create and replace
+	// alike, with the same body whether or not the id exists.
+	unlisted := func(env string) apigen.CreateRuleRequest {
+		req := body
+		req.Where.Projects = []apigen.ID{e.project}
+		req.Where.Environments = apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleEnvironmentItem{{Project: sibling, Environment: env}}}
+		req.Where.Keys.Items = []apigen.RuleKeyItem{{Project: e.project, Folder: &db0}}
+		return req
+	}
+	// ErrInvalid withholds its detail, so the body is the generic contract refusal.
+	const wantUnlisted = `{"error":{"code":"bad_request","message":"the request does not satisfy the API contract"}}`
+	for _, env := range []string{siblingEnv, "env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f75"} {
+		if code, raw := e.call(t, http.MethodPost, org+"/rules", unlisted(env)); code != http.StatusBadRequest || string(bytes.TrimSpace(raw)) != wantUnlisted {
+			t.Fatalf("create with an unlisted project's item %s = %d %s, want 400 %s", env, code, raw, wantUnlisted)
+		}
+		replace := apigen.ReplaceRulesRequest{Principal: holder, Create: &[]apigen.CreateRuleRequest{unlisted(env)}}
+		if code, raw := e.call(t, http.MethodPost, org+"/rules/replace", replace); code != http.StatusBadRequest || string(bytes.TrimSpace(raw)) != wantUnlisted {
+			t.Fatalf("replace with an unlisted project's item %s = %d %s, want 400 %s", env, code, raw, wantUnlisted)
+		}
+	}
+	// Control: the same item is accepted once the rule lists its project.
+	listed := unlisted(siblingEnv)
+	listed.Where.Projects = append(listed.Where.Projects, sibling)
+	code, raw = e.call(t, http.MethodPost, org+"/rules", listed)
+	var accepted apigen.Rule
+	if code != http.StatusCreated || json.Unmarshal(raw, &accepted) != nil {
+		t.Fatalf("create with the item's project listed = %d %s, want 201", code, raw)
+	}
+	// Both controls keep the selector sent: only sibling-env, by id and name.
+	onlySibling := func(label string, kept apigen.RuleEnvironmentAxis) {
+		t.Helper()
+		if kept.Mode != apigen.RuleAxisModeOnly || !slices.Equal(kept.Items, []apigen.RuleEnvironmentItem{{Project: sibling, Environment: siblingEnv}}) ||
+			kept.Names == nil || !slices.Equal(*kept.Names, []string{"sibling-env"}) {
+			t.Fatalf("%s rule's environments = %+v, want only sibling-env", label, kept)
+		}
+	}
+	onlySibling("created", accepted.Where.Environments)
+	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+accepted.Id, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke control = %d %s", code, raw)
+	}
+	// The same control through the replace envelope: a refusal there is not
+	// a refusal of every id-only environment item.
+	code, raw = e.call(t, http.MethodPost, org+"/rules/replace", apigen.ReplaceRulesRequest{Principal: holder, Create: &[]apigen.CreateRuleRequest{listed}})
+	var replaced apigen.RuleList
+	if code != http.StatusOK || json.Unmarshal(raw, &replaced) != nil {
+		t.Fatalf("replace with the item's project listed = %d %s, want 200", code, raw)
+	}
+	i := slices.IndexFunc(replaced.Items, func(r apigen.Rule) bool { return r.Where.Environments.Mode == apigen.RuleAxisModeOnly })
+	if i < 0 {
+		t.Fatalf("replace returned no only-environments rule: %s", raw)
+	}
+	onlySibling("replaced", replaced.Items[i].Where.Environments)
+	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+replaced.Items[i].Id, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke replace control = %d %s", code, raw)
+	}
+
 	var list apigen.RuleList
 	code, raw = e.call(t, http.MethodGet, org+"/rules", nil)
 	if code != http.StatusOK || json.Unmarshal(raw, &list) != nil || list.Count != 1 || list.Items[0].OtherProjects {
@@ -128,4 +187,52 @@ func runRuleWire(t *testing.T, db *store.DB) {
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM rules WHERE id = '"+created.Id+"'"); n != 1 {
 		t.Fatal("a refused revoke removed the rule")
 	}
+}
+
+// A widening refusal names the key selector a gain reaches (#1447): an
+// environment created into a rule narrowed to folder db reads as db only, not
+// as the whole environment, on the wire.
+func TestRuleWireWideningNamesKeySelector(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := newAccessWireEnv(t, db)
+		const holder = "usr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f81"
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO principals (id, kind, created_at) VALUES ('%s', 'human', %s)`, holder, ts))
+		org := api.PathPrefix + "/orgs/" + e.org
+		folder, names := "db", []apigen.EntityName{"qa"}
+		rule := apigen.CreateRuleRequest{Principal: holder, Capability: apigen.RuleCapabilityEdit, Where: apigen.RuleWhere{
+			Projects:     []apigen.ID{e.project},
+			Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleEnvironmentItem{}, Names: &names},
+			Keys:         apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeOnly, Items: []apigen.RuleKeyItem{{Project: e.project, Folder: &folder}}},
+		}}
+		if code, raw := e.call(t, http.MethodPost, org+"/rules", rule); code != http.StatusCreated {
+			t.Fatalf("create narrowed rule = %d %s", code, raw)
+		}
+		before := strings.Split(queryStrings(t, db, "SELECT id || '\n' FROM environments WHERE project_id = '"+string(e.project)+"'"), "\n")
+		if len(before) < 2 {
+			t.Fatalf("the project holds no environment to tell qa from: %q", before)
+		}
+		code, raw := e.call(t, http.MethodPost, org+"/projects/"+e.project+"/environments", apigen.CreateEnvironmentRequest{Name: "qa"})
+		var body apigen.Error
+		if code != http.StatusConflict || json.Unmarshal(raw, &body) != nil || body.Error.Widening == nil || body.Error.Widening.Gainers == nil {
+			t.Fatalf("create qa = %d %s, want a widening refusal naming the gainers", code, raw)
+		}
+		var edits []apigen.WideningGainer
+		for _, g := range *body.Error.Widening.Gainers {
+			if g.PrincipalId == holder && g.Capability == apigen.RuleCapabilityEdit {
+				edits = append(edits, g)
+			}
+		}
+		// Exactly one: a second, whole-environment Edit gain would be wrong.
+		if len(edits) != 1 {
+			t.Fatalf("edit gainers for the holder = %d, want 1: %s", len(edits), raw)
+		}
+		edit := edits[0]
+		// The gain is on the proposed qa, which no existing environment is; a
+		// retry need not reuse its id, so only absence is checked.
+		if len(edit.Environments) != 1 || edit.Environments[0] == "" || slices.Contains(before, string(edit.Environments[0])) || edit.Keys == nil || edit.Keys.Mode != apigen.RuleAxisModeOnly ||
+			len(edit.Keys.Items) != 1 || edit.Keys.Items[0].Project != e.project || edit.Keys.Items[0].Folder == nil ||
+			*edit.Keys.Items[0].Folder != folder || edit.Keys.Items[0].Key != nil {
+			t.Fatalf("edit gainer = %s, want the new environment over folder db only", raw)
+		}
+	})
 }

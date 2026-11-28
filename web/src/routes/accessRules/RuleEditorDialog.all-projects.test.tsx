@@ -33,14 +33,28 @@ it('offers All projects only where the page lists the whole organisation (#1446)
   expect(button(await editor(true), 'All projects')).toBeDefined();
 });
 
-it('an All projects rule covers every environment and saves as all projects', async () => {
+it('an All projects rule picks environments by name and saves as all projects (#1447)', async () => {
   const onSave = vi.fn();
   const root = await editor(true, onSave);
   await act(async () => button(root, 'All projects')?.click());
-  expect(root.textContent).toContain('All projects covers every environment');
+  expect(root.textContent).toContain('Environments match by name in every project');
   expect(root.textContent).not.toContain('Pick single keys');
+  // Leaving dev out picks it in every project, payments and web alike.
+  await act(async () => button(root, 'dev')?.click());
   await act(async () => button(root, 'Save')?.click());
-  expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ projects: '*', envs: { mode: 'all', items: [] } }));
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({
+      projects: '*',
+      envs: {
+        mode: 'all',
+        names: ['dev'],
+        items: [
+          { project: IDS.payments, environment: IDS.payDev },
+          { project: IDS.web, environment: IDS.webDev },
+        ],
+      },
+    }),
+  );
 });
 
 it('outside the org-wide page an all-projects rule can be narrowed but not saved as is', async () => {
