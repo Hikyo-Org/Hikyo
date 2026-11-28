@@ -3,9 +3,9 @@
 set -euo pipefail
 [[ $# == 4 ]] || { echo 'usage: verify-release.sh REPOSITORY TAG COMMIT WORK' >&2; exit 2; }
 repository=$1 tag=$2 commit=$3 work=$4
-[[ "$repository" == "$GITHUB_REPOSITORY" ]]
-[[ "$commit" =~ ^[0-9a-f]{40}$ ]]
-[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$ ]]
+[[ "$repository" == "$GITHUB_REPOSITORY" ]] || exit 1
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z.-]*)?$ ]] || exit 1
 mkdir -m 700 "$work"
 mkdir "$work/bundle"
 gh api "repos/$repository/releases/tags/$tag" >"$work/release.json"
