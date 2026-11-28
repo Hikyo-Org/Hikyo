@@ -603,6 +603,8 @@ var bareTestCases = struct{ flagged, allowed map[string]string }{
 		"eval or exit":                  "eval '[[ a == b ]]' || exit 1\n",
 		"heredoc on another descriptor": "bash ./x.sh 3<<'EOF'\n[[ data\nEOF\n",
 		"bash --version":                "bash --version\nsh --help\n",
+		"expanded script, flag, data":   "bash \"$script\" -e <<'EOF'\nnot ( shell\nEOF\n",
+		"expanded script, here-string":  "bash \"$script\" <<<'not ( shell'\n",
 		"expanded script fed data":      "bash \"$script\" <<'EOF'\nnot ( shell\nEOF\n",
 		"double-quoted continuation":    "eval \"echo \\\n[[ a == b ]]\"\n",
 		"ansi quote decoded":            "eval $'echo \\\"; [[ a == b ]] #\\\"'\n",
