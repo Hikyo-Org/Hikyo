@@ -2,6 +2,7 @@ package ci_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -1033,9 +1034,9 @@ func workflowProblems(name string, raw []byte) ([]string, error) {
 // path relative to root with the kind shebangKind gives them, and the paths whose shebang
 // names bash or sh in a form the scan does not read. Untracked files are included, so a new
 // script is checked before it is committed.
-func repositoryScripts(root string) (map[string]string, []string, error) {
+func repositoryScripts(ctx context.Context, root string) (map[string]string, []string, error) {
 	// precomposeunicode off: on macOS git would otherwise report a decomposed name composed.
-	out, err := exec.Command("git", "-C", root, "-c", "core.precomposeunicode=false", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory").Output()
+	out, err := exec.CommandContext(ctx, "git", "-C", root, "-c", "core.precomposeunicode=false", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory").Output()
 	if err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
@@ -1106,11 +1107,13 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 	t.Setenv("LC_ALL", "C") // git's own message is matched below
 	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} {
 		t.Setenv(name, "") // a hook's git environment would point git at the outer repository
-		os.Unsetenv(name)
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
 	}
 	root := t.TempDir()
 	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(root))
-	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(t.Context(), "git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
 	files := map[string]string{
@@ -1128,7 +1131,7 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	scripts, unread, err := repositoryScripts(root)
+	scripts, unread, err := repositoryScripts(t.Context(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1139,7 +1142,7 @@ func TestRepositoryScriptsSkipsIgnoredFiles(t *testing.T) {
 		t.Errorf("unread = %v, want [u.sh]", unread)
 	}
 	outside := t.TempDir()
-	if _, _, err := repositoryScripts(outside); err == nil || !strings.Contains(err.Error(), "not a git repository") {
+	if _, _, err := repositoryScripts(t.Context(), outside); err == nil || !strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("outside a repository: got %v, want git's own error", err)
 	}
 }
@@ -1172,7 +1175,7 @@ func TestNoBareBashTestRelyingOnErrexit(t *testing.T) {
 			t.Error(problem)
 		}
 	}
-	scripts, unread, err := repositoryScripts(root)
+	scripts, unread, err := repositoryScripts(t.Context(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
