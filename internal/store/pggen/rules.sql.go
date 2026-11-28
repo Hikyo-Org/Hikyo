@@ -62,6 +62,7 @@ func (q *Queries) DeleteRuleRow(ctx context.Context, arg DeleteRuleRowParams) (i
 
 const getRule = `-- name: GetRule :many
 SELECT r.id, r.principal_id, r.capability, r.org_id, r.project_mode, r.env_mode, r.key_mode,
+  CAST(COALESCE(r.env_fault, '') AS TEXT) AS env_fault,
   CAST(COALESCE(i.id, '') AS TEXT) AS item_id,
   CAST(COALESCE(i.axis, '') AS TEXT) AS axis,
   CAST(COALESCE(i.project_id, '') AS TEXT) AS project_id,
@@ -82,6 +83,7 @@ type GetRuleRow struct {
 	ProjectMode string
 	EnvMode     string
 	KeyMode     string
+	EnvFault    string
 	ItemID      string
 	Axis        string
 	ProjectID   string
@@ -91,7 +93,8 @@ type GetRuleRow struct {
 }
 
 // One rule with its items, ungated: revocation and pruning act on the stored
-// row whatever state its principal is in.
+// row whatever state its principal is in. A rule the upgrade to environment
+// names disabled carries env_fault and is handed back as not evaluable.
 // hikyo:authn-resolution
 func (q *Queries) GetRule(ctx context.Context, id string) ([]GetRuleRow, error) {
 	rows, err := q.db.Query(ctx, getRule, id)
@@ -110,6 +113,7 @@ func (q *Queries) GetRule(ctx context.Context, id string) ([]GetRuleRow, error) 
 			&i.ProjectMode,
 			&i.EnvMode,
 			&i.KeyMode,
+			&i.EnvFault,
 			&i.ItemID,
 			&i.Axis,
 			&i.ProjectID,

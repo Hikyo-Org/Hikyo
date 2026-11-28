@@ -344,7 +344,7 @@ apply when the implementing pull request merges.
   whose `all` rule reaches it because it does not except the name gains nothing by name, so that
   create needs no confirmation and no workaround. The window must name the new
   environment's id, and no session can hold one before the environment exists. The way through is
-  to create the environment under another name and rename it. A gain that reaches no secret plaintext passes
+  to create the environment under a name no *only* list names and rename it. A gain that reaches no secret plaintext passes
   the gate with nothing to reauthenticate: a machine's `edit`, and also its `read` without `reveal`
   or `reveal-history`, which delivers config values but no secret plaintext (that config gap is
   the follow-up #1630). One option for a later decision: exempt a plain create, since an empty

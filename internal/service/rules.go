@@ -550,8 +550,15 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 	}
 	// Bind the names to the org's environments in this transaction (#1447),
 	// once the request alone is known to be well formed and in bounds.
-	// Nothing about them is disclosed before the caller is proved.
-	refs, err := az.RuleEnvRefs(ctx, spec.Org, "")
+	// Nothing about them is disclosed before the caller is proved. A rule over
+	// one named project reads only that project's environments, the same
+	// statement whether or not it exists; every environment item names a
+	// listed project, checked above.
+	within := domain.ProjectID("")
+	if !spec.Where.AllProjects && len(spec.Where.Projects) == 1 {
+		within = spec.Where.Projects[0]
+	}
+	refs, err := az.RuleEnvRefs(ctx, spec.Org, within)
 	if err != nil {
 		return preparedRule{}, err
 	}

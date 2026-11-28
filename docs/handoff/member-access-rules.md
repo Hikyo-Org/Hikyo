@@ -261,9 +261,15 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   carry `env_fault`, audited as `rule.disabled` with the removed `env_mode`,
   `env_ids` and `env_names`. Tests:
   `TestRuleEnvNamesMigrationSQLite` and `TestRuleEnvNamesMigrationPostgres`,
-  including the 99/102 recovery boundary.
+  including the 99/102 recovery boundary. A faulted rule is never evaluated,
+  whatever items it holds: the rule resolver skips it and `GetRule` returns
+  it as not valid, so only a manager over its whole scope revokes it
+  (`TestDisabledRuleListsAndRevokes`).
 - **Domain.** `Where.EnvNames` is authoritative; `BindEnvs(refs)` derives the
-  environment ids inside `authorize()` on every check, with no cache.
+  environment ids inside `authorize()` on every check, with no cache. A rule
+  create binds its names before the caller is proved, reading one project's
+  environments for a rule over one named project and the org's otherwise
+  (`TestRuleCreateReadsOneProjectsEnvironmentsBeforeAuthorization`).
   All-projects rules take names (restriction A lifted); single keys stay
   refused there. Names are stored once per rule, but the item bound counts
   them per project, as `RuleWhere` lists them: projects × (1 + names) + key
@@ -290,9 +296,11 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   clone whose name gives a machine secret plaintext in the new environment
   through an *only* rule fails closed: refused for want of `manage-identities`
   or disclosure authority, or else with reauthentication required, because
-  no window can name the new id; the workaround is to create it under another
-  name and rename it. An `all` rule that does not except the name reaches the
-  new environment by default, which needs no confirmation and no workaround.
+  no window can name the new id; the workaround is to create it under a name
+  no *only* list names and rename it. An `all` rule that does not except the
+  name reaches the new environment by default, which needs no confirmation and
+  no workaround, so the workaround's create succeeds for such a machine too
+  (the `uat` control in `TestEnvironmentNameWideningGatesMachines`).
   The gate's reauthentication covers secret plaintext only (`read` with
   `reveal` or `reveal-history`); a machine gaining `edit`, or `read` alone,
   needs the confirmation and no window. That config-plaintext gap is the
@@ -305,8 +313,10 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   after its name binding, and the rename after its census, with two serial
   controls. With `writePostgresOnce` at REPEATABLE READ or READ COMMITTED,
   both held subtests fail with the create and the rename committed.
-- **Deletion (owner decision 2026-11-27).** Deleting an environment an `all`
-  rule excepts widens that rule to the project's other atoms, so it fails
+- **Deletion (owner decision 2026-11-27).** Deleting the last environment
+  carrying a name an `all` rule excepts lets that rule reach the project as a
+  whole; it already reached the remaining environments. Deleting one of
+  several excepted environments gains nothing. A delete that gains fails
   closed: the service delete and a definitions apply delete are refused like a
   widening rename until `confirm_widening` names exactly the gainers, audited
   as `rule.env_widening_confirmed` with an empty `to_name`. The rule keeps the

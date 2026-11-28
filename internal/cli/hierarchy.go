@@ -341,7 +341,7 @@ func runEnv(ctx context.Context, ios IO, args []string) error {
 		if len(confirmWidening) > 0 {
 			target += "?" + url.Values{"confirm_widening": {strings.Join(confirmWidening, ",")}}.Encode()
 		}
-		// Deleting the environment an `all` rule excepts widens it and needs
+		// Deleting the last environment an `all` rule excepts widens it and needs
 		// --confirm-widening; the ceremony runs only if the server asks.
 		attempt := func() error { return client.Do(ctx, http.MethodDelete, target, nil, nil) }
 		if err := withWideningCeremony(ctx, client, st, ios, artifact, project, disclosure{authorized: true}, attempt); err != nil {

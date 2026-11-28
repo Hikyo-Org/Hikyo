@@ -433,12 +433,17 @@ func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]
 // deletion path can remove it; ErrNotFound when no row exists.
 func (r *Resolver) GetRule(ctx context.Context, id string) (StoredRule, bool, error) {
 	var rows []ruleRow
+	// A rule the upgrade to environment names disabled reaches nothing
+	// (ListRulesForPrincipal skips it), so its selector is never evaluated:
+	// it is handed back invalid, for a manager over its whole scope to remove.
+	faulted := false
 	if r.sq != nil {
 		got, err := r.sq.GetRule(ctx, id)
 		if err != nil {
 			return StoredRule{}, false, err
 		}
 		for _, g := range got {
+			faulted = faulted || g.EnvFault != ""
 			rows = append(rows, ruleRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability, org: g.OrgID,
 				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{ID: g.ItemID, Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), EnvName: g.EnvName, KeyID: g.KeyID, Folder: g.FolderPath}})
@@ -449,6 +454,7 @@ func (r *Resolver) GetRule(ctx context.Context, id string) (StoredRule, bool, er
 			return StoredRule{}, false, err
 		}
 		for _, g := range got {
+			faulted = faulted || g.EnvFault != ""
 			rows = append(rows, ruleRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability, org: g.OrgID,
 				projectMode: g.ProjectMode, envMode: g.EnvMode, keyMode: g.KeyMode,
 				item: StoredRuleItem{ID: g.ItemID, Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), EnvName: g.EnvName, KeyID: g.KeyID, Folder: g.FolderPath}})
@@ -457,8 +463,7 @@ func (r *Resolver) GetRule(ctx context.Context, id string) (StoredRule, bool, er
 	if len(rows) == 0 {
 		return StoredRule{}, false, domain.ErrNotFound
 	}
-	valid := foldRules(rows)
-	if len(valid) == 1 {
+	if valid := foldRules(rows); len(valid) == 1 && !faulted {
 		return valid[0], true, nil
 	}
 	// Invalid as stored: hand back the identity and items so the caller can

@@ -414,9 +414,15 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 			t.Errorf("rule.split for %s = %+v, want the stored replacements %v", old, split, stored)
 		}
 	}
-	// The Edit folder rule keeps its folder in a only; the See twin keeps b with all keys.
-	if n := db.count(`SELECT COUNT(*) FROM rules AS r JOIN rule_items AS i ON i.rule_id = r.id WHERE r.principal_id = 'usr_fe' AND r.key_mode = 'only' AND i.axis = 'folder' AND i.project_id = 'prj_a' AND i.folder_path = 'svc/'`); n != 1 {
-		t.Errorf("usr_fe split lost its folder in a: %d", n)
+	// The Edit folder rule keeps exactly its folder in a: one rule, only svc/,
+	// no key or folder gained. The See twin keeps b with all keys.
+	feRules, err := db.rules.Rules(ctx, "usr_fe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := map[domain.ProjectID][]domain.RuleKeyItem{"prj_a": {{Folder: "svc/", IsFolder: true}}}
+	if len(feRules) != 1 || feRules[0].Where.KeyMode != domain.AxisOnly || !reflectx.Equal(feRules[0].Where.Keys, wantKeys) {
+		t.Errorf("usr_fe split keys = %+v, want one rule over only %v", feRules, wantKeys)
 	}
 	if n := db.count(`SELECT COUNT(*) FROM rules AS r JOIN rule_items AS i ON i.rule_id = r.id AND i.axis = 'project' WHERE r.principal_id = 'usr_fr' AND i.project_id = 'prj_b' AND r.key_mode = 'all'`); n != 1 {
 		t.Errorf("usr_fr split has no all-keys rule in b: %d", n)

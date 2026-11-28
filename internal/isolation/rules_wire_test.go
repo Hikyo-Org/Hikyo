@@ -107,6 +107,15 @@ func runRuleWire(t *testing.T, db *store.DB) {
 	if code != http.StatusCreated || json.Unmarshal(raw, &accepted) != nil {
 		t.Fatalf("create with the item's project listed = %d %s, want 201", code, raw)
 	}
+	// Both controls keep the selector sent: only sibling-env, by id and name.
+	onlySibling := func(label string, kept apigen.RuleEnvironmentAxis) {
+		t.Helper()
+		if kept.Mode != apigen.RuleAxisModeOnly || !slices.Equal(kept.Items, []apigen.RuleEnvironmentItem{{Project: sibling, Environment: siblingEnv}}) ||
+			kept.Names == nil || !slices.Equal(*kept.Names, []string{"sibling-env"}) {
+			t.Fatalf("%s rule's environments = %+v, want only sibling-env", label, kept)
+		}
+	}
+	onlySibling("created", accepted.Where.Environments)
 	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+accepted.Id, nil); code != http.StatusNoContent {
 		t.Fatalf("revoke control = %d %s", code, raw)
 	}
@@ -121,10 +130,7 @@ func runRuleWire(t *testing.T, db *store.DB) {
 	if i < 0 {
 		t.Fatalf("replace returned no only-environments rule: %s", raw)
 	}
-	kept := replaced.Items[i].Where.Environments
-	if !slices.Equal(kept.Items, []apigen.RuleEnvironmentItem{{Project: sibling, Environment: siblingEnv}}) || kept.Names == nil || !slices.Equal(*kept.Names, []string{"sibling-env"}) {
-		t.Fatalf("replaced rule's environments = %+v, want only sibling-env", kept)
-	}
+	onlySibling("replaced", replaced.Items[i].Where.Environments)
 	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+replaced.Items[i].Id, nil); code != http.StatusNoContent {
 		t.Fatalf("revoke replace control = %d %s", code, raw)
 	}

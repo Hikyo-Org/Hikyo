@@ -79,11 +79,13 @@ environment that a rule reaches because it does not except it needs no
 confirmation, and nor does a change
 that only narrows access. Creating or cloning an environment whose name
 gives a machine secret plaintext through an *only* rule is always refused:
-create it under another name, then rename it. A machine whose `all` rule
+create it under a name no *only* rule names, then rename it. A machine whose `all` rule
 reaches the new environment because it does not except it gains nothing by
-name, so that create needs no confirmation and no workaround. Deleting the environment that a rule excepts would let
-that rule reach the rest of the project, so it is refused the same way until
-confirmed (`hikyo env delete --confirm-widening`). The rule keeps the name: an
+name, so that create needs no confirmation and no workaround. Deleting the last environment carrying a name
+that an *all* rule excepts lets that rule reach the project as a whole, so it
+is refused the same way until confirmed (`hikyo env delete --confirm-widening`).
+Deleting one of several excepted environments leaves the others excepted and
+needs no confirmation. The rule keeps the name: an
 environment created later with it is excepted again.
 
 `read` and `pin` cannot be narrowed by keys. `edit`, `publish`, `reveal`,

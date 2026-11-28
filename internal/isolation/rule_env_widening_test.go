@@ -393,7 +393,7 @@ func TestEnvironmentNameWideningGatesMachines(t *testing.T) {
 		// The refusal says how to get there; the CLI and the browser show it.
 		var detail interface{ SafeDetail() string }
 		if _, err := envs.CreateConfirming(ctx, windows, prjScope(), "staging", nil, confirm); !errors.Is(err, service.ErrReauthRequired) ||
-			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "create it under another name, reauthenticate over it, then rename it") {
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "create it under a name no only list names, reauthenticate over it, then rename it") {
 			t.Fatalf("create widening a machine = %v, want ErrReauthRequired saying to rename", err)
 		}
 		if _, _, err := envs.CloneConfirming(ctx, windows, prjScope(), "staging", string(envA1), nil, confirm); !errors.Is(err, service.ErrReauthRequired) ||
@@ -446,6 +446,21 @@ func TestEnvironmentNameWideningGatesMachines(t *testing.T) {
 		}
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+qa.ID+"'"); n != 1 {
 			t.Fatalf("delete confirmations for the machine = %d, want 1", n)
+		}
+		// The workaround's precondition: the machine's all rule, now excepting
+		// a name no environment carries, reaches a new name before and after,
+		// so a create or clone under it gains nothing by name and needs neither
+		// a confirmation nor a window.
+		uat, err := envs.CreateConfirming(ctx, service.LocalPrincipal(identRevatr), prjScope(), "uat", nil, nil)
+		if err != nil {
+			t.Fatalf("create reached by the machine's all rule: %v, want no confirmation", err)
+		}
+		uatClone, _, err := envs.CloneConfirming(ctx, service.LocalPrincipal(identRevatr), prjScope(), "uat2", uat.ID, nil, nil)
+		if err != nil {
+			t.Fatalf("clone reached by the machine's all rule: %v, want no confirmation", err)
+		}
+		if !reachesEnv(t, db, sa.Principal, envScope(domain.EnvID(uat.ID))) || !reachesEnv(t, db, sa.Principal, envScope(domain.EnvID(uatClone.ID))) {
+			t.Fatal("the machine's all rule does not reach the new environments")
 		}
 	})
 }
@@ -1041,9 +1056,19 @@ func TestEnvironmentDeleteWideningExceptRules(t *testing.T) {
 		if !reachesProject(t, db, envExcpt, project) {
 			t.Fatal("the confirmed delete did not widen the rule to the project")
 		}
-		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '"+string(envProd)+
-			"' AND payload LIKE '%\"from_name\":\"prod\"%' AND payload LIKE '%\"to_name\":\"\"%'"); n != 1 {
+		// Every confirmation of the deleted environment, unfiltered: exactly
+		// one, naming prod as the old name and no new one.
+		confirmations := "FROM audit_tenant_events WHERE type = 'rule.env_widening_confirmed' AND object_id = '" + string(envProd) + "'"
+		if n := queryInt(t, db, "SELECT COUNT(*) "+confirmations); n != 1 {
 			t.Fatalf("delete confirmations recorded = %d, want 1", n)
+		}
+		var names struct {
+			From *string `json:"from_name"`
+			To   *string `json:"to_name"`
+		}
+		if payload := queryStrings(t, db, "SELECT payload "+confirmations); json.Unmarshal([]byte(payload), &names) != nil ||
+			names.From == nil || *names.From != "prod" || names.To == nil || *names.To != "" {
+			t.Fatalf("delete confirmation payload = %s, want from_name prod and an empty to_name", payload)
 		}
 		// The rule kept the name: a new prod is excepted again, a narrowing
 		// that needs no confirmation.
@@ -1291,11 +1316,17 @@ func TestEnvironmentRenameWideningKeepsKeySelectors(t *testing.T) {
 		if !errors.As(err, &widening) || !slices.Equal(widening.Principals, []domain.PrincipalID{envExcpt}) {
 			t.Fatalf("renaming dev into the restricted rule's qa = %v, want a refusal naming %s", err, envExcpt)
 		}
-		// The gain names the restricted folder it reaches, not the whole of dev.
-		if !slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool {
-			return g.Principal == envExcpt && g.Capability == domain.CapEdit && slices.Equal(g.Envs, []domain.EnvID{"env_a1"}) && g.Keys != nil &&
-				g.Keys.Project == prjA1 && g.Keys.Mode == domain.AxisOnly && slices.Equal(g.Keys.Items, []domain.RuleKeyItem{folderItem("restricted")})
-		}) || slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool { return g.Capability == domain.CapEdit && g.Keys == nil }) {
+		// The gains over keys are exactly the restricted folder of dev: not the
+		// whole of dev, and not shared, which every environment holds already.
+		var keyed []service.WideningGain
+		for _, g := range widening.Gains {
+			if g.Keys != nil {
+				keyed = append(keyed, g)
+			}
+		}
+		if len(keyed) != 1 || keyed[0].Principal != envExcpt || keyed[0].Capability != domain.CapEdit || !slices.Equal(keyed[0].Envs, []domain.EnvID{"env_a1"}) ||
+			keyed[0].Keys.Project != prjA1 || keyed[0].Keys.Mode != domain.AxisOnly || !slices.Equal(keyed[0].Keys.Items, []domain.RuleKeyItem{folderItem("restricted")}) ||
+			slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool { return g.Capability == domain.CapEdit && g.Keys == nil }) {
 			t.Fatalf("rename gains = %+v, want edit of dev over folder restricted only", widening.Gains)
 		}
 		if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), dev, "qa", nil, []domain.PrincipalID{envExcpt}); err != nil {
@@ -1512,7 +1543,7 @@ func TestDefinitionsApplyGatesEachMachineOnce(t *testing.T) {
 		created.Environments = append(created.Environments, definitions.Environment{Name: "qa"})
 		var detail interface{ SafeDetail() string }
 		if _, err := svc.Apply(ctx, windows, f.scope(), planDefinitions(t, svc, f, encodeDefinitions(t, created)).ID, service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{sa.Principal}}); !errors.Is(err, service.ErrReauthRequired) ||
-			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "create it under another name, reauthenticate over it, then rename it") {
+			!errors.As(err, &detail) || !strings.Contains(detail.SafeDetail(), "create it under a name no only list names, reauthenticate over it, then rename it") {
 			t.Fatalf("plan creating a machine-reachable environment = %v, want ErrReauthRequired saying to rename", err)
 		}
 		bundle := parseDefinitions(t, exported)
@@ -1551,11 +1582,19 @@ func TestDisabledRuleListsAndRevokes(t *testing.T) {
 		ctx := t.Context()
 		const fault = "Disabled by the upgrade to environment names: it names one environment name twice in a project. It reaches no environment; revoke it and create it again."
 		const narrowed = domain.PrincipalID("usr_dismgr")
-		for _, p := range []string{"usr_disabled", string(narrowed)} {
+		for _, p := range []string{"usr_disabled", "usr_active", string(narrowed)} {
 			execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+p+"', 'human', "+ts+")")
 		}
-		execRaw(t, db, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at, env_fault) VALUES ('rul_disabled', 'usr_disabled', 'read', 'org_a', 'only', 'only', 'all', 'usr_orgadmin', "+ts+", '"+fault+"')")
-		execRaw(t, db, "INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('rul_disabled_p', 'rul_disabled', 'org_a', 'project', 'prj_a1')")
+		// The faulted rule's selector would reach dev: only the fault keeps it
+		// from reaching anything. Its active twin, the control, reaches dev.
+		for _, r := range []struct{ id, principal, fault string }{{"rul_disabled", "usr_disabled", "'" + fault + "'"}, {"rul_active", "usr_active", "NULL"}} {
+			execRaw(t, db, "INSERT INTO rules (id, principal_id, capability, org_id, project_mode, env_mode, key_mode, created_by, created_at, env_fault) VALUES ('"+r.id+"', '"+r.principal+"', 'read', 'org_a', 'only', 'only', 'all', 'usr_orgadmin', "+ts+", "+r.fault+")")
+			execRaw(t, db, "INSERT INTO rule_items (id, rule_id, org_id, axis, project_id) VALUES ('"+r.id+"_p', '"+r.id+"', 'org_a', 'project', 'prj_a1')")
+			execRaw(t, db, "INSERT INTO rule_items (id, rule_id, org_id, axis, env_name) VALUES ('"+r.id+"_e', '"+r.id+"', 'org_a', 'env', 'dev')")
+		}
+		if !reachesEnv(t, db, "usr_active", envScope(envA1)) {
+			t.Fatal("the active twin of the disabled rule does not reach dev")
+		}
 		rules := &service.Rules{DB: db}
 		listed, err := rules.List(ctx, service.LocalPrincipal(orgAdmin), domain.Scope{Org: orgA, Project: prjA1})
 		if err != nil {
