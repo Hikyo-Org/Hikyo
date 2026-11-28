@@ -125,8 +125,10 @@ func bareTests(script string) ([]int, error) {
 	// heredoc or here-string on fd 0 is scanned for bare tests, but may be data that does not
 	// parse. An expansion in the code reads as a placeholder word. shortcut: code built at run time
 	// (eval "$cmd", bash <(..)), a shell named by a variable ("$BASH" -c), a wrapper script or
-	// command (timeout, sudo, xargs, nice, find -exec) and \x..-style $'...' escapes are not
-	// seen; spell handed code literally and call bash directly.
+	// command (timeout, sudo, xargs, nice, find -exec), \x..-style $'...' escapes, and the
+	// words after an eval word that mixes expansions with each other or with blanks
+	// (eval "$X$Y" '[[ ]]', read as one word of code) are not seen; spell handed code literally,
+	// with one expansion per eval word, and call bash directly. Upgrade when such a form appears.
 	nested := func(body string, line int, what string, strict bool) {
 		lines, herr := bareTests(body)
 		if herr != nil && strict && body != brokenSourceFixture {
