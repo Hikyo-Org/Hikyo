@@ -265,7 +265,9 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
 - **Domain.** `Where.EnvNames` is authoritative; `BindEnvs(refs)` derives the
   environment ids inside `authorize()` on every check, with no cache.
   All-projects rules take names (restriction A lifted); single keys stay
-  refused there. The item bound counts names once per rule. Sent names take
+  refused there. Names are stored once per rule, but the item bound counts
+  them per project, as `RuleWhere` lists them: projects × (1 + names) + key
+  items, or projects × (1 + folders + names) for an all-projects rule. Sent names take
   the environment name grammar. Rule lifecycle audit events record
   environments as `name:<name>`.
 - **Widening (like D9).** `internal/service/rule_env_widening.go`. Environment
@@ -306,8 +308,9 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   `env delete --confirm-widening`.
 - **Web.** The rule editor selects environments by name in every project,
   including all-projects rules; Project settings confirm a widening rename,
-  create, clone or delete and run the reauthentication ceremony for a rename
-  or delete.
+  create, clone or delete and run the reauthentication ceremony for a
+  widening rename only: a delete reveals no plaintext that was hidden before,
+  so it asks for none.
   `KeyMoveConfirmDialog` is now `WideningConfirmDialog`, shared by key moves
   and environment changes.
 - **Tests.** `internal/isolation/rule_env_widening_test.go` (both engines):

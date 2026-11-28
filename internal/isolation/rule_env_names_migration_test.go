@@ -400,13 +400,18 @@ func testRuleEnvNamesMigration(t *testing.T, db envMigrationDB) {
 		if err := json.Unmarshal([]byte(payload), &split); err != nil {
 			t.Fatalf("rule.split payload %q: %v", payload, err)
 		}
-		if split.RuleID != old || len(split.RuleIDs) != want.projects {
-			t.Errorf("rule.split for %s = %+v, want %d new ids", old, split, want.projects)
+		// The audit names exactly the stored replacements: both sorted, a
+		// repeated id kept, so [A, A] for replacements A and B fails.
+		var stored []string
+		for i := range want.projects {
+			stored = append(stored, db.text(fmt.Sprintf(`SELECT id FROM rules WHERE principal_id = '%s' ORDER BY id LIMIT 1 OFFSET %d`, want.principal, i)))
 		}
-		for _, id := range split.RuleIDs {
-			if n := db.count(`SELECT COUNT(*) FROM rules WHERE id = '` + id + `' AND principal_id = '` + want.principal + `'`); n != 1 {
-				t.Errorf("rule.split for %s names %s, which is not a rule of %s", old, id, want.principal)
-			}
+		// The engines' collations differ, so both lists sort in Go.
+		slices.Sort(stored)
+		named := slices.Clone(split.RuleIDs)
+		slices.Sort(named)
+		if split.RuleID != old || !slices.Equal(named, stored) {
+			t.Errorf("rule.split for %s = %+v, want the stored replacements %v", old, split, stored)
 		}
 	}
 	// The Edit folder rule keeps its folder in a only; the See twin keeps b with all keys.

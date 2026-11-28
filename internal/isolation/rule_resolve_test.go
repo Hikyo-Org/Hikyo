@@ -326,3 +326,38 @@ func runRuleResolveIsolation(t *testing.T, db *store.DB) {
 		}
 	})
 }
+
+// "Who can...?" matches environments by name across a rule's projects
+// (#1447): an "all except prod" rule over two projects is excepted in both
+// prods, including a prod created after the rule, and reaches their dev.
+func TestRuleResolveMatchesNamesAcrossProjects(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		rule := f.create(t, orgAdmin, service.RuleSpec{Target: ivan, Capability: domain.CapRead, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{prjA1, prjA2}, EnvMode: domain.AxisAll, EnvNames: []string{"prod"}, KeyMode: domain.AxisAll}})
+		const laterProd = domain.EnvID("env_a2_laterprod")
+		execRaw(t, db, "INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('"+string(laterProd)+"', 'org_a', 'prj_a2', 'prod', '', "+ts+", 1)")
+		ivanAt := func(s domain.Scope) service.AccessView {
+			t.Helper()
+			views, err := f.rules.Resolve(t.Context(), service.LocalPrincipal(orgAdmin), s, domain.CapRead, "")
+			if err != nil {
+				t.Fatalf("resolve %+v: %v", s, err)
+			}
+			i := slices.IndexFunc(views, func(v service.AccessView) bool { return v.Principal == ivan })
+			if i < 0 {
+				t.Fatalf("ivan missing from the answer at %+v", s)
+			}
+			return views[i]
+		}
+		for _, s := range []domain.Scope{scopeEnv(orgA, prjA1, envProd), scopeEnv(orgA, prjA2, laterProd)} {
+			if v := ivanAt(s); v.State != authz.AccessExcepted || len(v.Excepts) != 1 || v.Excepts[0].RuleID != rule || !slices.Equal(v.Excepts[0].Envs, []domain.EnvID{s.Env}) {
+				t.Fatalf("ivan at %s = %+v, want excepted by name through %s", s.Env, v, rule)
+			}
+		}
+		for _, s := range []domain.Scope{scopeEnv(orgA, prjA1, envA1), scopeEnv(orgA, prjA2, envA2)} {
+			if v := ivanAt(s); v.State != authz.AccessCan || !slices.Equal(v.Rules, []string{rule}) {
+				t.Fatalf("ivan at %s = %+v, want can through %s", s.Env, v, rule)
+			}
+		}
+	})
+}

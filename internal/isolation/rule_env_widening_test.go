@@ -464,30 +464,7 @@ func TestEnvironmentNameWideningGatesMachinesOnOneDecision(t *testing.T) {
 		}
 		slices.Sort(confirm)
 		token := service.Bearer(sessionWithWindows(t, db, identRevatr))
-		decide := func(id string, env domain.EnvID) {
-			t.Helper()
-			now := time.Now().UTC()
-			if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-				epoch, err := az.CredentialEpoch(ctx)
-				if err != nil {
-					return err
-				}
-				if err := az.CreateWebAuthnCeremony(ctx, authz.NewWebAuthnCeremony{
-					ID: id, SessionID: "ses_usr_idrev", EnvironmentID: string(env), Purpose: "reauth",
-					ChallengeVerifier: []byte("verified-" + id), SessionData: []byte("{}"),
-					OperationBinding: `{"operation":"mint","environment_id":"` + string(env) + `","key_ids":null}`,
-					CredentialEpoch:  epoch, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
-				}); err != nil {
-					return err
-				}
-				return az.OpenReauthWindow(ctx, authz.NewReauthWindow{
-					ID: id, SessionID: "ses_usr_idrev", EnvironmentID: string(env), CeremonyID: id, FactorClass: "webauthn", SingleDecision: true,
-					AuthenticatedAt: now, WindowExpiresAt: now.Add(5 * time.Minute), HardExpiresAt: now.Add(10 * time.Minute), CredentialEpoch: epoch, CreatedAt: now,
-				})
-			}); err != nil {
-				t.Fatal(err)
-			}
-		}
+		decide := func(id string, env domain.EnvID) { openSingleDecisionWindow(t, db, identRevatr, id, env) }
 		envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db), Auth: authWithWindow(db)}
 		dev := envScope(envA1)
 		decide("rw_one_decision", envA1)
@@ -1197,6 +1174,14 @@ func TestDefinitionsApplyDeletingEveryEnvironmentWidens(t *testing.T) {
 		if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true, ConfirmWidening: []domain.PrincipalID{reader}}); err != nil {
 			t.Fatalf("confirmed apply: %v", err)
 		}
+		// The confirmed plan committed: no environment is left, and the rule
+		// now reaches the project.
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM environments WHERE project_id = '"+string(f.project)+"'"); n != 0 {
+			t.Fatalf("environments left after the confirmed apply = %d, want 0", n)
+		}
+		if !reachesProject(t, db, reader, domain.Scope{Org: orgA, Project: f.project}) {
+			t.Fatal("the reader does not reach the project once every environment is deleted")
+		}
 	})
 }
 
@@ -1250,9 +1235,14 @@ func TestDefinitionsApplyGatesEachMachineOnce(t *testing.T) {
 			!strings.Contains(err.Error(), "env_prod") || !errors.As(err, &detail) || strings.Contains(detail.SafeDetail(), "rename it") {
 			t.Fatalf("apply under a window over dev alone = %v, want ErrReauthRequired over env_prod", err)
 		}
-		openWindow(t, db, identRevatr, "env_prod")
+		// A single-decision window: a second validation over env_prod would
+		// be refused with ErrReauthWindowSpent, so the plan gates once.
+		openSingleDecisionWindow(t, db, identRevatr, "rw_plan_prod", "env_prod")
 		if _, err := svc.Apply(ctx, windows, f.scope(), plan.ID, service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{sa.Principal}}); err != nil {
 			t.Fatalf("confirmed apply widening a machine twice: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM reauth_windows WHERE id = 'rw_plan_prod' AND consumed_at IS NOT NULL"); n != 1 {
+			t.Fatalf("the plan's decision over env_prod was consumed %d times, want 1", n)
 		}
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'identity.grant_widened' AND object_id = '"+string(sa.Principal)+"'"); n != 1 {
 			t.Fatalf("identity.grant_widened rows for the machine = %d, want 1", n)
@@ -1372,6 +1362,35 @@ func openWindow(t *testing.T, db *store.DB, p domain.PrincipalID, env domain.Env
 		})
 	}); err != nil {
 		t.Fatalf("open a window over %s for %s: %v", env, p, err)
+	}
+}
+
+// openSingleDecisionWindow opens window id over env on p's session from a
+// verified WebAuthn ceremony bound to a machine widening's mint decision:
+// one decision spends it, and a second is refused with ErrReauthWindowSpent.
+func openSingleDecisionWindow(t *testing.T, db *store.DB, p domain.PrincipalID, id string, env domain.EnvID) {
+	t.Helper()
+	now := time.Now().UTC()
+	session := "ses_" + string(p)
+	if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		if err := az.CreateWebAuthnCeremony(ctx, authz.NewWebAuthnCeremony{
+			ID: id, SessionID: session, EnvironmentID: string(env), Purpose: "reauth",
+			ChallengeVerifier: []byte("verified-" + id), SessionData: []byte("{}"),
+			OperationBinding: `{"operation":"mint","environment_id":"` + string(env) + `","key_ids":null}`,
+			CredentialEpoch:  epoch, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+		}); err != nil {
+			return err
+		}
+		return az.OpenReauthWindow(ctx, authz.NewReauthWindow{
+			ID: id, SessionID: session, EnvironmentID: string(env), CeremonyID: id, FactorClass: "webauthn", SingleDecision: true,
+			AuthenticatedAt: now, WindowExpiresAt: now.Add(5 * time.Minute), HardExpiresAt: now.Add(10 * time.Minute), CredentialEpoch: epoch, CreatedAt: now,
+		})
+	}); err != nil {
+		t.Fatalf("open a single-decision window over %s for %s: %v", env, p, err)
 	}
 }
 

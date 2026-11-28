@@ -648,8 +648,8 @@ export function useRenameEnvironment(org: string, project: string) {
 /**
  * Delete one environment and refresh every cache for the topology it removes.
  * Deleting the environment an `all` rule excepts widens that rule (#1447), so
- * the server refuses it until the gainers are confirmed. The passkey
- * ceremony runs only if the server asks for one.
+ * the server refuses it until the gainers are confirmed. A delete reveals no
+ * plaintext that was hidden before, so it needs no reauthentication.
  */
 export function useDeleteEnvironment(
   org: string,
@@ -660,12 +660,10 @@ export function useDeleteEnvironment(
   return useMutation({
     mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: ({ environment, confirmWidening = [] }: { environment: string; confirmWidening?: readonly string[] }) =>
-      withWideningReauth(deleteEnvironmentOp, () =>
-        ok(deleteEnvironmentOp, {
-          path: { org, project, environment },
-          ...(confirmWidening.length === 0 ? {} : { query: { confirm_widening: [...confirmWidening] } }),
-        }),
-      ),
+      ok(deleteEnvironmentOp, {
+        path: { org, project, environment },
+        ...(confirmWidening.length === 0 ? {} : { query: { confirm_widening: [...confirmWidening] } }),
+      }),
     // Announce only once the list no longer holds the deleted environment:
     // "Environment X deleted." must not be readable beside a row still naming
     // X, and a reader acting on that notice would be acting on a stale list.

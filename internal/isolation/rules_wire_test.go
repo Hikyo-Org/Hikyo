@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -108,6 +109,24 @@ func runRuleWire(t *testing.T, db *store.DB) {
 	}
 	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+accepted.Id, nil); code != http.StatusNoContent {
 		t.Fatalf("revoke control = %d %s", code, raw)
+	}
+	// The same control through the replace envelope: a refusal there is not
+	// a refusal of every id-only environment item.
+	code, raw = e.call(t, http.MethodPost, org+"/rules/replace", apigen.ReplaceRulesRequest{Principal: holder, Create: &[]apigen.CreateRuleRequest{listed}})
+	var replaced apigen.RuleList
+	if code != http.StatusOK || json.Unmarshal(raw, &replaced) != nil {
+		t.Fatalf("replace with the item's project listed = %d %s, want 200", code, raw)
+	}
+	i := slices.IndexFunc(replaced.Items, func(r apigen.Rule) bool { return r.Where.Environments.Mode == apigen.RuleAxisModeOnly })
+	if i < 0 {
+		t.Fatalf("replace returned no only-environments rule: %s", raw)
+	}
+	kept := replaced.Items[i].Where.Environments
+	if !slices.Equal(kept.Items, []apigen.RuleEnvironmentItem{{Project: sibling, Environment: siblingEnv}}) || kept.Names == nil || !slices.Equal(*kept.Names, []string{"sibling-env"}) {
+		t.Fatalf("replaced rule's environments = %+v, want only sibling-env", kept)
+	}
+	if code, raw := e.call(t, http.MethodDelete, org+"/rules/"+replaced.Items[i].Id, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke replace control = %d %s", code, raw)
 	}
 
 	var list apigen.RuleList
