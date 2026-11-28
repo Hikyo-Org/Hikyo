@@ -1549,7 +1549,7 @@
     "engine": "postgres",
     "name": "GetRule",
     "annotation": "authn-resolution",
-    "hash": "0b65f858ce7df577f7d9c3193db550fc338e630341344c38b18470d364a18678"
+    "hash": "6675e596338821f5ce71e34349438d35d4001bea90995184366e454e126759ab"
   },
   {
     "engine": "postgres",
@@ -5468,7 +5468,7 @@
     "engine": "sqlite",
     "name": "GetRule",
     "annotation": "authn-resolution",
-    "hash": "0b65f858ce7df577f7d9c3193db550fc338e630341344c38b18470d364a18678"
+    "hash": "6675e596338821f5ce71e34349438d35d4001bea90995184366e454e126759ab"
   },
   {
     "engine": "sqlite",
