@@ -261,12 +261,15 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   `project-settings` holding environment items, which never validated and
   which a split would have made live, and any other rule that did not pass
   `Rule.Validate` or `CheckMachineRule` before the upgrade and that a split
-  could lift: more than `MaxRuleItems` items, a repeated project, a key or
-  folder item outside the rule's projects, `key_mode` only with no key, key
-  narrowing on `pin` or a whole-project capability, a machine rule over
-  several projects) keep their row, reach no environment and
-  carry `env_fault`, audited as `rule.disabled` with the removed `env_mode`,
-  `env_ids` and `env_names`. Tests:
+  could lift: more than `MaxRuleItems` items, a repeated project, an item
+  naming an empty project, environment or key id, a key or folder repeated
+  in a project, a key or folder item outside the rule's projects,
+  `key_mode` only with no key, key narrowing on `pin` or a whole-project
+  capability, a machine rule over several projects) keep their row, reach
+  no environment and carry `env_fault`, audited as `rule.disabled` with the
+  removed `env_mode`, `env_ids` and `env_names` (each the first 1,000 in
+  byte order) and `env_items` (the full count). Every rejection is
+  tabulated under "00102 and pre-upgrade validity" below. Tests:
   `TestRuleEnvNamesMigrationSQLite` and `TestRuleEnvNamesMigrationPostgres`,
   including the 99/102 recovery boundary;
   `TestRuleEnvNamesMigrationShapeProjectList` pins the migration's
@@ -402,3 +405,59 @@ Branch `feat/1447-env-name-binding`. The decisions are recorded in the ADR's
   the same not-found whatever ids exist
   (`TestRuleCreateRefusalDoesNotProbeEnvironmentIDs`). The missing-scope decoy
   runs the same per-project environment read a refusal does.
+
+### 00102 and pre-upgrade validity
+
+A row that failed base validation reached nothing, so 00102 must not let a
+split part or a converted row validate. Sources are at the merge base
+`2dd3f0c19`: `internal/domain/rule.go` (R) and `internal/store/authn/rules.go`
+(L). Fault clauses are in the `env_fault` statements of both engines'
+00102. "Holds" means the defect survives in every split part and in the
+converted row. Two facts carry most proofs:
+
+- Split parts copy `org_id`, `principal_id` and `capability`.
+- A rule over one project is never split. Environment names are unique per
+  project (00003), so every environment carrying one of its names is one of
+  its items. Neither split predicate matches, and its row is converted with
+  only its environment items rewritten.
+
+Seeds are in `testRuleEnvNamesMigration`. Every mutant failed on both
+engines with rc=1 and was restored.
+
+| Source | Rejection | 00102 disposition | Seed | Mutant |
+|---|---|---|---|---|
+| R:194 | org empty | Holds: copied to every part | none | n/a |
+| R:198 | capability not held on rules | Holds: copied; `ruleShapes` unchanged | none | n/a |
+| R:205 | no project | Holds: both split predicates join a project item, so the row is converted and still names none | none | n/a |
+| R:210 | empty project id | Fault `z.project_id = ''` | `rul_pemp` | `pemp` |
+| R:210 | project named twice | Fault (duplicate project) | `rul_dupp` | `dupp` |
+| R:215, R:218, R:286 | unknown env or key mode | Impossible: `CHECK` (00070) | none | n/a |
+| R:221 | key item with no project | Key: impossible (`rule_items_project_bound`, 00099). Folder: fault (outside the rule's projects) | `rul_knull` | `kout` |
+| R:226 | env item outside the rule's projects | Fault (outside the rule) | `rul_out` | `out` |
+| R:230 | empty env id | Fault `z.env_id = ''` | `rul_eemp` | `eemp` |
+| R:230 | env named twice in a project | Fault (name twice) | `rul_twice` | `twice` |
+| FK (00070) | env item naming a missing env | Fault (missing environment) | `rul_gone` | `gone` |
+| R:236 | env `only` with no item | Holds: no name, so no split; converted `only` with no name fails current `validateEnvNames` | none | n/a |
+| R:241 | key or folder outside the rule's projects | Fault | `rul_kout` | `kout` |
+| R:245 | key item with empty key id | Fault `z.key_id = ''` | `rul_kemp` | `kemp` |
+| R:245 | folder item carrying a key id | Impossible: `CHECK` (folder ⇒ `key_id IS NULL`), and L:101 builds folders without one | none | n/a |
+| R:245 | key, or folder, named twice in a project (struct equality, so a key never equals a folder) | Fault (duplicate key or folder) | `rul_dupk`, `rul_dupf` | `dupk`, `dupf` |
+| R:251 | key `only` with no key item | Fault | `rul_konly` | `konly` |
+| R:254 | more than 500 items (projects + env items by id + keys) | Fault `COUNT(*) > 500`; the 500 is pinned to `domain.MaxRuleItems` | `rul_big`, `rul_b501`; `rul_b500` stays live | `big`, `cap501`, `cap499` |
+| R:264 | Pin narrowed by keys | Fault | `rul_pin` | `pin` |
+| R:268 | whole-project capability narrowed by keys | Fault | `rul_psk` | `psk` |
+| R:268 | whole-project capability with env items | Fault (M2) | `rul_ps`, `rul_psc` | `ps` |
+| R:268 | whole-project capability, env `only` with no item | Holds: as R:236 | none | n/a |
+| R:280–309 | all-projects shape: project items, keys, folders bound to a project, malformed or duplicate folders, key `only` with no folder, more than 500 folders | Holds: no split predicate matches `project_mode = 'all'`, the row is unchanged, and current `validateAllProjects` keeps each check | none | n/a |
+| R:283 | all-projects rule with env items | Fault (all projects) | `rul_allp` | `allp` |
+| R:420 | machine class or capability not allowed | Holds: principal and capability copied | none | n/a |
+| R:424 | machine rule narrowed by keys | Over one project: holds (converted, keys kept). Over several: fault (below) | `rul_mch` | `mch` |
+| R:428 | machine rule not over exactly one project | More than one: fault. None: holds as R:205. All projects: holds as R:280 | `rul_mch` | `mch` |
+| R:437, R:441 | machine depth not met | Holds: over one project only (above); mode and names are kept | none | n/a |
+| L:103 | unknown axis | Impossible: `CHECK` (00070) | none | n/a |
+
+The `rule.split` audit lists at most one rule per project. A split rule
+passed the cap, so it has at most 500 projects, under `rule_ids`'s
+`MaxLen` of 1,000. `rul_wide` holds 1,001 env items; its `rule.disabled`
+payload passes the registry with 1,000 ids and names and `env_items` 1001
+(mutants `nolimit`, `desc`, `noitems`).

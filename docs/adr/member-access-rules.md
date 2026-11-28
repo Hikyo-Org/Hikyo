@@ -371,14 +371,17 @@ apply when the implementing pull request merges.
     machine's) reached nothing, since resolution drops it; a split part could validate and widen
     its reach. Such a rule fails closed as below, before any split or conversion, with a fault
     saying it never formed a valid rule. This covers more than `MaxRuleItems` items, a project
-    named twice, a key or folder item outside the rule's projects, `key_mode` *only* with no key,
-    key narrowing on `pin` or a whole-project capability, and a machine rule over more than one
-    project. Other invalid rows stay invalid split or converted, or cannot be stored. Only a
+    named twice, an item naming an empty project, environment or key id, a key or folder named
+    twice in a project, a key or folder item outside the rule's projects, `key_mode` *only* with no
+    key, key narrowing on `pin` or a whole-project capability, and a machine rule over more than one
+    project. Every other rejection cannot be stored (a `CHECK` constraint), or holds in every split
+    part and in the converted row; the handoff tabulates each with its proof and test. Only a
     corrupted database, or a row written past validation, holds such a rule. With equal name sets
     a valid rule lists as many items by name as it did by id, so no converted rule passes the cap.
   - A rule that cannot be split deterministically fails closed. It loses its environment items and
     reaches no environment. It carries a manager-facing `fault` naming the reason, and is audited as
-    `rule.disabled`. This covers items naming a missing environment, a project outside the rule, or
+    `rule.disabled`, which lists the removed items' first 1,000 ids and names and counts them all
+    in `env_items`. This covers items naming a missing environment, a project outside the rule, or
     the same name twice in a project, and an all-projects rule with environment items. It also
     covers a rule whose capability needs a whole project (`project-settings`, `manage-identities`,
     `manage-adapters`) that holds environment items. Such a rule never validated and reached
