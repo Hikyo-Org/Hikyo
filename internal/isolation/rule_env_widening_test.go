@@ -73,7 +73,8 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			}
 		}
 		// confirmed is every widening confirmation recorded for env, in
-		// order, as from>to: a row with other names is not filtered out.
+		// order, as from>to@principals: a row with other names or other
+		// principals is not filtered out.
 		confirmed := func(t *testing.T, env domain.EnvID) []string {
 			t.Helper()
 			var out []string
@@ -82,13 +83,14 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 					continue
 				}
 				var names struct {
-					From string `json:"from_name"`
-					To   string `json:"to_name"`
+					From       string   `json:"from_name"`
+					To         string   `json:"to_name"`
+					Principals []string `json:"principals"`
 				}
 				if err := json.Unmarshal([]byte(row), &names); err != nil {
 					t.Fatalf("confirmation payload %q: %v", row, err)
 				}
-				out = append(out, names.From+">"+names.To)
+				out = append(out, names.From+">"+names.To+"@"+strings.Join(names.Principals, ","))
 			}
 			return out
 		}
@@ -217,7 +219,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA1, "prod", nil, []domain.PrincipalID{envOnly}); err != nil {
 				t.Fatalf("confirmed rename: %v", err)
 			}
-			if !reachesEnv(t, db, envOnly, prodA1) || !slices.Equal(confirmed(t, envProd), []string{"production>prod"}) {
+			if !reachesEnv(t, db, envOnly, prodA1) || !slices.Equal(confirmed(t, envProd), []string{"production>prod@" + string(envOnly)}) {
 				t.Fatal("the confirmed rename did not widen the rule with one audited confirmation")
 			}
 		})
@@ -250,7 +252,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				t.Fatalf("confirmed create: %v", err)
 			}
 			prodA2 = scopeEnv(orgA, prjA2, domain.EnvID(env.ID))
-			if !reachesEnv(t, db, envOnly, prodA2) || reachesEnv(t, db, envExcpt, prodA2) || !slices.Equal(confirmed(t, domain.EnvID(env.ID)), []string{">prod"}) {
+			if !reachesEnv(t, db, envOnly, prodA2) || reachesEnv(t, db, envExcpt, prodA2) || !slices.Equal(confirmed(t, domain.EnvID(env.ID)), []string{">prod@" + string(envOnly)}) {
 				t.Fatal("the confirmed create did not give exactly the only-prod rule the new prod, audited")
 			}
 			// The except names every prod: the first project's stays excepted too.
@@ -275,7 +277,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 				if _, err := envs.RenameConfirming(ctx, service.LocalPrincipal(envMgr), prodA2, "staging", nil, []domain.PrincipalID{envExcpt}); err != nil {
 					t.Fatalf("confirmed rename: %v", err)
 				}
-				if !reachesEnv(t, db, envExcpt, prodA2) || reachesEnv(t, db, envOnly, prodA2) || !slices.Equal(confirmed(t, prodA2.Env), []string{">prod", "prod>staging"}) {
+				if !reachesEnv(t, db, envExcpt, prodA2) || reachesEnv(t, db, envOnly, prodA2) || !slices.Equal(confirmed(t, prodA2.Env), []string{">prod@" + string(envOnly), "prod>staging@" + string(envExcpt)}) {
 					t.Fatal("renaming out of the except list did not move the reach, audited")
 				}
 			})
@@ -342,7 +344,7 @@ func TestEnvironmentNamesWidenRules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("confirmed clone: %v", err)
 			}
-			if !reachesEnv(t, db, envOnly, scopeEnv(orgA, prjA1, domain.EnvID(env.ID))) || !slices.Equal(confirmed(t, domain.EnvID(env.ID)), []string{">uat"}) {
+			if !reachesEnv(t, db, envOnly, scopeEnv(orgA, prjA1, domain.EnvID(env.ID))) || !slices.Equal(confirmed(t, domain.EnvID(env.ID)), []string{">uat@" + string(envOnly)}) {
 				t.Fatal("the confirmed clone did not give the only-uat rule the new environment, audited")
 			}
 		})
@@ -1444,9 +1446,11 @@ func TestDefinitionsApplyIndependentWidenings(t *testing.T) {
 			// not merged into the environment gain of the same capability.
 			var widening *service.EnvWideningError
 			if _, err := svc.Apply(ctx, service.LocalPrincipal(alice), f.scope(), plan.ID, service.ApplyOptions{AllowDelete: true}); !errors.As(err, &widening) ||
-				!slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool { return g.Principal == excepting && len(g.Envs) == 0 }) ||
 				!slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool {
-					return g.Principal == excepting && slices.Equal(g.Envs, []domain.EnvID{domain.EnvID(f.env)})
+					return g.Principal == excepting && g.Capability == domain.CapRead && len(g.Envs) == 0
+				}) ||
+				!slices.ContainsFunc(widening.Gains, func(g service.WideningGain) bool {
+					return g.Principal == excepting && g.Capability == domain.CapRead && slices.Equal(g.Envs, []domain.EnvID{domain.EnvID(f.env)})
 				}) {
 				t.Fatalf("unconfirmed apply = %v, gains %+v, want a project gain and a gain on %s", err, widening, f.env)
 			}
