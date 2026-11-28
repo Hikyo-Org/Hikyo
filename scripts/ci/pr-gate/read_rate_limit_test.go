@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,6 +16,7 @@ type rateLimitCase struct {
 	failures          int           // repos/ reads that fail before one succeeds
 	resetOverride     int64         // unix reset when nonzero
 	budgetEnvDisabled bool
+	status            int // HTTP status of the failing reads; 0 means 403
 }
 
 // rateLimitFixture fakes gh the way the real one answers a rate-limited call:
@@ -30,14 +32,18 @@ func rateLimitFixture(t *testing.T, c rateLimitCase) (attempts func() int, waits
 	} else {
 		t.Setenv("PR_GATE_DEADLINE", strconv.FormatInt(now.Add(c.budget).Unix(), 10))
 	}
+	status := c.status
+	if status == 0 {
+		status = 403
+	}
 	reset := now.Add(c.resetIn).Unix()
 	if c.resetOverride != 0 {
 		reset = c.resetOverride
 	}
 	waits = recordReadWaits(t)
 	attempts = fakeGH(t, fmt.Sprintf(`if [ "$2" = rate_limit ]; then echo '{"resources":{"core":{"remaining":%d,"reset":%d},"graphql":{"remaining":%d,"reset":%d}}}'; exit 0; fi
-if [ "$n" -le %d ]; then echo '{"message":"API rate limit exceeded for installation.","status":"403"}'; echo 'gh: API rate limit exceeded for installation. (HTTP 403)' >&2; exit 1; fi
-echo '{"ok":true}'`, c.core, reset, c.graphql, reset, c.failures+1))
+if [ "$n" -le %d ]; then echo '{"message":"API rate limit exceeded for installation.","status":"%d"}'; echo 'gh: API rate limit exceeded for installation. (HTTP %d)' >&2; exit 1; fi
+echo '{"ok":true}'`, c.core, reset, c.graphql, reset, c.failures+1, status, status))
 	return attempts, waits, now
 }
 
@@ -105,6 +111,33 @@ func TestGitHubGraphQLReadChecksTheGraphQLBucket(t *testing.T) {
 	var result map[string]any
 	if err := retryingGH.read(t.Context(), "graphql:query{repository{name}}", &result); err == nil || len(*waits) != 0 || attempts() != 2 {
 		t.Fatalf("err=%v waits=%v attempts=%d, want no wait on a spent core bucket", err, *waits, attempts())
+	}
+}
+
+// A cancelled reset wait (a sibling read failed, or the deadline raced the wait) is still
+// the rate limit: dropping the flag would publish a terminal refusal on the final attempt.
+func TestCancelledRateLimitWaitKeepsTheRateLimitClassification(t *testing.T) {
+	rateLimitFixture(t, rateLimitCase{resetIn: 30 * time.Second, budget: 10 * time.Minute, failures: 5})
+	old := readRetryWait
+	readRetryWait = func(context.Context, time.Duration) error { return context.Canceled }
+	t.Cleanup(func() { readRetryWait = old })
+	var result map[string]any
+	err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result)
+	if err == nil || !rateLimitedFailure(err) {
+		t.Fatalf("a cancelled reset wait lost the rate-limit classification: %v", err)
+	}
+}
+
+// The same holds for the backoff wait of a 429 secondary limit (core budget left, so no reset wait).
+func TestCancelledBackoffWaitKeepsTheRateLimitClassification(t *testing.T) {
+	rateLimitFixture(t, rateLimitCase{core: 4000, graphql: 4000, resetIn: time.Minute, budget: time.Hour, failures: 5, status: 429})
+	old := readRetryWait
+	readRetryWait = func(context.Context, time.Duration) error { return context.Canceled }
+	t.Cleanup(func() { readRetryWait = old })
+	var result map[string]any
+	err := retryingGH.read(t.Context(), "repos/Hikyo-Org/Hikyo", &result)
+	if err == nil || !rateLimitedFailure(err) {
+		t.Fatalf("a cancelled backoff wait lost the rate-limit classification: %v", err)
 	}
 }
 

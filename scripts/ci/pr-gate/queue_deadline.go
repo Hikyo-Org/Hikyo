@@ -148,23 +148,9 @@ func (q *queueController) pendingText(number int) outcome {
 }
 
 // rateLimitedFailure reports a failure that ended on an exhausted GitHub API window,
-// including a reset the job's budget could not wait out. Reconcile joins its work error
-// before its block error, and errors.As stops at the first *githubReadError whatever its
-// flag, so every branch of a joined or wrapped error is walked: any rate-limited branch counts.
-func rateLimitedFailure(err error) bool {
-	var failure *githubReadError
-	if errors.As(err, &failure) && failure.rateLimited {
-		return true
-	}
-	if many, ok := err.(interface{ Unwrap() []error }); ok {
-		for _, part := range many.Unwrap() {
-			if rateLimitedFailure(part) {
-				return true
-			}
-		}
-	}
-	return false
-}
+// including a reset the job's budget could not wait out. errors.Is visits every branch of
+// wrappers and joins, so any rate-limited *githubReadError in the tree counts.
+func rateLimitedFailure(err error) bool { return errors.Is(err, errRateLimited) }
 
 func (q *queueController) rateLimitedText(number int) outcome {
 	return pending(unfinished + " GitHub's API rate limit stopped this run, which says nothing about the PR; the record stays blocking until a later run reassesses it. " + q.reassessedBy(number))

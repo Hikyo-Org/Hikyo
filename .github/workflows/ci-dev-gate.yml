@@ -130,12 +130,12 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
           case "$GITHUB_EVENT_NAME" in
             pull_request_target) JOB_HEAD="$PR_HEAD" ;;
             *) JOB_HEAD="$GITHUB_SHA" ;;
           esac
-          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
           # One retry: without this clock the job fails before it can publish anything.
           read_jobs() { timeout --kill-after=1s 5s gh api --paginate --slurp "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100"; }
           body=$(read_jobs) || body=$(read_jobs)
