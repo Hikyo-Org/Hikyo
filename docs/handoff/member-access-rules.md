@@ -459,5 +459,6 @@ engines with rc=1 and was restored.
 The `rule.split` audit lists at most one rule per project. A split rule
 passed the cap, so it has at most 500 projects, under `rule_ids`'s
 `MaxLen` of 1,000. `rul_wide` holds 1,001 env items; its `rule.disabled`
-payload passes the registry with 1,000 ids and names and `env_items` 1001
-(mutants `nolimit`, `desc`, `noitems`).
+payload passes the registry with the first 1,000 ids and names in byte
+order and `env_items` 1001 (mutants `nolimit`, `desc`, `noitems`, `noorder`
+on SQLite, `nocollate` on Postgres).
